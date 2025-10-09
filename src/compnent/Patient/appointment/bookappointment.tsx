@@ -1,10 +1,13 @@
 'use client'
 import React, { useState } from 'react';
-import { Search, User, Star } from 'lucide-react';
+import { Search, User, Star, Clock } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
 
 export default function BookAppointmentPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<number | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date(2025, 9, 9));
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
   const doctors = [
     {
@@ -41,10 +44,33 @@ export default function BookAppointmentPage() {
     }
   ];
 
+  const timeSlots = [
+    { time: '09:00 AM', booked: false },
+    { time: '09:30 AM', booked: true },
+    { time: '10:00 AM', booked: false },
+    { time: '10:30 AM', booked: true },
+    { time: '11:00 AM', booked: false },
+    { time: '11:30 AM', booked: false },
+    { time: '02:00 PM', booked: true },
+    { time: '02:30 PM', booked: false },
+    { time: '03:00 PM', booked: false },
+    { time: '03:30 PM', booked: true },
+    { time: '04:00 PM', booked: true },
+    { time: '04:30 PM', booked: false }
+  ];
+
   const filteredDoctors = doctors.filter(doctor =>
     doctor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     doctor.specialty.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const selectedDoctorData = doctors.find(d => d.id === selectedDoctor);
+
+  const handleConfirmBooking = () => {
+    if (selectedDoctorData && selectedTime && selectedDate) {
+      alert(`Booking confirmed!\nDoctor: ${selectedDoctorData.name}\nDate: ${selectedDate.toLocaleDateString()}\nTime: ${selectedTime}`);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
@@ -60,7 +86,7 @@ export default function BookAppointmentPage() {
         </div>
 
         {/* Step 1: Select Doctor */}
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
+        <div className="bg-white rounded-xl p-6 border border-gray-200 mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">
             Step 1: Select Doctor
           </h2>
@@ -145,6 +171,90 @@ export default function BookAppointmentPage() {
             </div>
           )}
         </div>
+
+        {/* Step 2: Select Date - Only show if doctor is selected */}
+        {selectedDoctor && (
+          <div className="bg-white rounded-xl p-6 border border-gray-200 mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">
+              Step 2: Select Date
+            </h2>
+
+            {/* Calendar */}
+            <div className="flex justify-center">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+                className="rounded-md border"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Select Time Slot - Only show if doctor and date are selected */}
+        {selectedDoctor && (
+          <div className="bg-white rounded-xl p-6 border border-gray-200 mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">
+              Step 3: Select Time Slot
+            </h2>
+
+            {/* Time Slots Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {timeSlots.map((slot, index) => (
+                <button
+                  key={index}
+                  onClick={() => !slot.booked && setSelectedTime(slot.time)}
+                  disabled={slot.booked}
+                  className={`
+                    relative p-4 rounded-lg border-2 transition-all
+                    ${slot.booked
+                      ? 'bg-gray-50 border-gray-200 cursor-not-allowed'
+                      : selectedTime === slot.time
+                      ? 'bg-teal-500 border-teal-500 text-white'
+                      : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
+                    }
+                  `}
+                >
+                  <div className="flex flex-col items-center gap-2">
+                    <Clock className={`w-5 h-5 ${slot.booked ? 'text-gray-300' : selectedTime === slot.time ? 'text-white' : 'text-gray-400'}`} />
+                    <span className={`text-sm font-medium ${slot.booked ? 'text-gray-400' : selectedTime === slot.time ? 'text-white' : 'text-gray-700'}`}>
+                      {slot.time}
+                    </span>
+                    {slot.booked && (
+                      <span className="text-xs text-gray-400">Booked</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Booking Summary - Only show if all selections are made */}
+        {selectedDoctor && selectedTime && (
+          <div className="bg-white rounded-xl p-6 border border-gray-200">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              Booking Summary
+            </h2>
+            <div className="space-y-2 mb-6">
+              <p className="text-gray-700">
+                <span className="font-medium">Doctor:</span> {selectedDoctorData?.name}
+              </p>
+              <p className="text-gray-700">
+                <span className="font-medium">Date:</span> {selectedDate?.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })}
+              </p>
+              <p className="text-gray-700">
+                <span className="font-medium">Time:</span> {selectedTime}
+              </p>
+            </div>
+            <button
+              onClick={handleConfirmBooking}
+              className="w-full sm:w-auto px-8 py-3 bg-teal-500 hover:bg-teal-600 text-white font-medium rounded-lg transition-colors"
+            >
+              Confirm Booking
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
