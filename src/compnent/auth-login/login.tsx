@@ -2,36 +2,93 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authApi, apiUtils } from '@/lib/api';
+import { AlertCircle, Loader2, CheckCircle } from 'lucide-react';
 
 const Auth = () => {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (activeTab === 'signup') {
-      // Handle signup logic and directly switch to login
-      console.log('Signup submitted:', { fullName, email, password });
-      
-      // Clear form and switch to login
-      setActiveTab('login');
-      setFullName('');
-      setEmail('');
-      setPassword('');
-    } else {
-      // Handle login logic - redirect to dashboard
-      console.log('Login submitted:', { email, password });
-      router.push('/Admin/dashboard');
+    setLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      if (activeTab === 'signup') {
+        // Handle signup logic
+        const response = await authApi.register({
+          name: fullName,
+          email: email,
+          password: password,
+          phone: phone,
+          role: 'admin' // Default role for new users
+        });
+
+        if (response.success) {
+          setSuccessMessage('Account created successfully! Please sign in.');
+          // Clear form and switch to login
+          setActiveTab('login');
+          setFullName('');
+          setEmail('');
+          setPassword('');
+          setPhone('');
+        } else {
+          setError(response.message || 'Failed to create account');
+        }
+      } else {
+        // Handle login logic
+        const response = await authApi.login(email, password);
+
+        if (response.success && response.data) {
+          // Store token in localStorage
+          localStorage.setItem('token', response.data.token);
+          localStorage.setItem('user', JSON.stringify(response.data.user));
+          
+          setSuccessMessage('Login successful! Redirecting...');
+          
+          // Redirect to dashboard after a short delay
+          setTimeout(() => {
+            router.push('/Admin/dashboard');
+          }, 1000);
+        } else {
+          setError(response.message || 'Invalid email or password');
+        }
+      }
+    } catch (err) {
+      setError(apiUtils.handleError(err));
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
+            <CheckCircle className="w-5 h-5" />
+            {successMessage}
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            {error}
+          </div>
+        )}
+
         {/* Logo and Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center space-x-2 mb-4">
@@ -125,6 +182,27 @@ const Auth = () => {
             />
           </div>
 
+          {/* Phone Field - Only for Sign Up */}
+          {activeTab === 'signup' && (
+            <div className="mb-4">
+              <label 
+                htmlFor="phone" 
+                className="block text-sm font-semibold text-gray-900 mb-2"
+              >
+                Phone Number
+              </label>
+              <input
+                type="tel"
+                id="phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1234567890"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
+                required
+              />
+            </div>
+          )}
+
           {/* Password Field */}
           <div className="mb-6">
             <label 
@@ -146,9 +224,17 @@ const Auth = () => {
           {/* Submit Button */}
           <button
             type="submit"
-            className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3.5 px-4 rounded-lg transition-colors"
+            disabled={loading}
+            className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {activeTab === 'login' ? 'Sign In' : 'Create Account'}
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                {activeTab === 'login' ? 'Signing In...' : 'Creating Account...'}
+              </>
+            ) : (
+              activeTab === 'login' ? 'Sign In' : 'Create Account'
+            )}
           </button>
         </form>
 

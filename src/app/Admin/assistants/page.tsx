@@ -1,11 +1,10 @@
-import RootLayout from "@/compnent/layout/rootlayout";
-
+import AdminLayout from "@/compnent/layout/AdminLayout";
 import AssistantsPage from "@/compnent/Admin/Assistant/assistant";
 
 export default function Assistants() {
     return (
-        <RootLayout>
+        <AdminLayout>
             <AssistantsPage />
-        </RootLayout>
+        </AdminLayout>
     )
 }

@@ -1,7 +1,10 @@
 "use client"
 
-import React, { useState } from 'react';
-import { Search, Clock, Users, Eye, Edit, UserPlus, X, Phone, Mail, Calendar, MapPin, Save, User } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Clock, Users, Eye, Edit, UserPlus, X, Phone, Mail, Calendar, MapPin, Save, User, AlertCircle, Loader2, Trash2 } from 'lucide-react';
+import { useDoctors } from '@/lib/hooks/useDoctors';
+import { useAppointments } from '@/lib/hooks/useAppointments';
+import { apiUtils, Doctor as ApiDoctor } from '@/lib/api';
 
 // TypeScript Interfaces
 interface Patient {
@@ -20,8 +23,8 @@ interface Stats {
   waiting: number;
 }
 
-interface Doctor {
-  id: number;
+interface DoctorDisplay {
+  id: string;
   name: string;
   specialty: string;
   initials: string;
@@ -52,10 +55,13 @@ interface NewDoctorForm {
 }
 
 export default function DoctorDashboard() {
-  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [selectedDoctor, setSelectedDoctor] = useState<DoctorDisplay | null>(null);
   const [showQueueDialog, setShowQueueDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const [newDoctor, setNewDoctor] = useState<NewDoctorForm>({
     name: '',
     specialty: '',
@@ -68,79 +74,78 @@ export default function DoctorDashboard() {
     status: 'In'
   });
 
-  const doctors: Doctor[] = [
-    {
-      id: 1,
-      name: 'Dr. Sivakumar',
-      specialty: 'General Physician',
-      initials: 'SI',
-      bgColor: 'bg-teal-600',
-      status: 'In',
-      statusColor: 'bg-emerald-500',
-      stats: { total: 32, done: 18, waiting: 14 },
-      slotDuration: '10 min slots',
-      assistants: 'Priya, Ravi',
-      online: true,
-      phone: '+91 98765 43210',
-      email: 'sivakumar@clinic.com',
-      schedule: 'Mon-Sat, 9:00 AM - 5:00 PM',
-      room: 'Room 101',
-      queue: [
-        { id: 1, token: 'T019', name: 'Ramesh Kumar', age: 45, type: 'Consultation', status: 'waiting', time: '10:30 AM' },
-        { id: 2, token: 'T020', name: 'Priya Singh', age: 32, type: 'Follow-up', status: 'waiting', time: '10:40 AM' },
-        { id: 3, token: 'T021', name: 'Amit Patel', age: 28, type: 'Consultation', status: 'waiting', time: '10:50 AM' },
-        { id: 4, token: 'T022', name: 'Sunita Reddy', age: 55, type: 'Check-up', status: 'waiting', time: '11:00 AM' }
-      ]
-    },
-    {
-      id: 2,
-      name: 'Dr. Meena Patel',
-      specialty: 'Pediatrician',
-      initials: 'MP',
-      bgColor: 'bg-teal-700',
-      status: 'Break',
-      statusColor: 'bg-amber-500',
-      stats: { total: 24, done: 20, waiting: 4 },
-      slotDuration: '15 min slots',
-      assistants: 'Lakshmi',
-      online: true,
-      phone: '+91 98765 43211',
-      email: 'meena.patel@clinic.com',
-      schedule: 'Mon-Fri, 10:00 AM - 6:00 PM',
-      room: 'Room 102',
-      queue: [
-        { id: 1, token: 'T045', name: 'Baby Aisha', age: 2, type: 'Vaccination', status: 'waiting', time: '2:00 PM' },
-        { id: 2, token: 'T046', name: 'Rohan Sharma', age: 5, type: 'Check-up', status: 'waiting', time: '2:15 PM' },
-        { id: 3, token: 'T047', name: 'Kavya Nair', age: 8, type: 'Consultation', status: 'waiting', time: '2:30 PM' },
-        { id: 4, token: 'T048', name: 'Arjun Desai', age: 3, type: 'Follow-up', status: 'waiting', time: '2:45 PM' }
-      ]
-    },
-    {
-      id: 3,
-      name: 'Dr. Rajesh Kumar',
-      specialty: 'Dermatologist',
-      initials: 'RK',
-      bgColor: 'bg-teal-600',
-      status: 'Out',
-      statusColor: 'bg-gray-400',
-      stats: { total: 0, done: 0, waiting: 0 },
-      slotDuration: '10 min slots',
-      assistants: 'Priya',
-      online: false,
-      phone: '+91 98765 43212',
-      email: 'rajesh.kumar@clinic.com',
-      schedule: 'Mon-Wed-Fri, 11:00 AM - 4:00 PM',
-      room: 'Room 103',
-      queue: []
-    }
-  ];
+  const {
+    doctors,
+    loading,
+    error,
+    createDoctor,
+    updateDoctor,
+    updateDoctorStatus,
+    deleteDoctor,
+  } = useDoctors();
 
-  const openQueueDialog = (doctor: Doctor) => {
+  const { appointments } = useAppointments();
+
+  // Show success message and hide after 3 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+
+  // Transform API doctors to display format
+  const transformedDoctors: DoctorDisplay[] = doctors.map((doctor, index) => {
+    const doctorAppointments = appointments.filter(apt => apt.doctorId === doctor.id);
+    const todayAppointments = doctorAppointments.filter(apt => {
+      const aptDate = new Date(apt.appointmentDate);
+      const today = new Date();
+      return aptDate.toDateString() === today.toDateString();
+    });
+
+    const completed = todayAppointments.filter(apt => apt.status === 'completed').length;
+    const waiting = todayAppointments.filter(apt => 
+      apt.status === 'scheduled' || apt.status === 'confirmed'
+    ).length;
+
+    return {
+      id: doctor.id, // Keep as string (UUID)
+      name: doctor.user?.name || 'Loading...',
+      specialty: doctor.specialty,
+      initials: doctor.user?.name ? doctor.user.name.split(' ').map(n => n[0]).join('').toUpperCase() : '...',
+      bgColor: index % 2 === 0 ? 'bg-teal-600' : 'bg-teal-700',
+      status: doctor.status === 'active' ? 'In' : 
+              doctor.status === 'break' ? 'Break' : 'Out',
+      statusColor: doctor.status === 'active' ? 'bg-emerald-500' : 
+                   doctor.status === 'break' ? 'bg-amber-500' : 'bg-gray-400',
+      stats: { 
+        total: todayAppointments.length, 
+        done: completed, 
+        waiting: waiting 
+      },
+      slotDuration: `${doctor.consultationDuration} min slots`,
+      assistants: 'Loading...', // This would need to be fetched from assistant assignments
+      online: doctor.isActive,
+      phone: doctor.user?.phone || 'N/A',
+      email: doctor.user?.email || 'N/A',
+      schedule: 'Mon-Fri, 9:00 AM - 5:00 PM', // This would come from schedule API
+      room: 'Room 101', // This would come from doctor profile
+      queue: [] // This would come from queue API
+    };
+  });
+
+  // Filter doctors based on search query
+  const filteredDoctors = transformedDoctors.filter(doctor =>
+    doctor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    doctor.specialty.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const openQueueDialog = (doctor: DoctorDisplay) => {
     setSelectedDoctor(doctor);
     setShowQueueDialog(true);
   };
 
-  const openEditDialog = (doctor: Doctor) => {
+  const openEditDialog = (doctor: DoctorDisplay) => {
     setSelectedDoctor(doctor);
     setShowEditDialog(true);
   };
@@ -171,15 +176,164 @@ export default function DoctorDashboard() {
     setNewDoctor(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleAddDoctorSubmit = () => {
-    console.log('New Doctor:', newDoctor);
-    // Add your doctor creation logic here
-    closeDialogs();
+  const handleAddDoctorSubmit = async () => {
+    if (!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email) {
+      setSuccessMessage('Please fill in all required fields');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const success = await createDoctor({
+        name: newDoctor.name,
+        email: newDoctor.email,
+        phone: newDoctor.phone,
+        specialty: newDoctor.specialty,
+        licenseNumber: 'LIC' + Date.now(), // Generate a temporary license number
+        consultationDuration: parseInt(newDoctor.slotDuration),
+      });
+
+      if (success) {
+        setSuccessMessage('Doctor created successfully');
+        closeDialogs();
+      } else {
+        setSuccessMessage('Failed to create doctor');
+      }
+    } catch (err) {
+      setSuccessMessage(apiUtils.handleError(err));
+    } finally {
+      setActionLoading(false);
+    }
   };
+
+  const handleEditDoctorSubmit = async () => {
+    if (!selectedDoctor) return;
+
+    setActionLoading(true);
+    try {
+      // Get form values from the edit dialog
+      const form = document.querySelector('#edit-doctor-form') as HTMLFormElement;
+      if (!form) {
+        setSuccessMessage('Form not found');
+        setActionLoading(false);
+        return;
+      }
+
+      const formData = new FormData(form);
+      const updates = {
+        name: formData.get('name') as string,
+        email: formData.get('email') as string,
+        phone: formData.get('phone') as string,
+        specialty: formData.get('specialty') as string,
+        consultationDuration: parseInt(formData.get('consultationDuration') as string),
+      };
+
+      // Handle status change separately
+      const newStatus = formData.get('status') as string;
+      if (newStatus && newStatus !== selectedDoctor.status) {
+        const statusMap: { [key: string]: 'active' | 'break' | 'offline' } = {
+          'In': 'active',
+          'Break': 'break',
+          'Out': 'offline'
+        };
+        
+        const statusSuccess = await updateDoctorStatus(selectedDoctor.id, statusMap[newStatus]);
+        if (!statusSuccess) {
+          setSuccessMessage('Failed to update doctor status');
+          setActionLoading(false);
+          return;
+        }
+      }
+
+      const success = await updateDoctor(selectedDoctor.id, updates);
+
+      if (success) {
+        setSuccessMessage('Doctor updated successfully');
+        closeDialogs();
+      } else {
+        setSuccessMessage('Failed to update doctor');
+      }
+    } catch (err) {
+      setSuccessMessage(apiUtils.handleError(err));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteDoctor = async (doctorId: string) => {
+    if (window.confirm('Are you sure you want to delete this doctor?')) {
+      setActionLoading(true);
+      try {
+        const success = await deleteDoctor(doctorId);
+        
+        if (success) {
+          setSuccessMessage('Doctor deleted successfully');
+        } else {
+          setSuccessMessage('Failed to delete doctor');
+        }
+      } catch (err) {
+        setSuccessMessage(apiUtils.handleError(err));
+      } finally {
+        setActionLoading(false);
+      }
+    }
+  };
+
+  const handleStatusChange = async (doctorId: string, newStatus: string) => {
+    setActionLoading(true);
+    try {
+      const statusMap: { [key: string]: 'active' | 'break' | 'offline' } = {
+        'In': 'active',
+        'Break': 'break',
+        'Out': 'offline'
+      };
+
+      const success = await updateDoctorStatus(doctorId, statusMap[newStatus]);
+      
+      if (success) {
+        setSuccessMessage('Doctor status updated successfully');
+      } else {
+        setSuccessMessage('Failed to update doctor status');
+      }
+    } catch (err) {
+      setSuccessMessage(apiUtils.handleError(err));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading && doctors.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-teal-500 mx-auto mb-4" />
+          <p className="text-gray-600">Loading doctors...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-full mx-auto">
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
+            <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
+            </div>
+            {successMessage}
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            {error}
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
@@ -188,7 +342,8 @@ export default function DoctorDashboard() {
           </div>
           <button 
             onClick={openAddDialog}
-            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors"
+            disabled={actionLoading}
+            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <UserPlus size={18} />
             Add Doctor
@@ -202,6 +357,8 @@ export default function DoctorDashboard() {
             <input
               type="text"
               placeholder="Search by name or specialization..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border-0 focus:outline-none focus:ring-0 text-gray-700"
             />
           </div>
@@ -209,7 +366,8 @@ export default function DoctorDashboard() {
 
         {/* Doctor Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {doctors.map((doctor) => (
+          {filteredDoctors.length > 0 ? (
+            filteredDoctors.map((doctor) => (
             <div key={doctor.id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
               {/* Doctor Header */}
               <div className="flex items-start justify-between mb-6">
@@ -271,13 +429,26 @@ export default function DoctorDashboard() {
                 </button>
                 <button 
                   onClick={() => openEditDialog(doctor)}
-                  className="p-2.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={actionLoading}
+                  className="p-2.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                 >
                   <Edit size={16} />
                 </button>
+                <button 
+                  onClick={() => handleDeleteDoctor(doctor.id)}
+                  disabled={actionLoading}
+                  className="p-2.5 border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             </div>
-          ))}
+            ))
+          ) : (
+            <div className="col-span-full bg-white rounded-lg shadow-sm p-12 text-center">
+              <p className="text-gray-500">No doctors found</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -452,11 +623,20 @@ export default function DoctorDashboard() {
               </button>
               <button 
                 onClick={handleAddDoctorSubmit}
-                disabled={!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email}
+                disabled={!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email || actionLoading}
                 className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                <UserPlus size={16} />
-                Add Doctor
+                {actionLoading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus size={16} />
+                    Add Doctor
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -556,7 +736,7 @@ export default function DoctorDashboard() {
             </div>
 
             {/* Edit Form */}
-            <div className="overflow-y-auto max-h-[calc(90vh-180px)] p-6">
+            <form id="edit-doctor-form" className="overflow-y-auto max-h-[calc(90vh-180px)] p-6">
               <div className="space-y-5">
                 {/* Name */}
                 <div>
@@ -565,6 +745,7 @@ export default function DoctorDashboard() {
                   </label>
                   <input
                     type="text"
+                    name="name"
                     defaultValue={selectedDoctor.name}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
@@ -577,6 +758,7 @@ export default function DoctorDashboard() {
                   </label>
                   <input
                     type="text"
+                    name="specialty"
                     defaultValue={selectedDoctor.specialty}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
@@ -591,6 +773,7 @@ export default function DoctorDashboard() {
                     </label>
                     <input
                       type="tel"
+                      name="phone"
                       defaultValue={selectedDoctor.phone}
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
@@ -602,6 +785,7 @@ export default function DoctorDashboard() {
                     </label>
                     <input
                       type="email"
+                      name="email"
                       defaultValue={selectedDoctor.email}
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
@@ -617,6 +801,7 @@ export default function DoctorDashboard() {
                     </label>
                     <input
                       type="text"
+                      name="schedule"
                       defaultValue={selectedDoctor.schedule}
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
@@ -628,6 +813,7 @@ export default function DoctorDashboard() {
                     </label>
                     <input
                       type="text"
+                      name="room"
                       defaultValue={selectedDoctor.room}
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
@@ -641,6 +827,7 @@ export default function DoctorDashboard() {
                     Slot Duration
                   </label>
                   <select 
+                    name="consultationDuration"
                     defaultValue={selectedDoctor.slotDuration.includes('15') ? '15' : '10'}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   >
@@ -659,6 +846,7 @@ export default function DoctorDashboard() {
                   </label>
                   <input
                     type="text"
+                    name="assistants"
                     defaultValue={selectedDoctor.assistants}
                     placeholder="Comma separated names"
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -671,6 +859,7 @@ export default function DoctorDashboard() {
                     Current Status
                   </label>
                   <select 
+                    name="status"
                     defaultValue={selectedDoctor.status}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   >
@@ -680,7 +869,7 @@ export default function DoctorDashboard() {
                   </select>
                 </div>
               </div>
-            </div>
+            </form>
 
             {/* Dialog Footer */}
             <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
@@ -690,9 +879,22 @@ export default function DoctorDashboard() {
               >
                 Cancel
               </button>
-              <button className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors">
-                <Save size={16} />
-                Save Changes
+              <button 
+                onClick={handleEditDoctorSubmit}
+                disabled={actionLoading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {actionLoading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    Save Changes
+                  </>
+                )}
               </button>
             </div>
           </div>

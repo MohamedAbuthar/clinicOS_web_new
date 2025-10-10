@@ -1,10 +1,10 @@
 import DashboardPage from "@/compnent/Admin/dashboard/dashboard";
-import RootLayout from "@/compnent/layout/rootlayout";
+import AdminLayout from "@/compnent/layout/AdminLayout";
 
-export default function Appoinment() {
+export default function Dashboard() {
   return (
-    <RootLayout>
+    <AdminLayout>
       <DashboardPage />
-    </RootLayout>
+    </AdminLayout>
   )
 }

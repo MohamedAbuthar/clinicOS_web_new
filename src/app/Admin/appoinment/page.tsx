@@ -1,10 +1,10 @@
 import AppointmentsPage from "@/compnent/Admin/appoinment/appoinment";
-import RootLayout from "@/compnent/layout/rootlayout";
+import AdminLayout from "@/compnent/layout/AdminLayout";
 
 export default function Appoinment() {
   return (
-    <RootLayout>
+    <AdminLayout>
       <AppointmentsPage />
-    </RootLayout>
+    </AdminLayout>
   )
 }

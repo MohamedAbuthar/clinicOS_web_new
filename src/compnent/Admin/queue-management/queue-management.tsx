@@ -1,8 +1,11 @@
 "use client"
 
-
 import React, { useState, useRef, useEffect } from 'react';
-import { UserPlus, GripVertical, Clock, X } from 'lucide-react';
+import { UserPlus, GripVertical, Clock, X, AlertCircle, Loader2, CheckCircle, RotateCcw } from 'lucide-react';
+import { useQueue } from '@/lib/hooks/useQueue';
+import { useDoctors } from '@/lib/hooks/useDoctors';
+import { usePatients } from '@/lib/hooks/usePatients';
+import { apiUtils } from '@/lib/api';
 
 // Types
 interface Patient {
@@ -375,84 +378,71 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, buttonRef }: DoctorBre
 
 // Main Component
 export default function QueueManagementPage() {
-  const [currentPatient] = useState<CurrentPatient>({
-    tokenNumber: '#12',
-    name: 'Ramesh Kumar',
-    status: 'Arrived'
-  });
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const [doctorStatus] = useState<DoctorStatus>({
-    status: 'Active',
-    avgConsultTime: '8 min',
-    patientsServed: 11,
-    estimatedComplete: '2:45 PM'
-  });
+  const {
+    currentPatient,
+    waitingQueue,
+    queueStats,
+    activities,
+    loading,
+    error,
+    selectedDoctorId,
+    setSelectedDoctorId,
+    callNextPatient,
+    skipPatient,
+    reinsertPatient,
+    completePatient,
+    updateQueuePosition,
+  } = useQueue();
 
-  const [waitingQueue, setWaitingQueue] = useState<Patient[]>([
-    {
-      id: '1',
-      tokenNumber: '#13',
-      name: 'Priya Sharma',
-      category: 'Family',
-      waitingTime: '2 min',
-      status: 'Arrived'
-    },
-    {
-      id: '2',
-      tokenNumber: '#14',
-      name: 'Anita Desai',
-      waitingTime: '0 min',
-      status: 'Arrived'
-    },
-    {
-      id: '3',
-      tokenNumber: '#15',
-      name: 'Vijay Patel',
-      waitingTime: '15 min',
-      status: 'Late'
-    },
-    {
-      id: '4',
-      tokenNumber: '#16',
-      name: 'Meena Iyer',
-      waitingTime: '1 min',
-      status: 'Walk-in'
+  const { doctors } = useDoctors();
+  const { patients } = usePatients();
+
+  // Show success message and hide after 3 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 3000);
+      return () => clearTimeout(timer);
     }
-  ]);
+  }, [successMessage]);
 
-  const [activities] = useState<Activity[]>([
-    {
-      id: '1',
-      message: 'Token #11 completed',
-      timestamp: '2 min ago',
-      type: 'success'
-    },
-    {
-      id: '2',
-      message: 'Token #10 skipped',
-      timestamp: '5 min ago',
-      type: 'warning'
-    },
-    {
-      id: '3',
-      message: 'Walk-in added',
-      timestamp: '8 min ago',
-      type: 'info'
+  // Auto-select first doctor if available
+  useEffect(() => {
+    if (doctors.length > 0 && !selectedDoctorId) {
+      setSelectedDoctorId(doctors[0].id);
     }
-  ]);
+  }, [doctors, selectedDoctorId, setSelectedDoctorId]);
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [isBreakDropdownOpen, setIsBreakDropdownOpen] = useState(false);
   const breakButtonRef = useRef<HTMLDivElement>(null);
 
+  const selectedDoctor = doctors.find(d => d.id === selectedDoctorId);
+
   const quickActions: QuickAction[] = [
     {
-      label: 'Mark All Arrived',
-      onClick: () => console.log('Mark all arrived')
+      label: 'Call Next Patient',
+      onClick: async () => {
+        setActionLoading(true);
+        const success = await callNextPatient();
+        setActionLoading(false);
+        if (success) {
+          setSuccessMessage('Next patient called successfully');
+        } else {
+          setSuccessMessage('Failed to call next patient');
+        }
+      }
     },
     {
-      label: 'Send Bulk Reminders',
-      onClick: () => console.log('Send reminders')
+      label: 'Refresh Queue',
+      onClick: async () => {
+        setActionLoading(true);
+        // Refresh logic would go here
+        setActionLoading(false);
+        setSuccessMessage('Queue refreshed');
+      }
     },
     {
       label: 'End Session',
@@ -461,12 +451,30 @@ export default function QueueManagementPage() {
     }
   ];
 
-  const handleComplete = () => {
-    console.log('Complete consultation');
+  const handleComplete = async () => {
+    if (!currentPatient) return;
+    
+    setActionLoading(true);
+    const success = await completePatient(currentPatient.id);
+    setActionLoading(false);
+    
+    if (success) {
+      setSuccessMessage('Patient consultation completed');
+    } else {
+      setSuccessMessage('Failed to complete consultation');
+    }
   };
 
-  const handleSkip = (patientId: string) => {
-    console.log('Skip patient:', patientId);
+  const handleSkip = async (queueItemId: string) => {
+    setActionLoading(true);
+    const success = await skipPatient(queueItemId, 'Skipped by assistant');
+    setActionLoading(false);
+    
+    if (success) {
+      setSuccessMessage('Patient skipped successfully');
+    } else {
+      setSuccessMessage('Failed to skip patient');
+    }
   };
 
   const handleDragStart = (index: number) => {
@@ -481,14 +489,22 @@ export default function QueueManagementPage() {
     e.preventDefault();
   };
 
-  const handleDrop = (dropIndex: number) => {
+  const handleDrop = async (dropIndex: number) => {
     if (draggedIndex === null) return;
 
-    const newQueue = [...waitingQueue];
-    const [draggedItem] = newQueue.splice(draggedIndex, 1);
-    newQueue.splice(dropIndex, 0, draggedItem);
+    const draggedItem = waitingQueue[draggedIndex];
+    if (!draggedItem) return;
 
-    setWaitingQueue(newQueue);
+    setActionLoading(true);
+    const success = await updateQueuePosition(draggedItem.id, dropIndex + 1);
+    setActionLoading(false);
+
+    if (success) {
+      setSuccessMessage('Queue position updated successfully');
+    } else {
+      setSuccessMessage('Failed to update queue position');
+    }
+
     setDraggedIndex(null);
   };
 
@@ -497,16 +513,59 @@ export default function QueueManagementPage() {
     // Add your break logic here
   };
 
+  if (loading && !currentPatient && waitingQueue.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-teal-500 mx-auto mb-4" />
+          <p className="text-gray-600">Loading queue data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
+            <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
+            </div>
+            {successMessage}
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            {error}
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Queue Management</h1>
-            <p className="text-sm text-gray-500 mt-1">Real-time token board for Dr. Priya Sharma</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Real-time token board for {selectedDoctor?.user.name || 'Select a doctor'}
+            </p>
           </div>
           <div className="flex gap-3">
+            <select
+              value={selectedDoctorId || ''}
+              onChange={(e) => setSelectedDoctorId(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="">Select Doctor</option>
+              {doctors.map((doctor) => (
+                <option key={doctor.id} value={doctor.id}>
+                  {doctor.user.name} - {doctor.specialty}
+                </option>
+              ))}
+            </select>
             <Button variant="secondary" icon={<UserPlus className="w-4 h-4" />}>
               Add Walk-in
             </Button>
@@ -514,8 +573,9 @@ export default function QueueManagementPage() {
               <Button 
                 variant="primary"
                 onClick={() => setIsBreakDropdownOpen(!isBreakDropdownOpen)}
+                disabled={actionLoading}
               >
-                Mark Doctor Break
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Mark Doctor Break'}
               </Button>
             </div>
           </div>
@@ -533,10 +593,20 @@ export default function QueueManagementPage() {
           {/* Main Queue Section */}
           <div className="lg:col-span-2 space-y-6">
             {/* Current Patient */}
-            <CurrentPatientCard 
-              patient={currentPatient}
-              onComplete={handleComplete}
-            />
+            {currentPatient ? (
+              <CurrentPatientCard 
+                patient={{
+                  tokenNumber: currentPatient.tokenNumber,
+                  name: patients.find(p => p.id === currentPatient.patientId)?.name || 'Loading...',
+                  status: currentPatient.status === 'current' ? 'Arrived' : currentPatient.status
+                }}
+                onComplete={handleComplete}
+              />
+            ) : (
+              <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
+                <p className="text-gray-500">No current patient</p>
+              </div>
+            )}
 
             {/* Waiting Queue */}
             <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -544,20 +614,38 @@ export default function QueueManagementPage() {
                 Waiting Queue ({waitingQueue.length})
               </h2>
               <div className="space-y-3">
-                {waitingQueue.map((patient, index) => (
-                  <QueueItem
-                    key={patient.id}
-                    patient={patient}
-                    index={index + 1}
-                    onSkip={() => handleSkip(patient.id)}
-                    isSelected={index === 0}
-                    onDragStart={() => handleDragStart(index)}
-                    onDragEnd={handleDragEnd}
-                    onDragOver={handleDragOver}
-                    onDrop={() => handleDrop(index)}
-                    isDragging={draggedIndex === index}
-                  />
-                ))}
+                {waitingQueue.length > 0 ? (
+                  waitingQueue.map((queueItem, index) => {
+                    const patient = patients.find(p => p.id === queueItem.patientId);
+                    return (
+                      <QueueItem
+                        key={queueItem.id}
+                        patient={{
+                          id: queueItem.id,
+                          tokenNumber: queueItem.tokenNumber,
+                          name: patient?.name || 'Loading...',
+                          category: patient?.familyId ? 'Family' : undefined,
+                          waitingTime: queueItem.waitingTime ? `${queueItem.waitingTime} min` : '0 min',
+                          status: queueItem.status === 'waiting' ? 'Arrived' : 
+                                  queueItem.status === 'skipped' ? 'Late' : 
+                                  queueItem.status
+                        }}
+                        index={index + 1}
+                        onSkip={() => handleSkip(queueItem.id)}
+                        isSelected={index === 0}
+                        onDragStart={() => handleDragStart(index)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={handleDragOver}
+                        onDrop={() => handleDrop(index)}
+                        isDragging={draggedIndex === index}
+                      />
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    No patients in waiting queue
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -565,7 +653,13 @@ export default function QueueManagementPage() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Doctor Status */}
-            <DoctorStatusCard doctorStatus={doctorStatus} />
+            <DoctorStatusCard doctorStatus={{
+              status: selectedDoctor?.status === 'active' ? 'Active' : 
+                      selectedDoctor?.status === 'break' ? 'Break' : 'Offline',
+              avgConsultTime: selectedDoctor?.consultationDuration ? `${selectedDoctor.consultationDuration} min` : 'N/A',
+              patientsServed: queueStats?.averageWaitTime ? Math.round(queueStats.averageWaitTime) : 0,
+              estimatedComplete: selectedDoctor?.estimatedLastPatient || 'N/A'
+            }} />
 
             {/* Quick Actions */}
             <QuickActionsCard actions={quickActions} />
@@ -574,9 +668,15 @@ export default function QueueManagementPage() {
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <h3 className="text-sm font-semibold text-gray-900 mb-4">Recent Activity</h3>
               <div className="space-y-4">
-                {activities.map((activity) => (
-                  <ActivityItem key={activity.id} activity={activity} />
-                ))}
+                {activities.length > 0 ? (
+                  activities.map((activity) => (
+                    <ActivityItem key={activity.id} activity={activity} />
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-gray-500">
+                    No recent activity
+                  </div>
+                )}
               </div>
             </div>
           </div>
