@@ -97,12 +97,12 @@ const SchedulePage: React.FC = () => {
     setIsAddOverrideOpen(true);
   };
 
-  const handleSaveOverride = (data: any) => {
+  const handleSaveOverride = (data: { title: string; date: string; timeRange: string; type: 'special-event' | 'holiday' | 'extended-hours'; description?: string }) => {
     console.log('Saving override:', data);
     // TODO: Implement save override logic
   };
 
-  const handleSaveSchedule = (data: any) => {
+  const handleSaveSchedule = (data: { day: string; timeRange?: string; slotDuration?: string; status: 'active' | 'off' }) => {
     console.log('Saving schedule:', data);
     // TODO: Implement save schedule logic
   };
