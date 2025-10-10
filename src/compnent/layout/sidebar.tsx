@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutGrid, Calendar, Activity, Stethoscope, UserPlus, ClipboardList, BarChart3, Settings } from 'lucide-react';
+import { LayoutGrid, Calendar, Activity, Stethoscope, UserPlus, ClipboardList, BarChart3, Settings, LogOut } from 'lucide-react';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -19,6 +19,13 @@ export default function Sidebar() {
 
   const handleNavigation = (path: string) => {
     router.push(path);
+  };
+
+  const handleLogout = () => {
+    // Add your logout logic here
+    // For example: clearing tokens, redirecting to login, etc.
+    console.log('Logout clicked');
+    router.push('/login');
   };
 
   return (
@@ -68,10 +75,17 @@ export default function Sidebar() {
           <div className="w-11 h-11 bg-teal-500 rounded-full flex items-center justify-center">
             <span className="text-white font-bold text-base">AD</span>
           </div>
-          <div>
+          <div className="flex-1">
             <h3 className="text-gray-900 font-semibold text-sm">Admin User</h3>
             <p className="text-gray-500 text-xs">Administrator</p>
           </div>
+          <button
+            onClick={handleLogout}
+            className="p-2 hover:bg-teal-100 rounded-lg transition-colors duration-200"
+            title="Logout"
+          >
+            <LogOut className="w-5 h-5 text-gray-600" strokeWidth={2} />
+          </button>
         </div>
       </div>
     </div>

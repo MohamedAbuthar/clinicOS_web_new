@@ -1,5 +1,7 @@
+"use client"
+
 import React, { useState } from 'react';
-import { Search, Clock, Users, Eye, Edit, UserPlus, X, Phone, Mail, Calendar, MapPin, Save } from 'lucide-react';
+import { Search, Clock, Users, Eye, Edit, UserPlus, X, Phone, Mail, Calendar, MapPin, Save, User } from 'lucide-react';
 
 // TypeScript Interfaces
 interface Patient {
@@ -37,10 +39,34 @@ interface Doctor {
   queue: Patient[];
 }
 
+interface NewDoctorForm {
+  name: string;
+  specialty: string;
+  phone: string;
+  email: string;
+  schedule: string;
+  room: string;
+  slotDuration: string;
+  assistants: string;
+  status: string;
+}
+
 export default function DoctorDashboard() {
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [showQueueDialog, setShowQueueDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [newDoctor, setNewDoctor] = useState<NewDoctorForm>({
+    name: '',
+    specialty: '',
+    phone: '',
+    email: '',
+    schedule: '',
+    room: '',
+    slotDuration: '10',
+    assistants: '',
+    status: 'In'
+  });
 
   const doctors: Doctor[] = [
     {
@@ -119,10 +145,36 @@ export default function DoctorDashboard() {
     setShowEditDialog(true);
   };
 
+  const openAddDialog = () => {
+    setShowAddDialog(true);
+  };
+
   const closeDialogs = () => {
     setShowQueueDialog(false);
     setShowEditDialog(false);
+    setShowAddDialog(false);
     setSelectedDoctor(null);
+    setNewDoctor({
+      name: '',
+      specialty: '',
+      phone: '',
+      email: '',
+      schedule: '',
+      room: '',
+      slotDuration: '10',
+      assistants: '',
+      status: 'In'
+    });
+  };
+
+  const handleAddDoctorChange = (field: keyof NewDoctorForm, value: string) => {
+    setNewDoctor(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddDoctorSubmit = () => {
+    console.log('New Doctor:', newDoctor);
+    // Add your doctor creation logic here
+    closeDialogs();
   };
 
   return (
@@ -134,7 +186,10 @@ export default function DoctorDashboard() {
             <h1 className="text-3xl font-bold text-gray-900 mb-1">Doctors</h1>
             <p className="text-gray-500">Manage doctor profiles and schedules</p>
           </div>
-          <button className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors">
+          <button 
+            onClick={openAddDialog}
+            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors"
+          >
             <UserPlus size={18} />
             Add Doctor
           </button>
@@ -225,6 +280,188 @@ export default function DoctorDashboard() {
           ))}
         </div>
       </div>
+
+      {/* Add Doctor Dialog */}
+      {showAddDialog && (
+        <div className="fixed inset-0 bg-white/5 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+            {/* Dialog Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Add New Doctor</h2>
+                <p className="text-sm text-gray-500 mt-1">Fill in the doctor's information</p>
+              </div>
+              <button 
+                onClick={closeDialogs}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            {/* Add Form */}
+            <div className="overflow-y-auto max-h-[calc(90vh-180px)] p-6">
+              <div className="space-y-5">
+                {/* Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <User size={16} className="inline mr-1" />
+                    Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newDoctor.name}
+                    onChange={(e) => handleAddDoctorChange('name', e.target.value)}
+                    placeholder="Dr. John Doe"
+                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Specialization */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Specialization <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newDoctor.specialty}
+                    onChange={(e) => handleAddDoctorChange('specialty', e.target.value)}
+                    placeholder="General Physician, Cardiologist, etc."
+                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Contact Info */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Phone size={16} className="inline mr-1" />
+                      Phone Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={newDoctor.phone}
+                      onChange={(e) => handleAddDoctorChange('phone', e.target.value)}
+                      placeholder="+91 98765 43210"
+                      className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Mail size={16} className="inline mr-1" />
+                      Email <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={newDoctor.email}
+                      onChange={(e) => handleAddDoctorChange('email', e.target.value)}
+                      placeholder="doctor@clinic.com"
+                      className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                {/* Schedule and Room */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Calendar size={16} className="inline mr-1" />
+                      Schedule <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newDoctor.schedule}
+                      onChange={(e) => handleAddDoctorChange('schedule', e.target.value)}
+                      placeholder="Mon-Fri, 9:00 AM - 5:00 PM"
+                      className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <MapPin size={16} className="inline mr-1" />
+                      Room <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newDoctor.room}
+                      onChange={(e) => handleAddDoctorChange('room', e.target.value)}
+                      placeholder="Room 101"
+                      className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                {/* Slot Duration */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Clock size={16} className="inline mr-1" />
+                    Slot Duration <span className="text-red-500">*</span>
+                  </label>
+                  <select 
+                    value={newDoctor.slotDuration}
+                    onChange={(e) => handleAddDoctorChange('slotDuration', e.target.value)}
+                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  >
+                    <option value="10">10 minutes</option>
+                    <option value="15">15 minutes</option>
+                    <option value="20">20 minutes</option>
+                    <option value="30">30 minutes</option>
+                  </select>
+                </div>
+
+                {/* Assistants */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Users size={16} className="inline mr-1" />
+                    Assistants
+                  </label>
+                  <input
+                    type="text"
+                    value={newDoctor.assistants}
+                    onChange={(e) => handleAddDoctorChange('assistants', e.target.value)}
+                    placeholder="Comma separated names (e.g., Priya, Ravi)"
+                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Initial Status
+                  </label>
+                  <select 
+                    value={newDoctor.status}
+                    onChange={(e) => handleAddDoctorChange('status', e.target.value)}
+                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  >
+                    <option value="In">Available (In)</option>
+                    <option value="Break">On Break</option>
+                    <option value="Out">Not Available (Out)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Dialog Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+              <button 
+                onClick={closeDialogs}
+                className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleAddDoctorSubmit}
+                disabled={!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email}
+                className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                <UserPlus size={16} />
+                Add Doctor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* View Queue Dialog */}
       {showQueueDialog && selectedDoctor && (

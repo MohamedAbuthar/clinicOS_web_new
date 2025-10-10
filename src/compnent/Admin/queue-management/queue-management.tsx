@@ -1,8 +1,8 @@
-'use client'
+"use client"
 
 
-import React, { useState } from 'react';
-import { UserPlus, GripVertical } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { UserPlus, GripVertical, Clock, X } from 'lucide-react';
 
 // Types
 interface Patient {
@@ -109,7 +109,7 @@ const QueueItem = ({ patient, index, onSkip, isSelected, onDragStart, onDragEnd,
     Late: 'bg-yellow-100 text-yellow-700',
     'Walk-in': 'bg-blue-100 text-blue-700'
   };
-console.log(index,'index');
+
   return (
     <div
       draggable
@@ -231,6 +231,147 @@ const ActivityItem = ({ activity }: { activity: Activity }) => {
   );
 };
 
+// Doctor Break Dropdown
+interface DoctorBreakDropdownProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (fromTime: string, toTime: string) => void;
+  buttonRef: React.RefObject<HTMLDivElement | null>;
+}
+
+const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, buttonRef }: DoctorBreakDropdownProps) => {
+  const [fromTime, setFromTime] = useState('');
+  const [toTime, setToTime] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ top: 0, left: 0, right: 'auto' as string | number });
+
+  useEffect(() => {
+    if (isOpen && buttonRef.current && dropdownRef.current) {
+      const buttonRect = buttonRef.current.getBoundingClientRect();
+      const dropdownWidth = 320; // Width of dropdown (w-80 = 320px)
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      let top = buttonRect.bottom + 8;
+      let left = buttonRect.left;
+      let right: string | number = 'auto';
+      
+      // Check if dropdown goes beyond right edge
+      if (left + dropdownWidth > viewportWidth) {
+        right = 16; // 1rem padding from right edge
+        left = viewportWidth - dropdownWidth - 16;
+      }
+      
+      // Check if dropdown goes beyond bottom edge
+      const dropdownHeight = 280; // Approximate height
+      if (top + dropdownHeight > viewportHeight) {
+        top = buttonRect.top - dropdownHeight - 8; // Show above button
+      }
+      
+      setPosition({ top, left, right });
+    }
+  }, [isOpen, buttonRef]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
+          buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onClose, buttonRef]);
+
+  const handleSubmit = () => {
+    if (fromTime && toTime) {
+      onSubmit(fromTime, toTime);
+      setFromTime('');
+      setToTime('');
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={{
+        position: 'fixed',
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        zIndex: 1000
+      }}
+      className="bg-white rounded-lg shadow-xl border border-gray-200 p-5 w-80"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">Set Break Time</h3>
+        <button
+          onClick={onClose}
+          className="p-1 hover:bg-gray-100 rounded transition-colors"
+        >
+          <X className="w-5 h-5 text-gray-500" />
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            From
+          </label>
+          <div className="relative">
+            <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="time"
+              value={fromTime}
+              onChange={(e) => setFromTime(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            To
+          </label>
+          <div className="relative">
+            <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="time"
+              value={toTime}
+              onChange={(e) => setToTime(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!fromTime || !toTime}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            Confirm Break
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main Component
 export default function QueueManagementPage() {
   const [currentPatient] = useState<CurrentPatient>({
@@ -300,6 +441,8 @@ export default function QueueManagementPage() {
   ]);
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [isBreakDropdownOpen, setIsBreakDropdownOpen] = useState(false);
+  const breakButtonRef = useRef<HTMLDivElement>(null);
 
   const quickActions: QuickAction[] = [
     {
@@ -348,6 +491,11 @@ export default function QueueManagementPage() {
     setDraggedIndex(null);
   };
 
+  const handleBreakSubmit = (fromTime: string, toTime: string) => {
+    console.log('Doctor break set from', fromTime, 'to', toTime);
+    // Add your break logic here
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
@@ -361,11 +509,24 @@ export default function QueueManagementPage() {
             <Button variant="secondary" icon={<UserPlus className="w-4 h-4" />}>
               Add Walk-in
             </Button>
-            <Button variant="primary">
-              Mark Doctor Break
-            </Button>
+            <div ref={breakButtonRef}>
+              <Button 
+                variant="primary"
+                onClick={() => setIsBreakDropdownOpen(!isBreakDropdownOpen)}
+              >
+                Mark Doctor Break
+              </Button>
+            </div>
           </div>
         </div>
+
+        {/* Doctor Break Dropdown */}
+        <DoctorBreakDropdown
+          isOpen={isBreakDropdownOpen}
+          onClose={() => setIsBreakDropdownOpen(false)}
+          onSubmit={handleBreakSubmit}
+          buttonRef={breakButtonRef}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Queue Section */}
