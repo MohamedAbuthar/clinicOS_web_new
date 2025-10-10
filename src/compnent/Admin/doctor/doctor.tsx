@@ -289,7 +289,7 @@ export default function DoctorDashboard() {
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Add New Doctor</h2>
-                <p className="text-sm text-gray-500 mt-1">Fill in the doctor's information</p>
+                <p className="text-sm text-gray-500 mt-1">Fill in the doctor information</p>
               </div>
               <button 
                 onClick={closeDialogs}
