@@ -113,7 +113,7 @@ export default function AppointmentsPage() {
           </div>
           <button 
             onClick={() => setShowBookAppointmentDialog(true)}
-            className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-3 rounded-lg font-semibold text-lg"
+            className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-3 rounded-lg font-semibold text-lg transition-colors"
           >
             Book New Appointment
           </button>
@@ -220,14 +220,14 @@ export default function AppointmentsPage() {
                     setSelectedAppointment(appointment);
                     setShowRescheduleDialog(true);
                   }}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                 >
                   Reschedule
                 </button>
-                <button className="px-6 py-2 text-red-600 rounded-lg font-medium hover:bg-red-50">
+                <button className="px-6 py-2 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors">
                   Cancel
                 </button>
-                <button className="px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600">
+                <button className="px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors">
                   Get Directions
                 </button>
               </div>
@@ -286,7 +286,7 @@ export default function AppointmentsPage() {
                     setSelectedAppointment(appointment);
                     setShowViewReportDialog(true);
                   }}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                 >
                   View Report
                 </button>
@@ -295,7 +295,7 @@ export default function AppointmentsPage() {
                     setSelectedAppointment(appointment);
                     setShowBookAgainDialog(true);
                   }}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                 >
                   Book Again
                 </button>
@@ -355,7 +355,7 @@ export default function AppointmentsPage() {
                     setSelectedAppointment(appointment);
                     setShowBookAppointmentDialog(true);
                   }}
-                  className="px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600"
+                  className="px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors"
                 >
                   Book New Appointment
                 </button>
@@ -366,13 +366,13 @@ export default function AppointmentsPage() {
 
         {/* Reschedule Dialog */}
         {showRescheduleDialog && selectedAppointment && (
-          <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0, 0, 0, 0.3)' }}>
+          <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-gray-900">Reschedule Appointment</h2>
                 <button 
                   onClick={() => setShowRescheduleDialog(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -392,7 +392,6 @@ export default function AppointmentsPage() {
                   <input
                     type="date"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-900"
-                    placeholder="dd/mm/yyyy"
                   />
                 </div>
 
@@ -415,7 +414,7 @@ export default function AppointmentsPage() {
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => setShowRescheduleDialog(false)}
-                  className="flex-1 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                  className="flex-1 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
@@ -424,7 +423,7 @@ export default function AppointmentsPage() {
                     setShowRescheduleDialog(false);
                     alert('Appointment rescheduled successfully!');
                   }}
-                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600"
+                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors"
                 >
                   Confirm
                 </button>
@@ -435,13 +434,13 @@ export default function AppointmentsPage() {
 
         {/* View Report Dialog */}
         {showViewReportDialog && selectedAppointment && 'diagnosis' in selectedAppointment && (
-          <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0, 0, 0, 0.3)' }}>
+          <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto shadow-2xl">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-gray-900">Medical Report</h2>
                 <button 
                   onClick={() => setShowViewReportDialog(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -478,12 +477,12 @@ export default function AppointmentsPage() {
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => setShowViewReportDialog(false)}
-                  className="flex-1 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                  className="flex-1 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                 >
                   Close
                 </button>
                 <button
-                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600"
+                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors"
                 >
                   Download Report
                 </button>
@@ -494,13 +493,13 @@ export default function AppointmentsPage() {
 
         {/* Book Again Dialog */}
         {showBookAgainDialog && selectedAppointment && (
-          <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0, 0, 0, 0.3)' }}>
+          <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-gray-900">Book Again</h2>
                 <button 
                   onClick={() => setShowBookAgainDialog(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -520,7 +519,6 @@ export default function AppointmentsPage() {
                   <input
                     type="date"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-900"
-                    placeholder="dd/mm/yyyy"
                   />
                 </div>
 
@@ -554,7 +552,7 @@ export default function AppointmentsPage() {
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => setShowBookAgainDialog(false)}
-                  className="flex-1 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                  className="flex-1 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
@@ -563,7 +561,7 @@ export default function AppointmentsPage() {
                     setShowBookAgainDialog(false);
                     alert('Appointment booked successfully!');
                   }}
-                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600"
+                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors"
                 >
                   Book Appointment
                 </button>
@@ -574,13 +572,13 @@ export default function AppointmentsPage() {
 
         {/* Book New Appointment Dialog */}
         {showBookAppointmentDialog && (
-          <div className="fixed inset-0 flex items-center justify-center z-50" style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(0, 0, 0, 0.3)' }}>
+          <div className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold text-gray-900">Book New Appointment</h2>
                 <button 
                   onClick={() => setShowBookAppointmentDialog(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -621,7 +619,6 @@ export default function AppointmentsPage() {
                   <input
                     type="date"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-900"
-                    placeholder="dd/mm/yyyy"
                   />
                 </div>
 
@@ -655,7 +652,7 @@ export default function AppointmentsPage() {
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={() => setShowBookAppointmentDialog(false)}
-                  className="flex-1 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                  className="flex-1 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
@@ -664,7 +661,7 @@ export default function AppointmentsPage() {
                     setShowBookAppointmentDialog(false);
                     alert('Appointment booked successfully!');
                   }}
-                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600"
+                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors"
                 >
                   Book Appointment
                 </button>
