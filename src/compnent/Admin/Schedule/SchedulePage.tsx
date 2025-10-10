@@ -6,9 +6,14 @@ import ScheduleRow, { ScheduleRowProps } from './ScheduleRow';
 import ScheduleOverrideCard, {
   ScheduleOverrideCardProps,
 } from './ScheduleOverrideCard';
+import AddOverrideDialog from './AddOverrideDialog';
+import EditScheduleDialog from './EditScheduleDialog';
 
 const SchedulePage: React.FC = () => {
   const [selectedDoctor, setSelectedDoctor] = useState('Dr. Sivakumar');
+  const [isAddOverrideOpen, setIsAddOverrideOpen] = useState(false);
+  const [isEditScheduleOpen, setIsEditScheduleOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<ScheduleRowProps | null>(null);
 
   // Sample doctors list
   const doctors = ['Dr. Sivakumar', 'Dr. Rajesh Kumar', 'Dr. Meena Patel'];
@@ -76,18 +81,30 @@ const SchedulePage: React.FC = () => {
   ];
 
   const handleEditSchedule = (day: string) => {
-    console.log('Edit schedule for:', day);
-    // Implement edit logic
+    const schedule = weeklySchedule.find(s => s.day === day);
+    if (schedule) {
+      setEditingSchedule(schedule);
+      setIsEditScheduleOpen(true);
+    }
   };
 
   const handleEditOverride = (id: string) => {
     console.log('Edit override:', id);
-    // Implement edit logic
+    // TODO: Implement edit override dialog
   };
 
   const handleAddOverride = () => {
-    console.log('Add new override');
-    // Implement add override logic
+    setIsAddOverrideOpen(true);
+  };
+
+  const handleSaveOverride = (data: any) => {
+    console.log('Saving override:', data);
+    // TODO: Implement save override logic
+  };
+
+  const handleSaveSchedule = (data: any) => {
+    console.log('Saving schedule:', data);
+    // TODO: Implement save schedule logic
   };
 
   return (
@@ -182,6 +199,23 @@ const SchedulePage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Dialogs */}
+      <AddOverrideDialog
+        isOpen={isAddOverrideOpen}
+        onClose={() => setIsAddOverrideOpen(false)}
+        onSave={handleSaveOverride}
+      />
+
+      <EditScheduleDialog
+        isOpen={isEditScheduleOpen}
+        onClose={() => {
+          setIsEditScheduleOpen(false);
+          setEditingSchedule(null);
+        }}
+        onSave={handleSaveSchedule}
+        initialData={editingSchedule || undefined}
+      />
     </div>
   );
 };

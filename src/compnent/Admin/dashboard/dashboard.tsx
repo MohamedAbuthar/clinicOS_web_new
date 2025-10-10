@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Calendar, Users, Stethoscope, UserX } from 'lucide-react';
 import { 
   StatCard, 
@@ -9,8 +9,12 @@ import {
   Doctor,
   Alert 
 } from '../../reusable';
+import QueueDetailsDialog from './QueueDetailsDialog';
 
 export default function DashboardPage() {
+  const [isQueueDialogOpen, setIsQueueDialogOpen] = useState(false);
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+
   const doctors: Doctor[] = [
     {
       id: '1',
@@ -62,6 +66,16 @@ export default function DashboardPage() {
     }
   ];
 
+  const handleViewQueue = (doctor: Doctor) => {
+    setSelectedDoctor(doctor);
+    setIsQueueDialogOpen(true);
+  };
+
+  const handleCloseQueueDialog = () => {
+    setIsQueueDialogOpen(false);
+    setSelectedDoctor(null);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
@@ -99,7 +113,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="mb-8">
-          <QueueTable doctors={doctors} />
+          <QueueTable doctors={doctors} onViewQueue={handleViewQueue} />
         </div>
 
         <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -111,6 +125,13 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Queue Details Dialog */}
+      <QueueDetailsDialog
+        isOpen={isQueueDialogOpen}
+        onClose={handleCloseQueueDialog}
+        doctor={selectedDoctor}
+      />
     </div>
   );
 }
