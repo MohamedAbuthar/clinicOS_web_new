@@ -109,6 +109,7 @@ const QueueItem = ({ patient, index, onSkip, isSelected, onDragStart, onDragEnd,
     Late: 'bg-yellow-100 text-yellow-700',
     'Walk-in': 'bg-blue-100 text-blue-700'
   };
+  console.log(index);
 
   return (
     <div
