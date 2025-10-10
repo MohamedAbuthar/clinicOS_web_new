@@ -6,9 +6,10 @@ import { Button } from './Button';
 
 export interface QueueTableProps {
   doctors: Doctor[];
+  onViewQueue?: (doctor: Doctor) => void;
 }
 
-export const QueueTable: React.FC<QueueTableProps> = ({ doctors }) => {
+export const QueueTable: React.FC<QueueTableProps> = ({ doctors, onViewQueue }) => {
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="p-6 border-b border-gray-200">
@@ -64,7 +65,10 @@ export const QueueTable: React.FC<QueueTableProps> = ({ doctors }) => {
                   <StatusBadge status={doctor.status} />
                 </td>
                 <td className="px-6 py-4">
-                  <Button icon={<Eye className="w-4 h-4" />}>
+                  <Button 
+                    icon={<Eye className="w-4 h-4" />}
+                    onClick={() => onViewQueue?.(doctor)}
+                  >
                     View Queue
                   </Button>
                 </td>
