@@ -7,19 +7,45 @@ import ScheduleOverrideCard, {
   ScheduleOverrideCardProps,
 } from './ScheduleOverrideCard';
 import AddOverrideDialog from './AddOverrideDialog';
+import EditOverrideDialog from './EditOverrideDialog';
 import EditScheduleDialog from './EditScheduleDialog';
 import { useDoctors } from '@/lib/hooks/useDoctors';
+import { useSchedule } from '@/lib/hooks/useSchedule';
+import { useScheduleOverrides } from '@/lib/hooks/useScheduleOverrides';
 import { apiUtils } from '@/lib/api';
 
 const SchedulePage: React.FC = () => {
   const [selectedDoctor, setSelectedDoctor] = useState('');
   const [isAddOverrideOpen, setIsAddOverrideOpen] = useState(false);
+  const [isEditOverrideOpen, setIsEditOverrideOpen] = useState(false);
   const [isEditScheduleOpen, setIsEditScheduleOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ScheduleRowProps | null>(null);
+  const [editingOverride, setEditingOverride] = useState<any>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const { doctors, loading, error } = useDoctors();
+  const { 
+    schedules, 
+    loading: scheduleLoading, 
+    error: scheduleError, 
+    setError: setScheduleError,
+    fetchSchedules, 
+    createSchedule, 
+    updateSchedule, 
+    deleteSchedule 
+  } = useSchedule();
+
+  const {
+    overrides,
+    loading: overridesLoading,
+    error: overridesError,
+    setError: setOverridesError,
+    fetchOverrides,
+    createOverride,
+    updateOverride,
+    deleteOverride
+  } = useScheduleOverrides();
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -36,73 +62,64 @@ const SchedulePage: React.FC = () => {
     }
   }, [doctors, selectedDoctor]);
 
+  // Fetch schedules and overrides when doctor is selected
+  useEffect(() => {
+    if (selectedDoctor) {
+      fetchSchedules(selectedDoctor);
+      fetchOverrides(selectedDoctor);
+    }
+  }, [selectedDoctor, fetchSchedules, fetchOverrides]);
+
   // Get doctor names for display
   const doctorNames = doctors.map(doctor => ({
     id: doctor.id,
-    name: doctor.user.name
+    name: doctor.user?.name || 'Unknown Doctor'
   }));
 
-  // Weekly schedule data
-  const weeklySchedule: ScheduleRowProps[] = [
-    {
-      day: 'Monday',
-      timeRange: '09:00 - 17:00',
-      slotDuration: '10 min slots',
-      status: 'active',
-    },
-    {
-      day: 'Tuesday',
-      timeRange: '09:00 - 17:00',
-      slotDuration: '10 min slots',
-      status: 'active',
-    },
-    {
-      day: 'Wednesday',
-      timeRange: '09:00 - 17:00',
-      slotDuration: '10 min slots',
-      status: 'active',
-    },
-    {
-      day: 'Thursday',
-      timeRange: '09:00 - 17:00',
-      slotDuration: '10 min slots',
-      status: 'active',
-    },
-    {
-      day: 'Friday',
-      timeRange: '09:00 - 17:00',
-      slotDuration: '10 min slots',
-      status: 'active',
-    },
-    {
-      day: 'Saturday',
-      timeRange: '09:00 - 13:00',
-      slotDuration: '10 min slots',
-      status: 'active',
-    },
-    {
-      day: 'Sunday',
-      status: 'off',
-    },
-  ];
+  // Convert backend schedule data to frontend format
+  const getWeeklySchedule = (): ScheduleRowProps[] => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    
+    return days.map((day, index) => {
+      const schedule = schedules.find(s => s.dayOfWeek === index);
+      
+      if (schedule && schedule.isActive) {
+        return {
+          day,
+          timeRange: `${schedule.startTime} - ${schedule.endTime}`,
+          slotDuration: '10 min slots', // Default slot duration
+          status: 'active' as const,
+          scheduleId: schedule.id,
+        };
+      } else {
+        return {
+          day,
+          status: 'off' as const,
+        };
+      }
+    });
+  };
 
-  // Schedule overrides data
-  const scheduleOverrides: ScheduleOverrideCardProps[] = [
-    {
-      id: '1',
-      title: 'Extended Hours',
-      date: 'March 15, 2025',
-      timeRange: '09:00 - 20:00',
-      type: 'special-event',
-    },
-    {
-      id: '2',
-      title: 'Personal Leave',
-      date: 'March 20, 2025',
-      timeRange: 'Full Day',
-      type: 'holiday',
-    },
-  ];
+  const weeklySchedule = getWeeklySchedule();
+
+  // Convert backend override data to frontend format
+  const getScheduleOverrides = (): ScheduleOverrideCardProps[] => {
+    return overrides.map(override => ({
+      id: override.id,
+      title: override.reason,
+      date: new Date(override.date).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }),
+      timeRange: override.startTime && override.endTime 
+        ? `${override.startTime} - ${override.endTime}`
+        : 'Full Day',
+      type: override.type === 'holiday' ? 'holiday' : 'special-event',
+    }));
+  };
+
+  const scheduleOverrides = getScheduleOverrides();
 
   const handleEditSchedule = (day: string) => {
     const schedule = weeklySchedule.find(s => s.day === day);
@@ -113,44 +130,218 @@ const SchedulePage: React.FC = () => {
   };
 
   const handleEditOverride = (id: string) => {
-    console.log('Edit override:', id);
-    // TODO: Implement edit override dialog
+    const override = overrides.find(o => o.id === id);
+    if (override) {
+      const timeRange = override.startTime && override.endTime 
+        ? `${override.startTime} - ${override.endTime}`
+        : 'Full Day';
+      
+      setEditingOverride({
+        id: override.id,
+        title: override.reason,
+        date: override.date.split('T')[0], // Convert to YYYY-MM-DD format
+        timeRange,
+        type: override.type === 'holiday' ? 'holiday' : 
+              override.type === 'extended_hours' ? 'extended-hours' : 'special-event',
+        description: '', // Add description field if needed
+      });
+      setIsEditOverrideOpen(true);
+    }
+  };
+
+  const handleDeleteOverride = async (id: string) => {
+    if (!selectedDoctor) {
+      setSuccessMessage('Please select a doctor first');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to delete this schedule override?')) {
+      return;
+    }
+
+    setActionLoading(true);
+    setOverridesError(null);
+    
+    try {
+      const success = await deleteOverride(selectedDoctor, id);
+      
+      if (success) {
+        setSuccessMessage('Schedule override deleted successfully');
+      } else {
+        setSuccessMessage('Failed to delete schedule override');
+      }
+    } catch (err) {
+      const errorMessage = apiUtils.handleError(err);
+      setSuccessMessage(errorMessage);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleAddOverride = () => {
     setIsAddOverrideOpen(true);
   };
 
-  const handleSaveOverride = async (data: { title: string; date: string; timeRange: string; type: 'special-event' | 'holiday' | 'extended-hours'; description?: string }) => {
+  const handleSaveEditOverride = async (data: { id: string; title: string; date: string; timeRange: string; type: 'special-event' | 'holiday' | 'extended-hours'; description?: string }) => {
+    if (!selectedDoctor) {
+      setSuccessMessage('Please select a doctor first');
+      return;
+    }
+
     setActionLoading(true);
+    setOverridesError(null);
+    
     try {
-      // TODO: Implement save override API call
-      console.log('Saving override:', data);
-      setSuccessMessage('Schedule override saved successfully');
-      setIsAddOverrideOpen(false);
+      const [startTime, endTime] = data.timeRange === 'Full Day' ? [undefined, undefined] : data.timeRange.split(' - ');
+      
+      const overrideType = data.type === 'special-event' ? 'extended_hours' : data.type;
+      
+      const success = await updateOverride(selectedDoctor, data.id, {
+        date: data.date,
+        startTime,
+        endTime,
+        reason: data.title,
+        type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+      });
+      
+      if (success) {
+        setSuccessMessage('Schedule override updated successfully');
+        setIsEditOverrideOpen(false);
+        setEditingOverride(null);
+      } else {
+        setSuccessMessage('Failed to update schedule override');
+      }
     } catch (err) {
-      setSuccessMessage(apiUtils.handleError(err));
+      const errorMessage = apiUtils.handleError(err);
+      setSuccessMessage(errorMessage);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSaveOverride = async (data: { title: string; date: string; timeRange: string; type: 'special-event' | 'holiday' | 'extended-hours'; description?: string }) => {
+    if (!selectedDoctor) {
+      setSuccessMessage('Please select a doctor first');
+      return;
+    }
+
+    setActionLoading(true);
+    setOverridesError(null);
+    
+    try {
+      const [startTime, endTime] = data.timeRange === 'Full Day' ? [undefined, undefined] : data.timeRange.split(' - ');
+      
+      const overrideType = data.type === 'special-event' ? 'extended_hours' : data.type;
+      
+      const success = await createOverride(selectedDoctor, {
+        date: data.date,
+        startTime,
+        endTime,
+        reason: data.title,
+        type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+      });
+      
+      if (success) {
+        setSuccessMessage('Schedule override saved successfully');
+        setIsAddOverrideOpen(false);
+      } else {
+        setSuccessMessage('Failed to save schedule override');
+      }
+    } catch (err) {
+      const errorMessage = apiUtils.handleError(err);
+      setSuccessMessage(errorMessage);
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleSaveSchedule = async (data: { day: string; timeRange?: string; slotDuration?: string; status: 'active' | 'off' }) => {
+    if (!selectedDoctor) {
+      setSuccessMessage('Please select a doctor first');
+      return;
+    }
+
     setActionLoading(true);
+    setScheduleError(null);
+    
     try {
-      // TODO: Implement save schedule API call
-      console.log('Saving schedule:', data);
-      setSuccessMessage('Schedule updated successfully');
+      const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(data.day);
+      
+      if (data.status === 'off') {
+        // If setting to off, delete the schedule if it exists
+        const existingSchedule = schedules.find(s => s.dayOfWeek === dayIndex);
+        if (existingSchedule) {
+          const success = await deleteSchedule(selectedDoctor, existingSchedule.id);
+          if (success) {
+            setSuccessMessage('Schedule updated successfully');
+          } else {
+            setSuccessMessage('Failed to update schedule');
+          }
+        } else {
+          setSuccessMessage('Schedule updated successfully');
+        }
+      } else {
+        // If setting to active, create or update schedule
+        if (!data.timeRange) {
+          setSuccessMessage('Please provide time range for active schedule');
+          return;
+        }
+
+        const [startTime, endTime] = data.timeRange.split(' - ');
+        
+        const existingSchedule = schedules.find(s => s.dayOfWeek === dayIndex);
+        
+        if (existingSchedule) {
+          // Update existing schedule
+          const success = await updateSchedule(selectedDoctor, existingSchedule.id, {
+            dayOfWeek: dayIndex,
+            startTime,
+            endTime,
+          });
+          
+          if (success) {
+            setSuccessMessage('Schedule updated successfully');
+          } else {
+            setSuccessMessage('Failed to update schedule');
+          }
+        } else {
+          // Create new schedule
+          const success = await createSchedule(selectedDoctor, {
+            dayOfWeek: dayIndex,
+            startTime,
+            endTime,
+          });
+          
+          if (success) {
+            setSuccessMessage('Schedule created successfully');
+          } else {
+            setSuccessMessage('Failed to create schedule');
+          }
+        }
+      }
+      
       setIsEditScheduleOpen(false);
       setEditingSchedule(null);
     } catch (err) {
-      setSuccessMessage(apiUtils.handleError(err));
+      const errorMessage = apiUtils.handleError(err);
+      setSuccessMessage(errorMessage);
     } finally {
       setActionLoading(false);
     }
   };
 
   if (loading && doctors.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-teal-500 mx-auto mb-4" />
+          <p className="text-gray-600">Loading doctors...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (scheduleLoading && selectedDoctor) {
     return (
       <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
         <div className="text-center">
@@ -175,10 +366,10 @@ const SchedulePage: React.FC = () => {
         )}
 
         {/* Error Message */}
-        {error && (
+        {(error || scheduleError || overridesError) && (
           <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
             <AlertCircle className="w-5 h-5" />
-            {error}
+            {error || scheduleError || overridesError}
           </div>
         )}
 
@@ -262,6 +453,7 @@ const SchedulePage: React.FC = () => {
                   key={override.id}
                   {...override}
                   onEdit={handleEditOverride}
+                  onDelete={handleDeleteOverride}
                 />
               ))
             ) : (
@@ -278,6 +470,16 @@ const SchedulePage: React.FC = () => {
         isOpen={isAddOverrideOpen}
         onClose={() => setIsAddOverrideOpen(false)}
         onSave={handleSaveOverride}
+      />
+
+      <EditOverrideDialog
+        isOpen={isEditOverrideOpen}
+        onClose={() => {
+          setIsEditOverrideOpen(false);
+          setEditingOverride(null);
+        }}
+        onSave={handleSaveEditOverride}
+        initialData={editingOverride || undefined}
       />
 
       <EditScheduleDialog

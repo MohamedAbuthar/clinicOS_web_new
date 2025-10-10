@@ -7,6 +7,7 @@ export interface ScheduleOverrideCardProps {
   timeRange?: string;
   type: 'special-event' | 'holiday' | 'extended-hours';
   onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
 const ScheduleOverrideCard: React.FC<ScheduleOverrideCardProps> = ({
@@ -16,10 +17,17 @@ const ScheduleOverrideCard: React.FC<ScheduleOverrideCardProps> = ({
   timeRange,
   type,
   onEdit,
+  onDelete,
 }) => {
   const handleEdit = () => {
     if (onEdit) {
       onEdit(id);
+    }
+  };
+
+  const handleDelete = () => {
+    if (onDelete) {
+      onDelete(id);
     }
   };
 
@@ -62,13 +70,22 @@ const ScheduleOverrideCard: React.FC<ScheduleOverrideCardProps> = ({
           {getTypeBadge()}
         </div>
 
-        <button
-          onClick={handleEdit}
-          className="text-gray-600 hover:text-teal-600 transition-colors px-3 py-1.5 rounded hover:bg-gray-50 text-sm font-medium ml-4"
-          aria-label={`Edit ${title}`}
-        >
-          Edit
-        </button>
+        <div className="flex gap-2 ml-4">
+          <button
+            onClick={handleEdit}
+            className="text-gray-600 hover:text-teal-600 transition-colors px-3 py-1.5 rounded hover:bg-gray-50 text-sm font-medium"
+            aria-label={`Edit ${title}`}
+          >
+            Edit
+          </button>
+          <button
+            onClick={handleDelete}
+            className="text-gray-600 hover:text-red-600 transition-colors px-3 py-1.5 rounded hover:bg-red-50 text-sm font-medium"
+            aria-label={`Delete ${title}`}
+          >
+            Delete
+          </button>
+        </div>
       </div>
     </div>
   );

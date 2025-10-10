@@ -34,7 +34,8 @@ export default function AppointmentsPage() {
     rescheduleAppointment,
     completeAppointment,
     markNoShow,
-    getAvailableSlots
+    getAvailableSlots,
+    refreshAppointments
   } = useAppointments();
   
   const { doctors } = useDoctors();
@@ -103,6 +104,8 @@ export default function AppointmentsPage() {
         setSuccessMessage('Appointment created successfully');
         setIsDialogOpen(false);
         resetForm();
+        // Refresh the appointments list to show the new appointment
+        await refreshAppointments();
       } else {
         setSuccessMessage('Failed to create appointment');
       }
@@ -147,6 +150,8 @@ export default function AppointmentsPage() {
 
       if (success) {
         setSuccessMessage(`Appointment ${action}ed successfully`);
+        // Refresh the appointments list to show updated data
+        await refreshAppointments();
       } else {
         setSuccessMessage(`Failed to ${action} appointment`);
       }

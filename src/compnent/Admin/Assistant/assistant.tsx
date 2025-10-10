@@ -84,6 +84,7 @@ const AssistantsPage = () => {
     assistants,
     doctors,
     loading,
+    doctorsLoading,
     error,
     setError,
     pagination,
@@ -108,6 +109,7 @@ const AssistantsPage = () => {
   });
   const [actionLoading, setActionLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -116,6 +118,23 @@ const AssistantsPage = () => {
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showDoctorDropdown) {
+        const target = event.target as Element;
+        if (!target.closest('.doctor-dropdown-container')) {
+          setShowDoctorDropdown(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDoctorDropdown]);
 
   const handleEdit = (assistant: AssistantWithUser) => {
     setSelectedAssistant(assistant);
@@ -148,6 +167,38 @@ const AssistantsPage = () => {
 
   const handleFormChange = (field: keyof AssistantForm, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Helper functions for doctor selection
+  const getSelectedDoctors = () => {
+    return formData.assignedDoctors.split(',').map(d => d.trim()).filter(d => d);
+  };
+
+  const isDoctorSelected = (doctorId: string) => {
+    return getSelectedDoctors().includes(doctorId);
+  };
+
+  const toggleDoctorSelection = (doctorId: string) => {
+    const selected = getSelectedDoctors();
+    const isSelected = selected.includes(doctorId);
+    
+    if (isSelected) {
+      // Remove doctor
+      const updated = selected.filter(id => id !== doctorId);
+      handleFormChange('assignedDoctors', updated.join(','));
+    } else {
+      // Add doctor
+      const updated = [...selected, doctorId];
+      handleFormChange('assignedDoctors', updated.join(','));
+    }
+  };
+
+  const getSelectedDoctorNames = () => {
+    const selectedIds = getSelectedDoctors();
+    return selectedIds.map(id => {
+      const doctor = doctors.find(d => d.id === id);
+      return doctor ? `${doctor.user?.name || 'Unknown'} - ${doctor.specialty}` : 'Unknown Doctor';
+    });
   };
 
   const handleAddSubmit = async () => {
@@ -226,6 +277,7 @@ const AssistantsPage = () => {
     setShowAddDialog(false);
     setShowEditDialog(false);
     setSelectedAssistant(null);
+    setShowDoctorDropdown(false);
     setFormData({
       name: '',
       email: '',
@@ -445,24 +497,76 @@ const AssistantsPage = () => {
                     <Users className="inline w-4 h-4 mr-1" />
                     Assigned Doctors
                   </label>
-                  <select
-                    multiple
-                    value={formData.assignedDoctors.split(',').map(d => d.trim()).filter(d => d)}
-                    onChange={(e) => {
-                      const selectedDoctors = Array.from(e.target.selectedOptions, option => option.value);
-                      handleFormChange('assignedDoctors', selectedDoctors.join(','));
-                    }}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                    size={3}
-                  >
-                    <option value="">Select doctors...</option>
-                    {doctors.map((doctor) => (
-                      <option key={doctor.id} value={doctor.id}>
-                        {doctor.user?.name || 'Unknown'} - {doctor.specialty}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple doctors</p>
+                  <div className="relative doctor-dropdown-container">
+                    <div
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white cursor-pointer min-h-[42px] flex items-center"
+                      onClick={() => setShowDoctorDropdown(!showDoctorDropdown)}
+                    >
+                      <div className="flex-1">
+                        {getSelectedDoctorNames().length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {getSelectedDoctorNames().map((name, index) => (
+                              <span
+                                key={index}
+                                className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-teal-100 text-teal-800"
+                              >
+                                {name}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const doctorId = getSelectedDoctors()[index];
+                                    toggleDoctorSelection(doctorId);
+                                  }}
+                                  className="ml-1 text-teal-600 hover:text-teal-800"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-500">
+                            {doctorsLoading ? 'Loading doctors...' : 'Select doctors...'}
+                          </span>
+                        )}
+                      </div>
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    
+                    {showDoctorDropdown && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                        {doctorsLoading ? (
+                          <div className="px-4 py-2 text-gray-500 text-sm">Loading doctors...</div>
+                        ) : doctors.length === 0 ? (
+                          <div className="px-4 py-2 text-gray-500 text-sm">No doctors available</div>
+                        ) : (
+                          doctors.map((doctor) => (
+                            <div
+                              key={doctor.id}
+                              className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${
+                                isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
+                              }`}
+                              onClick={() => toggleDoctorSelection(doctor.id)}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isDoctorSelected(doctor.id)}
+                                onChange={() => {}} // Handled by parent onClick
+                                className="mr-3 text-teal-600 focus:ring-teal-500"
+                              />
+                              <span className="text-sm">
+                                {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Click to select multiple doctors</p>
                 </div>
 
                 {/* Status */}
@@ -593,24 +697,76 @@ const AssistantsPage = () => {
                     <Users className="inline w-4 h-4 mr-1" />
                     Assigned Doctors
                   </label>
-                  <select
-                    multiple
-                    value={formData.assignedDoctors.split(',').map(d => d.trim()).filter(d => d)}
-                    onChange={(e) => {
-                      const selectedDoctors = Array.from(e.target.selectedOptions, option => option.value);
-                      handleFormChange('assignedDoctors', selectedDoctors.join(','));
-                    }}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                    size={3}
-                  >
-                    <option value="">Select doctors...</option>
-                    {doctors.map((doctor) => (
-                      <option key={doctor.id} value={doctor.id}>
-                        {doctor.user?.name || 'Unknown'} - {doctor.specialty}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">Hold Ctrl/Cmd to select multiple doctors</p>
+                  <div className="relative doctor-dropdown-container">
+                    <div
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white cursor-pointer min-h-[42px] flex items-center"
+                      onClick={() => setShowDoctorDropdown(!showDoctorDropdown)}
+                    >
+                      <div className="flex-1">
+                        {getSelectedDoctorNames().length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {getSelectedDoctorNames().map((name, index) => (
+                              <span
+                                key={index}
+                                className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-teal-100 text-teal-800"
+                              >
+                                {name}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const doctorId = getSelectedDoctors()[index];
+                                    toggleDoctorSelection(doctorId);
+                                  }}
+                                  className="ml-1 text-teal-600 hover:text-teal-800"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-500">
+                            {doctorsLoading ? 'Loading doctors...' : 'Select doctors...'}
+                          </span>
+                        )}
+                      </div>
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    
+                    {showDoctorDropdown && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                        {doctorsLoading ? (
+                          <div className="px-4 py-2 text-gray-500 text-sm">Loading doctors...</div>
+                        ) : doctors.length === 0 ? (
+                          <div className="px-4 py-2 text-gray-500 text-sm">No doctors available</div>
+                        ) : (
+                          doctors.map((doctor) => (
+                            <div
+                              key={doctor.id}
+                              className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${
+                                isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
+                              }`}
+                              onClick={() => toggleDoctorSelection(doctor.id)}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isDoctorSelected(doctor.id)}
+                                onChange={() => {}} // Handled by parent onClick
+                                className="mr-3 text-teal-600 focus:ring-teal-500"
+                              />
+                              <span className="text-sm">
+                                {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Click to select multiple doctors</p>
                 </div>
 
                 {/* Status */}

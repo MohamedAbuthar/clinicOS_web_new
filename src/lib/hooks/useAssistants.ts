@@ -16,6 +16,7 @@ export interface UseAssistantsReturn {
   assistants: AssistantWithUser[];
   doctors: Doctor[];
   loading: boolean;
+  doctorsLoading: boolean;
   error: string | null;
   setError: (error: string | null) => void;
   pagination: {
@@ -51,6 +52,7 @@ export const useAssistants = (): UseAssistantsReturn => {
   const [assistants, setAssistants] = useState<AssistantWithUser[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(false);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -62,6 +64,7 @@ export const useAssistants = (): UseAssistantsReturn => {
 
   // Fetch doctors for assignment dropdown
   const fetchDoctors = useCallback(async () => {
+    setDoctorsLoading(true);
     try {
       const response = await doctorApi.getAll(1, 100); // Get all doctors
       if (response.success && response.data) {
@@ -69,6 +72,8 @@ export const useAssistants = (): UseAssistantsReturn => {
       }
     } catch (err) {
       console.error('Failed to fetch doctors:', err);
+    } finally {
+      setDoctorsLoading(false);
     }
   }, []);
 
@@ -213,6 +218,7 @@ export const useAssistants = (): UseAssistantsReturn => {
     assistants,
     doctors,
     loading,
+    doctorsLoading,
     error,
     setError,
     pagination,

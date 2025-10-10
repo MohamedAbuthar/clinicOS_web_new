@@ -139,6 +139,30 @@ export interface DoctorPerformance {
   efficiency: number;
 }
 
+export interface DoctorSchedule {
+  id: string;
+  doctorId: string;
+  dayOfWeek: number; // 0-6 (Sunday-Saturday)
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleOverride {
+  id: string;
+  doctorId: string;
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  reason: string;
+  type: 'holiday' | 'extended_hours' | 'reduced_hours';
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface QueueAnalytics {
   averageWaitTime: number;
   busiestHours: { hour: number; count: number }[];
@@ -687,5 +711,87 @@ export const apiUtils = {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
     }
+  },
+};
+
+// Schedule API functions
+export const scheduleApi = {
+  // Get doctor schedule
+  getDoctorSchedule: async (doctorId: string): Promise<ApiResponse<DoctorSchedule[]>> => {
+    return apiCall<ApiResponse<DoctorSchedule[]>>(`/users/doctors/${doctorId}/schedule`);
+  },
+
+  // Create doctor schedule
+  createSchedule: async (doctorId: string, data: {
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+  }): Promise<ApiResponse<DoctorSchedule>> => {
+    return apiCall<ApiResponse<DoctorSchedule>>(`/users/doctors/${doctorId}/schedule`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update doctor schedule
+  updateSchedule: async (doctorId: string, scheduleId: string, data: {
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+  }): Promise<ApiResponse<DoctorSchedule>> => {
+    return apiCall<ApiResponse<DoctorSchedule>>(`/users/doctors/${doctorId}/schedule/${scheduleId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete doctor schedule
+  deleteSchedule: async (doctorId: string, scheduleId: string): Promise<ApiResponse> => {
+    return apiCall<ApiResponse>(`/users/doctors/${doctorId}/schedule/${scheduleId}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// Schedule Override API functions
+export const scheduleOverrideApi = {
+  // Get doctor schedule overrides
+  getDoctorOverrides: async (doctorId: string): Promise<ApiResponse<ScheduleOverride[]>> => {
+    return apiCall<ApiResponse<ScheduleOverride[]>>(`/users/doctors/${doctorId}/overrides`);
+  },
+
+  // Create schedule override
+  createOverride: async (doctorId: string, data: {
+    date: string;
+    startTime?: string;
+    endTime?: string;
+    reason: string;
+    type: 'holiday' | 'extended_hours' | 'reduced_hours';
+  }): Promise<ApiResponse<ScheduleOverride>> => {
+    return apiCall<ApiResponse<ScheduleOverride>>(`/users/doctors/${doctorId}/overrides`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update schedule override
+  updateOverride: async (doctorId: string, overrideId: string, data: {
+    date: string;
+    startTime?: string;
+    endTime?: string;
+    reason: string;
+    type: 'holiday' | 'extended_hours' | 'reduced_hours';
+  }): Promise<ApiResponse<ScheduleOverride>> => {
+    return apiCall<ApiResponse<ScheduleOverride>>(`/users/doctors/${doctorId}/overrides/${overrideId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete schedule override
+  deleteOverride: async (doctorId: string, overrideId: string): Promise<ApiResponse> => {
+    return apiCall<ApiResponse>(`/users/doctors/${doctorId}/overrides/${overrideId}`, {
+      method: 'DELETE',
+    });
   },
 };

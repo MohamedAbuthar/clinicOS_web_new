@@ -6,6 +6,7 @@ export interface ScheduleRowProps {
   timeRange?: string;
   slotDuration?: string;
   status: 'active' | 'off';
+  scheduleId?: string;
   onEdit?: (day: string) => void;
 }
 
