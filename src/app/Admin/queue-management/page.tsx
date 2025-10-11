@@ -1,10 +1,10 @@
-import RootLayout from "@/compnent/layout/rootlayout";
+import AdminLayout from "@/compnent/layout/AdminLayout";
 import QueueManagementPage from "@/compnent/Admin/queue-management/queue-management";
 
-export default function Appoinment() {
+export default function QueueManagement() {
   return (
-    <RootLayout>
+    <AdminLayout>
       <QueueManagementPage />
-    </RootLayout>
+    </AdminLayout>
   )
 }

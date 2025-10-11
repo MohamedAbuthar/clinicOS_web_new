@@ -1,12 +1,12 @@
 'use client'
 
 import SettingsPage from "@/compnent/Admin/settings/settings";
-import RootLayout from "@/compnent/layout/rootlayout";
+import AdminLayout from "@/compnent/layout/AdminLayout";
 
-export default function Appoinment() {
+export default function Settings() {
   return (
-    <RootLayout>
+    <AdminLayout>
       <SettingsPage />
-    </RootLayout>
+    </AdminLayout>
   )
 }

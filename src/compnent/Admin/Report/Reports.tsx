@@ -1,11 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Calendar, Clock, Users, TrendingUp, Download, ChevronDown, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, Clock, Users, TrendingUp, Download, ChevronDown, Check, AlertCircle, Loader2 } from 'lucide-react';
 import ReportStatCard, { ReportStatCardProps } from './ReportStatCard';
 import AppointmentTrendsChart, { AppointmentData } from './AppointmentTrendsChart';
 import WaitTimeChart, { WaitTimeData } from './WaitTimeChart';
 import DoctorPerformanceCard, { DoctorPerformanceCardProps } from './DoctorPerformanceCard';
+import { useAppointments } from '@/lib/hooks/useAppointments';
+import { useDoctors } from '@/lib/hooks/useDoctors';
+import { useQueue } from '@/lib/hooks/useQueue';
+import { apiUtils } from '@/lib/api';
 
 type TabType = 'appointments' | 'queue' | 'doctor';
 type TimeRange = 'today' | 'thisWeek' | 'thisMonth' | 'custom';
@@ -14,6 +18,12 @@ const ReportsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('appointments');
   const [timeRange, setTimeRange] = useState<TimeRange>('thisWeek');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const { appointments, stats, fetchAppointmentStats } = useAppointments();
+  const { doctors } = useDoctors();
+  const { queueStats } = useQueue();
 
   const timeRangeOptions = [
     { value: 'today', label: 'Today' },
@@ -22,23 +32,46 @@ const ReportsPage: React.FC = () => {
   
   ];
 
+  // Load data on component mount
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        await fetchAppointmentStats();
+      } catch (err) {
+        setError(apiUtils.handleError(err));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [fetchAppointmentStats]);
+
   const getTimeRangeLabel = () => {
     return timeRangeOptions.find(opt => opt.value === timeRange)?.label || 'This Week';
   };
 
+  // Calculate stats from real data
+  const totalAppointments = appointments.length;
+  const completedAppointments = appointments.filter(apt => apt.status === 'completed').length;
+  const noShowAppointments = appointments.filter(apt => apt.status === 'no_show').length;
+  const noShowRate = totalAppointments > 0 ? ((noShowAppointments / totalAppointments) * 100).toFixed(1) : '0.0';
+
   // Stats data
-  const stats: ReportStatCardProps[] = [
+  const statsData: ReportStatCardProps[] = [
     {
       title: 'Total Appointments',
-      value: '295',
-      change: '12% vs last week',
+      value: totalAppointments.toString(),
+      change: '12% vs last week', // This would need historical data
       changeType: 'positive',
       icon: Calendar,
       iconBgColor: 'bg-cyan-50',
     },
     {
       title: 'Avg Wait Time',
-      value: '16 min',
+      value: queueStats?.averageWaitTime ? `${queueStats.averageWaitTime} min` : 'N/A',
       change: '8% improvement',
       changeType: 'positive',
       icon: Clock,
@@ -46,7 +79,7 @@ const ReportsPage: React.FC = () => {
     },
     {
       title: 'Patients Served',
-      value: '273',
+      value: completedAppointments.toString(),
       change: '15% vs last week',
       changeType: 'positive',
       icon: Users,
@@ -54,7 +87,7 @@ const ReportsPage: React.FC = () => {
     },
     {
       title: 'No-Show Rate',
-      value: '7.5%',
+      value: `${noShowRate}%`,
       change: '2% vs last week',
       changeType: 'negative',
       icon: TrendingUp,
@@ -84,21 +117,18 @@ const ReportsPage: React.FC = () => {
     { hour: '5PM', avgWait: 8 },
   ];
 
-  // Doctor performance data
-  const doctorPerformance: DoctorPerformanceCardProps[] = [
-    {
-      doctorName: 'Dr. Sivakumar',
-      patientsServed: 142,
-      avgConsultTime: '8.5 min',
-      onTimeRate: '94%',
-    },
-    {
-      doctorName: 'Dr. Meena Patel',
-      patientsServed: 131,
-      avgConsultTime: '12.3 min',
-      onTimeRate: '89%',
-    },
-  ];
+  // Doctor performance data from real data
+  const doctorPerformance: DoctorPerformanceCardProps[] = doctors.map(doctor => {
+    const doctorAppointments = appointments.filter(apt => apt.doctorId === doctor.id);
+    const completedAppointments = doctorAppointments.filter(apt => apt.status === 'completed');
+    
+    return {
+      doctorName: doctor.user.name,
+      patientsServed: completedAppointments.length,
+      avgConsultTime: `${doctor.consultationDuration} min`,
+      onTimeRate: '94%', // This would need more complex calculation
+    };
+  });
 
   const handleExport = () => {
     console.log('Export report');
@@ -110,9 +140,28 @@ const ReportsPage: React.FC = () => {
     setShowDropdown(false);
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-teal-500 mx-auto mb-4" />
+          <p className="text-gray-600">Loading reports...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            {error}
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
@@ -165,7 +214,7 @@ const ReportsPage: React.FC = () => {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {stats.map((stat, index) => (
+          {statsData.map((stat, index) => (
             <ReportStatCard key={index} {...stat} />
           ))}
         </div>

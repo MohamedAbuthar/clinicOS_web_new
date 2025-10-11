@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Calendar, Clock } from 'lucide-react';
 
-interface AddOverrideDialogProps {
+interface EditOverrideDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: OverrideData) => void;
+  initialData?: OverrideData;
 }
 
 interface OverrideData {
+  id: string;
   title: string;
   date: string;
   timeRange: string;
@@ -15,12 +17,14 @@ interface OverrideData {
   description?: string;
 }
 
-const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
+const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
   isOpen,
   onClose,
   onSave,
+  initialData,
 }) => {
   const [formData, setFormData] = useState<OverrideData>({
+    id: '',
     title: '',
     date: '',
     timeRange: '',
@@ -28,27 +32,19 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
     description: '',
   });
 
+  useEffect(() => {
+    if (initialData) {
+      setFormData(initialData);
+    }
+  }, [initialData]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
-    setFormData({
-      title: '',
-      date: '',
-      timeRange: '',
-      type: 'special-event',
-      description: '',
-    });
     onClose();
   };
 
   const handleClose = () => {
-    setFormData({
-      title: '',
-      date: '',
-      timeRange: '',
-      type: 'special-event',
-      description: '',
-    });
     onClose();
   };
 
@@ -66,7 +62,7 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
       <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Add Schedule Override</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Edit Schedule Override</h2>
           <button
             onClick={handleClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -186,7 +182,7 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
               type="submit"
               className="flex-1 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors font-medium"
             >
-              Add Override
+              Update Override
             </button>
           </div>
         </form>
@@ -195,4 +191,4 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
   );
 };
 
-export default AddOverrideDialog;
+export default EditOverrideDialog;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Clock, User, Phone, Calendar, MapPin } from 'lucide-react';
+import { X, Clock, User, Phone } from 'lucide-react';
 import { Doctor } from '../../reusable/types';
 
 interface QueueDetailsDialogProps {

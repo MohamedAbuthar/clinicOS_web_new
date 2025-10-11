@@ -1,5 +1,6 @@
 import React from 'react';
 import { Calendar, Bell } from 'lucide-react';
+import LogoutButton from '@/lib/components/LogoutButton';
 
 export default function Header() {
   return (
@@ -11,7 +12,7 @@ export default function Header() {
           <span className="text-gray-600 text-base">Thursday, October 9, 2025</span>
         </div>
 
-        {/* Right side - Live indicator and Notification */}
+        {/* Right side - Live indicator, Notification, and User */}
         <div className="flex items-center gap-6">
           {/* Live Indicator */}
           <div className="flex items-center gap-2">
@@ -29,6 +30,9 @@ export default function Header() {
               <span className="text-white text-xs font-bold">3</span>
             </div>
           </div>
+
+          {/* User Info and Logout */}
+          <LogoutButton />
         </div>
       </div>
     </header>

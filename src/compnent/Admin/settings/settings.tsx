@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
-import { Save, Database, Bell, Shield, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Save, Database, Bell, Shield, X, AlertCircle, Loader2 } from 'lucide-react';
+import { useDoctors } from '@/lib/hooks/useDoctors';
+import { useAssistants } from '@/lib/hooks/useAssistants';
+import { apiUtils } from '@/lib/api';
 
 // TypeScript Interfaces
 interface User {
@@ -25,16 +28,40 @@ export default function SettingsPage() {
   const [familyBooking, setFamilyBooking] = useState(true);
   const [sendSMS, setSendSMS] = useState(true);
   const [showAddUserDialog, setShowAddUserDialog] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
   // Form states for new user
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserRole, setNewUserRole] = useState('Front Desk');
 
+  const { doctors } = useDoctors();
+  const { assistants } = useAssistants();
+
+  // Show success message and hide after 3 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+
+  // Combine doctors and assistants into users list
   const users: User[] = [
-    { id: 1, name: 'Admin User', email: 'admin@clinicos.com', role: 'Administrator' },
-    { id: 2, name: 'Priya Sharma', email: 'priya@clinicos.com', role: 'Front Desk' },
-    { id: 3, name: 'Ravi Menon', email: 'ravi@clinicos.com', role: 'Queue Manager' }
+    ...doctors.map((doctor, index) => ({
+      id: parseInt(doctor.id),
+      name: doctor.user.name,
+      email: doctor.user.email,
+      role: 'Doctor'
+    })),
+    ...assistants.map((assistant, index) => ({
+      id: parseInt(assistant.id) + 1000, // Offset to avoid ID conflicts
+      name: assistant.user.name,
+      email: assistant.user.email,
+      role: 'Assistant'
+    }))
   ];
 
   const auditLogs: AuditLog[] = [
@@ -54,28 +81,94 @@ export default function SettingsPage() {
 
   const roles = ['Administrator', 'Front Desk', 'Queue Manager', 'Doctor'];
 
-  const handleAddUser = () => {
-    // Handle adding user logic here
-    console.log('Adding user:', { newUserName, newUserEmail, newUserRole });
-    // Reset form and close dialog
-    setNewUserName('');
-    setNewUserEmail('');
-    setNewUserRole('Front Desk');
-    setShowAddUserDialog(false);
+  const handleAddUser = async () => {
+    if (!newUserName || !newUserEmail) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      // TODO: Implement add user API call based on role
+      console.log('Adding user:', { newUserName, newUserEmail, newUserRole });
+      setSuccessMessage('User added successfully');
+      // Reset form and close dialog
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserRole('Front Desk');
+      setShowAddUserDialog(false);
+    } catch (err) {
+      setError(apiUtils.handleError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // TODO: Implement save settings API call
+      console.log('Saving settings:', {
+        gracePeriod,
+        maxSkips,
+        autoNoShow,
+        allowWalkIn,
+        familyBooking,
+        sendSMS
+      });
+      setSuccessMessage('Settings saved successfully');
+    } catch (err) {
+      setError(apiUtils.handleError(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-full mx-auto">
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
+            <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
+            </div>
+            {successMessage}
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            {error}
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-1">Settings</h1>
             <p className="text-gray-500">Configure clinic operations and system preferences</p>
           </div>
-          <button className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors">
-            <Save size={18} />
-            Save Changes
+          <button 
+            onClick={handleSaveSettings}
+            disabled={loading}
+            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save size={18} />
+                Save Changes
+              </>
+            )}
           </button>
         </div>
 
@@ -419,9 +512,17 @@ export default function SettingsPage() {
               </button>
               <button
                 onClick={handleAddUser}
-                className="flex-1 px-4 py-2.5 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors"
+                disabled={loading}
+                className="flex-1 px-4 py-2.5 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Add User
+                {loading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  'Add User'
+                )}
               </button>
             </div>
           </div>

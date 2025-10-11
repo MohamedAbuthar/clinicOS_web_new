@@ -1,12 +1,12 @@
 'use client'
 
 import DoctorDashboard from "@/compnent/Admin/doctor/doctor";
-import RootLayout from "@/compnent/layout/rootlayout";
+import AdminLayout from "@/compnent/layout/AdminLayout";
 
-export default function Appoinment() {
+export default function Doctor() {
   return (
-    <RootLayout>
+    <AdminLayout>
       <DoctorDashboard />
-    </RootLayout>
+    </AdminLayout>
   )
 }

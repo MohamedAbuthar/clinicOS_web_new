@@ -1,10 +1,16 @@
 "use client"
 
-import React, { useState } from 'react';
-import { Search, Calendar, Plus, Clock, Phone, X, User, Mail } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Calendar, Plus, Clock, Phone, X, User, Mail, AlertCircle, Loader2, CheckCircle, XCircle, RotateCcw, UserX } from 'lucide-react';
+import { useAppointments } from '@/lib/hooks/useAppointments';
+import { useDoctors } from '@/lib/hooks/useDoctors';
+import { usePatients } from '@/lib/hooks/usePatients';
+import { apiUtils } from '@/lib/api';
 
 export default function AppointmentsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     patientName: '',
     phone: '',
@@ -12,59 +18,105 @@ export default function AppointmentsPage() {
     doctor: '',
     date: '',
     time: '',
-    source: 'Web',
+    source: 'assistant',
+    notes: '',
   });
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const appointments = [
-    {
-      token: '#12',
-      patient: 'Ramesh Kumar',
-      phone: '+91 98765 43210',
-      doctor: 'Dr. Priya Sharma',
-      date: 'Today',
-      time: '10:30 AM',
-      source: 'Web',
-      status: 'Confirmed',
-    },
-    {
-      token: '#5',
-      patient: 'Anita Desai',
-      phone: '+91 98765 43211',
-      doctor: 'Dr. Rajesh Kumar',
-      date: 'Today',
-      time: '11:00 AM',
-      source: 'Assistant',
-      status: 'Confirmed',
-    },
-    {
-      token: '#15',
-      patient: 'Vijay Patel',
-      phone: '+91 98765 43212',
-      doctor: 'Dr. Priya Sharma',
-      date: 'Today',
-      time: '2:00 PM',
-      source: 'Web',
-      status: 'Rescheduled',
-    },
-  ];
+  const { 
+    appointments, 
+    loading, 
+    error, 
+    createAppointment, 
+    updateAppointment, 
+    cancelAppointment, 
+    rescheduleAppointment,
+    completeAppointment,
+    markNoShow,
+    getAvailableSlots,
+    refreshAppointments
+  } = useAppointments();
+  
+  const { doctors } = useDoctors();
+  const { patients, createPatient } = usePatients();
 
-  const doctors = [
-    'Dr. Priya Sharma',
-    'Dr. Rajesh Kumar',
-    'Dr. Amit Verma',
-    'Dr. Sunita Reddy',
-  ];
+  // Show success message and hide after 3 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = () => {
-    console.log('New Appointment:', formData);
-    // Add your appointment creation logic here
-    setIsDialogOpen(false);
-    // Reset form
+  const handleSubmit = async () => {
+    if (!formData.patientName || !formData.phone || !formData.doctor || !formData.date || !formData.time) {
+      setSuccessMessage('Please fill in all required fields');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      // First, create or find patient
+      let patientId = patients.find(p => p.phone === formData.phone)?.id;
+      
+      if (!patientId) {
+        // Create new patient
+        const patientCreated = await createPatient({
+          name: formData.patientName,
+          phone: formData.phone,
+          email: formData.email || undefined,
+          dateOfBirth: '1990-01-01', // Default date, should be collected in real app
+          gender: 'other', // Default gender, should be collected in real app
+        });
+        
+        if (!patientCreated) {
+          setSuccessMessage('Failed to create patient');
+          return;
+        }
+        
+        // Find the newly created patient
+        const newPatient = patients.find(p => p.phone === formData.phone);
+        patientId = newPatient?.id;
+      }
+
+      if (!patientId) {
+        setSuccessMessage('Failed to find or create patient');
+        return;
+      }
+
+      // Create appointment
+      const success = await createAppointment({
+        patientId,
+        doctorId: formData.doctor,
+        appointmentDate: formData.date,
+        appointmentTime: formData.time,
+        notes: formData.notes,
+        source: formData.source as 'web' | 'assistant' | 'walk_in' | 'phone',
+      });
+
+      if (success) {
+        setSuccessMessage('Appointment created successfully');
+        setIsDialogOpen(false);
+        resetForm();
+        // Refresh the appointments list to show the new appointment
+        await refreshAppointments();
+      } else {
+        setSuccessMessage('Failed to create appointment');
+      }
+    } catch (err) {
+      setSuccessMessage(apiUtils.handleError(err));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const resetForm = () => {
     setFormData({
       patientName: '',
       phone: '',
@@ -72,12 +124,113 @@ export default function AppointmentsPage() {
       doctor: '',
       date: '',
       time: '',
-      source: 'Web',
+      source: 'assistant',
+      notes: '',
     });
   };
 
+  const handleAppointmentAction = async (appointmentId: string, action: string) => {
+    setActionLoading(true);
+    try {
+      let success = false;
+      
+      switch (action) {
+        case 'cancel':
+          success = await cancelAppointment(appointmentId);
+          break;
+        case 'complete':
+          success = await completeAppointment(appointmentId);
+          break;
+        case 'no-show':
+          success = await markNoShow(appointmentId);
+          break;
+        default:
+          success = false;
+      }
+
+      if (success) {
+        setSuccessMessage(`Appointment ${action}ed successfully`);
+        // Refresh the appointments list to show updated data
+        await refreshAppointments();
+      } else {
+        setSuccessMessage(`Failed to ${action} appointment`);
+      }
+    } catch (err) {
+      setSuccessMessage(apiUtils.handleError(err));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'confirmed':
+      case 'scheduled':
+        return 'bg-green-500 text-white';
+      case 'cancelled':
+        return 'bg-red-500 text-white';
+      case 'completed':
+        return 'bg-blue-500 text-white';
+      case 'no_show':
+        return 'bg-gray-500 text-white';
+      case 'rescheduled':
+        return 'bg-orange-500 text-white';
+      default:
+        return 'bg-gray-500 text-white';
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const isToday = date.toDateString() === today.toDateString();
+    
+    if (isToday) {
+      return 'Today';
+    }
+    
+    return date.toLocaleDateString();
+  };
+
+  const formatTime = (timeString: string) => {
+    const [hours, minutes] = timeString.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  if (loading) {
+    return (
+      <div className="w-full flex items-center justify-center py-12">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-teal-500 mx-auto mb-4" />
+          <p className="text-gray-600">Loading appointments...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
+      {/* Success Message */}
+      {successMessage && (
+        <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
+          <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+            <div className="w-2 h-2 bg-white rounded-full"></div>
+          </div>
+          {successMessage}
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
+          <AlertCircle className="w-5 h-5" />
+          {error}
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -86,7 +239,8 @@ export default function AppointmentsPage() {
         </div>
         <button 
           onClick={() => setIsDialogOpen(true)}
-          className="flex items-center gap-2 bg-teal-500 text-white px-6 py-3 rounded-lg hover:bg-teal-600 transition-colors font-medium"
+          disabled={actionLoading}
+          className="flex items-center gap-2 bg-teal-500 text-white px-6 py-3 rounded-lg hover:bg-teal-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-5 h-5" />
           New Appointment
@@ -131,68 +285,107 @@ export default function AppointmentsPage() {
         </div>
 
         {/* Table Body */}
-        {appointments.map((appointment, index) => (
-          <div
-            key={index}
-            className="grid grid-cols-11 gap-4 px-6 py-5 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center"
-          >
-            {/* Token */}
-            <div className="col-span-1">
-              <span className="text-2xl font-bold text-teal-500">{appointment.token}</span>
-            </div>
+        {appointments.length > 0 ? (
+          appointments.map((appointment) => {
+            const patient = patients.find(p => p.id === appointment.patientId);
+            const doctor = doctors.find(d => d.id === appointment.doctorId);
+            
+            return (
+              <div
+                key={appointment.id}
+                className="grid grid-cols-11 gap-4 px-6 py-5 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center"
+              >
+                {/* Token */}
+                <div className="col-span-1">
+                  <span className="text-2xl font-bold text-teal-500">
+                    {appointment.tokenNumber || `#${appointment.id.slice(-3)}`}
+                  </span>
+                </div>
 
-            {/* Patient */}
-            <div className="col-span-2">
-              <div className="font-semibold text-gray-900">{appointment.patient}</div>
-              <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                <Phone className="w-3 h-3" />
-                {appointment.phone}
-              </div>
-            </div>
-
-            {/* Doctor */}
-            <div className="col-span-2">
-              <span className="text-gray-900 font-medium">{appointment.doctor}</span>
-            </div>
-
-            {/* Date & Time */}
-            <div className="col-span-2">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-gray-400" />
-                <div>
-                  <div className="font-semibold text-gray-900">{appointment.date}</div>
-                  <div className="flex items-center gap-1 text-sm text-gray-500">
-                    <Clock className="w-3 h-3" />
-                    {appointment.time}
+                {/* Patient */}
+                <div className="col-span-2">
+                  <div className="font-semibold text-gray-900">
+                    {patient?.name || 'Loading...'}
+                  </div>
+                  <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                    <Phone className="w-3 h-3" />
+                    {patient?.phone || 'N/A'}
                   </div>
                 </div>
+
+                {/* Doctor */}
+                <div className="col-span-2">
+                  <span className="text-gray-900 font-medium">
+                    {doctor?.user?.name || 'Loading...'}
+                  </span>
+                </div>
+
+                {/* Date & Time */}
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <div>
+                      <div className="font-semibold text-gray-900">
+                        {formatDate(appointment.appointmentDate)}
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-gray-500">
+                        <Clock className="w-3 h-3" />
+                        {formatTime(appointment.appointmentTime)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div className="col-span-2">
+                  <span
+                    className={`inline-block px-4 py-1.5 rounded-full text-sm font-semibold ${getStatusColor(appointment.status)}`}
+                  >
+                    {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
+                  </span>
+                </div>
+
+                {/* Actions */}
+                <div className="col-span-2 flex items-center gap-2">
+                  {appointment.status === 'scheduled' || appointment.status === 'confirmed' ? (
+                    <>
+                      <button 
+                        onClick={() => handleAppointmentAction(appointment.id, 'complete')}
+                        disabled={actionLoading}
+                        className="text-green-600 hover:text-green-800 font-medium transition-colors disabled:opacity-50"
+                        title="Mark as Complete"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleAppointmentAction(appointment.id, 'cancel')}
+                        disabled={actionLoading}
+                        className="text-red-600 hover:text-red-800 font-medium transition-colors disabled:opacity-50"
+                        title="Cancel"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleAppointmentAction(appointment.id, 'no-show')}
+                        disabled={actionLoading}
+                        className="text-gray-600 hover:text-gray-800 font-medium transition-colors disabled:opacity-50"
+                        title="Mark as No Show"
+                      >
+                        <UserX className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-gray-400 text-sm">No actions</span>
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* Status */}
-            <div className="col-span-2">
-              <span
-                className={`inline-block px-4 py-1.5 rounded-full text-sm font-semibold ${
-                  appointment.status === 'Confirmed'
-                    ? 'bg-green-500 text-white'
-                    : 'bg-orange-500 text-white'
-                }`}
-              >
-                {appointment.status}
-              </span>
-            </div>
-
-            {/* Actions */}
-            <div className="col-span-2 flex items-center gap-3">
-              <button className="text-gray-700 hover:text-teal-600 font-medium transition-colors">
-                View
-              </button>
-              <button className="text-gray-700 hover:text-teal-600 font-medium transition-colors">
-                Reschedule
-              </button>
-            </div>
+            );
+          })
+        ) : (
+          <div className="col-span-11 px-6 py-12 text-center text-gray-500">
+            No appointments found
           </div>
-        ))}
+        )}
       </div>
 
       {/* Dialog/Modal */}
@@ -290,8 +483,10 @@ export default function AppointmentsPage() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   >
                     <option value="">Choose a doctor</option>
-                    {doctors.map((doctor, index) => (
-                      <option key={index} value={doctor}>{doctor}</option>
+                    {doctors.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -344,9 +539,17 @@ export default function AppointmentsPage() {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  className="px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors font-medium"
+                  disabled={actionLoading}
+                  className="px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Create Appointment
+                  {actionLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Appointment'
+                  )}
                 </button>
               </div>
             </div>
