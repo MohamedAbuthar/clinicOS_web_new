@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "areal-59464"
+  },
+  "targets": {
+    "areal-59464": {
+      "hosting": {
+        "clinic-os-web": [
+          "areal-59464"
+        ]
+      }
+    }
+  }
+}
+

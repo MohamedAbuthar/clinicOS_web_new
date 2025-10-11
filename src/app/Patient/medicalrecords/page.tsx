@@ -1,10 +1,10 @@
-import PatientRootLayout from "@/compnent/Patient/layout/rootlayout";
+import PatientLayout from "@/compnent/Patient/layout/PatientLayout";
 import MedicalRecordsPage from "@/compnent/Patient/medical-records/medicalrecords";
 
-export default function MyAppoinment() {
+export default function MedicalRecords() {
   return (
-    <PatientRootLayout>
+    <PatientLayout>
       <MedicalRecordsPage />
-    </PatientRootLayout>
+    </PatientLayout>
   )
 }

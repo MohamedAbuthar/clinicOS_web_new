@@ -1,10 +1,10 @@
-import PatientRootLayout from "@/compnent/Patient/layout/rootlayout";
+import PatientLayout from "@/compnent/Patient/layout/PatientLayout";
 import PatientDashboard from "@/compnent/Patient/PatientDashboard";
 
 export default function PatientDashboardPage() {
     return (
-        <PatientRootLayout>
+        <PatientLayout>
             <PatientDashboard />
-        </PatientRootLayout>
+        </PatientLayout>
     )
 }
