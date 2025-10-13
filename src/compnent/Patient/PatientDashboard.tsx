@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, User, ChevronRight, Plus } from 'lucide-react';
 import { Appointment, RecentVisit, PatientStatsCard, DashboardSection, AppointmentCard, RecentVisitCard } from '../reusable';
 import { PatientDashboardStats, PatientRecentVisit } from '@/lib/api';
-import { getAppointments, getDoctors } from '@/lib/firebase/firestore';
+import { getAppointments, getAllDoctors } from '@/lib/firebase/firestore';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 import { useRouter } from 'next/navigation';
 
@@ -90,7 +90,8 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
           .slice(0, 10);
 
         // Get doctors to enrich appointment data
-        const doctors = await getDoctors();
+        const doctorsResult = await getAllDoctors();
+        const doctors = doctorsResult.success ? doctorsResult.data : [];
         const doctorMap = new Map(doctors?.map(d => [d.id, d]) || []);
 
         // Set upcoming appointments

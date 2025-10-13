@@ -10,7 +10,7 @@ import { auth } from './config';
 import { patientSignInWithEmail, signOut as firebaseSignOut } from './auth';
 import { 
   getPatientProfile,
-  getDoctors,
+  getAllDoctors,
   getAppointments,
   createAppointment,
   getRecentActivity
@@ -68,7 +68,8 @@ const testFlows = async () => {
   // Test 3: Get Doctors List
   console.log('\n3️⃣ Testing Doctors List Retrieval...');
   try {
-    const doctors = await getDoctors();
+    const doctorsResult = await getAllDoctors();
+    const doctors = doctorsResult.success ? doctorsResult.data : [];
     if (doctors && doctors.length > 0) {
       console.log(`   ✅ Retrieved ${doctors.length} doctors`);
       doctors.forEach((doctor, idx) => {
@@ -122,8 +123,8 @@ const testFlows = async () => {
         duration: 30,
         status: 'scheduled',
         source: 'web',
-        notes: 'Test appointment',
-        tokenNumber: `T-TEST-${Date.now()}`
+        notes: 'Test appointment'
+        // Note: tokenNumber not provided - should be auto-generated
       });
       
       if (newAppointment) {

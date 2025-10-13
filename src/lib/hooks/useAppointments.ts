@@ -6,12 +6,14 @@ import {
   cancelAppointment as cancelAppointmentFirestore,
   rescheduleAppointment as rescheduleAppointmentFirestore,
 } from '../firebase/firestore';
-import { collection, query, where, getDocs, updateDoc, doc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, Timestamp, addDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
 export interface Appointment {
   id: string;
   patientId: string;
+  patientName?: string; // Store patient name directly in appointment
+  patientPhone?: string; // Store patient phone directly in appointment
   doctorId: string;
   appointmentDate: string;
   appointmentTime: string;
@@ -20,6 +22,10 @@ export interface Appointment {
   source: 'web' | 'assistant' | 'walk_in' | 'phone';
   notes?: string;
   tokenNumber?: string;
+  checkedInAt?: any;
+  acceptanceStatus?: 'pending' | 'accepted' | 'rejected';
+  acceptedAt?: any;
+  rejectedAt?: any;
   createdAt: any;
   updatedAt: any;
 }
@@ -34,6 +40,9 @@ export interface UseAppointmentsReturn {
   rescheduleAppointment: (id: string, newDate: string, newTime: string) => Promise<boolean>;
   completeAppointment: (id: string) => Promise<boolean>;
   markNoShow: (id: string) => Promise<boolean>;
+  checkInAppointment: (id: string) => Promise<boolean>;
+  acceptAppointment: (id: string) => Promise<boolean>;
+  rejectAppointment: (id: string) => Promise<boolean>;
   getAvailableSlots: (doctorId: string, date: string) => Promise<any[]>;
   refreshAppointments: () => Promise<void>;
 }
@@ -58,6 +67,16 @@ export const useAppointments = (patientId?: string, doctorId?: string): UseAppoi
         const q = query(collection(db, 'appointments'));
         const snapshot = await getDocs(q);
         data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Debug logging
+        console.log('=== FETCHED APPOINTMENTS DEBUG ===');
+        console.log('Total appointments fetched:', data.length);
+        if (data.length > 0) {
+          console.log('First appointment data:', data[0]);
+          console.log('First appointment patientName:', (data[0] as any).patientName);
+          console.log('First appointment patientPhone:', (data[0] as any).patientPhone);
+        }
+        console.log('==================================');
       }
       
       if (data) {
@@ -158,6 +177,69 @@ export const useAppointments = (patientId?: string, doctorId?: string): UseAppoi
     }
   }, [fetchAppointments]);
 
+  const checkInAppointment = useCallback(async (id: string): Promise<boolean> => {
+    setLoading(true);
+    try {
+      console.log('Check-in started for appointment:', id);
+      
+      // Only update the appointment with checkedInAt timestamp
+      // The queue entry will be created in Queue Management page when "Add to Queue" is clicked
+      const appointmentRef = doc(db, 'appointments', id);
+      await updateDoc(appointmentRef, {
+        checkedInAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      console.log('Appointment updated with checkedInAt timestamp');
+
+      await fetchAppointments();
+      console.log('Check-in completed successfully');
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      console.error('Check-in error:', err);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAppointments]);
+
+  const acceptAppointment = useCallback(async (id: string): Promise<boolean> => {
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'appointments', id), {
+        acceptanceStatus: 'accepted',
+        acceptedAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      await fetchAppointments();
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAppointments]);
+
+  const rejectAppointment = useCallback(async (id: string): Promise<boolean> => {
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'appointments', id), {
+        acceptanceStatus: 'rejected',
+        rejectedAt: Timestamp.now(),
+        status: 'cancelled',
+        updatedAt: Timestamp.now()
+      });
+      await fetchAppointments();
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAppointments]);
+
   const updateAppointment = useCallback(async (id: string, data: any): Promise<boolean> => {
     setLoading(true);
     try {
@@ -222,6 +304,9 @@ export const useAppointments = (patientId?: string, doctorId?: string): UseAppoi
     rescheduleAppointment,
     completeAppointment,
     markNoShow,
+    checkInAppointment,
+    acceptAppointment,
+    rejectAppointment,
     getAvailableSlots,
     refreshAppointments,
   };

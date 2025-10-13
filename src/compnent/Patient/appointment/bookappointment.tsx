@@ -217,6 +217,7 @@ export default function BookAppointmentPage() {
       appointmentsToCreate.push({
           patientId: patient.id,
         patientName: patient.name,
+        patientPhone: patient.phone,
         doctorId: selectedDoctor!,
         appointmentDate: dateStr,
         appointmentTime: patientSlot,
@@ -253,6 +254,7 @@ export default function BookAppointmentPage() {
         appointmentsToCreate.push({
           patientId: memberId,
           patientName: member.name,
+          patientPhone: patient.phone, // Use patient's phone for family members
           doctorId: selectedDoctor!,
           appointmentDate: dateStr,
           appointmentTime: memberSlot,
