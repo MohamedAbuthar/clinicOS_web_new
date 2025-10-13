@@ -1,11 +1,30 @@
 'use client'
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, User, Star, Clock, Loader2 } from 'lucide-react';
+import { Search, User, Star, Clock, Loader2, Users, Sun, Moon, Check, X, Info, Calendar as CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
-import { patientAppointmentApi, Doctor, TimeSlot } from '@/lib/api';
+import { Doctor } from '@/lib/api';
+import { createMultipleAppointments, getDoctorAppointmentsByDate, getFamilyMembers } from '@/lib/firebase/firestore';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 import { usePatientDoctors } from '@/lib/hooks/usePatientDoctors';
+import { 
+  SessionType, 
+  getSessionSlots,
+  getNextTokenForSession, 
+  assignSlotByToken,
+  getSessionCapacity,
+  formatSessionText,
+  getSessionTimeRange,
+  canBookSession 
+} from '@/lib/utils/sessionBookingHelper';
+
+interface FamilyMember {
+  id: string;
+  name: string;
+  dateOfBirth: string;
+  gender: string;
+  relationship?: string;
+}
 
 export default function BookAppointmentPage() {
   const router = useRouter();
@@ -14,22 +33,26 @@ export default function BookAppointmentPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDoctor, setSelectedDoctor] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [selectedSession, setSelectedSession] = useState<SessionType | null>(null);
   const [reason, setReason] = useState('');
-  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
   const [error, setError] = useState('');
 
-  // Use the patient doctors hook (now uses public endpoint)
-  const { doctors, loading: doctorsLoading, error: doctorsError, refreshDoctors } = usePatientDoctors();
+  // Family member booking
+  const [includeFamilyMembers, setIncludeFamilyMembers] = useState(false);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [selectedFamilyMembers, setSelectedFamilyMembers] = useState<string[]>([]);
+  const [loadingFamilyMembers, setLoadingFamilyMembers] = useState(false);
 
-  // Check authentication - redirect to login if not authenticated
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/Auth-patientLogin');
-    }
-  }, [isAuthenticated, router]);
+  // Session capacity
+  const [sessionCapacity, setSessionCapacity] = useState<{
+    morning: { totalSlots: number; bookedSlots: number; availableSlots: number; };
+    evening: { totalSlots: number; bookedSlots: number; availableSlots: number; };
+  } | null>(null);
+
+  // Use the patient doctors hook
+  const { doctors, loading: doctorsLoading, error: doctorsError, refreshDoctors } = usePatientDoctors();
 
   // Handle doctors loading error
   useEffect(() => {
@@ -38,26 +61,90 @@ export default function BookAppointmentPage() {
     }
   }, [doctorsError]);
 
-  // Load available time slots when doctor and date are selected
+  // Load family members when toggle is enabled
   useEffect(() => {
-    const loadTimeSlots = async () => {
-      if (selectedDoctor && selectedDate) {
+    const loadFamilyMembers = async () => {
+      if (includeFamilyMembers && patient?.familyId) {
         try {
-          setIsLoading(true);
-          const response = await patientAppointmentApi.getAvailableSlots(selectedDoctor, selectedDate.toISOString().split('T')[0]);
-          if (response.success && response.data) {
-            setTimeSlots(response.data);
+          setLoadingFamilyMembers(true);
+          const result = await getFamilyMembers(patient.familyId);
+          if (result.success && result.data) {
+            // Filter out the current patient
+            const members = result.data.filter((member: any) => member.id !== patient.id);
+            setFamilyMembers(members as FamilyMember[]);
           }
         } catch (error: any) {
-          setError(error.message || 'Failed to load time slots');
+          console.error('Error loading family members:', error);
         } finally {
-          setIsLoading(false);
+          setLoadingFamilyMembers(false);
         }
       }
     };
 
-    loadTimeSlots();
-  }, [selectedDoctor, selectedDate]);
+    loadFamilyMembers();
+  }, [includeFamilyMembers, patient]);
+
+  // Load session capacity when doctor and date are selected
+  useEffect(() => {
+    const loadSessionCapacity = async () => {
+      if (selectedDoctor && selectedDate) {
+        try {
+          setIsLoading(true);
+          setError('');
+          
+          // Find the selected doctor
+          const doctor = doctors.find(d => d.id === selectedDoctor);
+          
+          if (!doctor) {
+            setError('Doctor not found');
+            setIsLoading(false);
+            return;
+          }
+
+          if (!doctor.availableSlots || doctor.availableSlots.length === 0) {
+            setError('⚠️ This doctor does not have time slots configured. Please contact the admin to set up the doctor\'s schedule.');
+            setIsLoading(false);
+            return;
+          }
+
+          // Get existing appointments for this doctor and date
+          const dateStr = selectedDate.toISOString().split('T')[0];
+          const result = await getDoctorAppointmentsByDate(selectedDoctor, dateStr);
+          const existingAppointments = result.success && result.data ? result.data : [];
+
+          // Calculate capacity for morning and evening sessions
+          const morningCap = getSessionCapacity(
+            doctor.availableSlots,
+            'morning',
+            dateStr,
+            existingAppointments
+          );
+
+          const eveningCap = getSessionCapacity(
+            doctor.availableSlots,
+            'evening',
+            dateStr,
+            existingAppointments
+          );
+
+          setSessionCapacity({
+            morning: morningCap,
+            evening: eveningCap
+          });
+
+        } catch (error: any) {
+          console.error('Error loading session capacity:', error);
+          setError(error.message || 'Failed to load session information');
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        setSessionCapacity(null);
+      }
+    };
+
+    loadSessionCapacity();
+  }, [selectedDoctor, selectedDate, doctors]);
 
   const filteredDoctors = doctors.filter(doctor =>
     doctor.user?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -66,71 +153,195 @@ export default function BookAppointmentPage() {
 
   const selectedDoctorData = doctors.find(d => d.id === selectedDoctor);
 
+  const toggleFamilyMember = (memberId: string) => {
+    setSelectedFamilyMembers(prev =>
+      prev.includes(memberId)
+        ? prev.filter(id => id !== memberId)
+        : [...prev, memberId]
+    );
+  };
+
   const handleConfirmBooking = async () => {
-    if (selectedDoctorData && selectedTime && selectedDate && reason.trim()) {
+    if (!selectedDoctorData || !selectedSession || !selectedDate || !reason.trim() || !patient?.id) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    // Check session capacity
+    if (sessionCapacity) {
+      const capacity = sessionCapacity[selectedSession];
+      const totalBookings = 1 + selectedFamilyMembers.length;
+      
+      if (capacity.availableSlots < totalBookings) {
+        setError(`Not enough slots available in this session. Available: ${capacity.availableSlots}, Requested: ${totalBookings}`);
+        return;
+      }
+    }
+
+    // Validate session booking rules
+    const sessionCheck = canBookSession(selectedDate, selectedSession);
+    if (!sessionCheck.canBook) {
+      setError(sessionCheck.reason || 'Cannot book this session');
+      return;
+    }
+
       try {
         setIsBooking(true);
         setError('');
         
-        const bookingData = {
-          doctorId: selectedDoctor!,
-          appointmentDate: selectedDate.toISOString().split('T')[0],
-          appointmentTime: selectedTime,
-          reason: reason.trim()
-        };
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      
+      // Get existing appointments for token generation
+      const result = await getDoctorAppointmentsByDate(selectedDoctor!, dateStr);
+      const existingAppointments = result.success && result.data ? result.data : [];
+      
+      // Get session slots
+      const sessionSlots = getSessionSlots(selectedDoctorData.availableSlots || [], selectedSession);
+      const bookedSlots = existingAppointments
+        .filter((apt: any) => sessionSlots.includes(apt.appointmentTime))
+        .map((apt: any) => apt.appointmentTime);
+      
+      // Prepare appointments data (patient + family members)
+      const appointmentsToCreate = [];
+      
+      // Patient's appointment
+      const patientToken = getNextTokenForSession(existingAppointments, selectedSession, dateStr);
+      const patientSlot = assignSlotByToken(patientToken, sessionSlots, bookedSlots);
+      
+      if (!patientSlot) {
+        setError('No available slots for the selected session');
+        setIsBooking(false);
+        return;
+      }
 
-        console.log('Booking data:', bookingData);
-        console.log('Patient token in localStorage:', localStorage.getItem('patientToken'));
-        const response = await patientAppointmentApi.bookAppointment(bookingData);
-        console.log('Booking response:', response);
+      appointmentsToCreate.push({
+          patientId: patient.id,
+        patientName: patient.name,
+        doctorId: selectedDoctor!,
+        appointmentDate: dateStr,
+        appointmentTime: patientSlot,
+        session: selectedSession,
+        duration: selectedDoctorData.consultationDuration || 30,
+        status: 'scheduled',
+        source: 'web',
+        notes: reason.trim(),
+        tokenNumber: patientToken
+      });
+
+      bookedSlots.push(patientSlot); // Mark as booked for next iteration
+      
+      // Family members' appointments
+      for (let i = 0; i < selectedFamilyMembers.length; i++) {
+        const memberId = selectedFamilyMembers[i];
+        const member = familyMembers.find(m => m.id === memberId);
         
-        if (response.success) {
-          alert(`Appointment booked successfully!\nPatient: ${patient?.name || 'Unknown'}\nDoctor: ${selectedDoctorData.user?.name || 'Dr. Unknown'}\nDate: ${selectedDate.toLocaleDateString()}\nTime: ${selectedTime}`);
+        if (!member) continue;
+        
+        const memberToken = getNextTokenForSession(
+          [...existingAppointments, ...appointmentsToCreate],
+          selectedSession,
+          dateStr
+        );
+        const memberSlot = assignSlotByToken(memberToken, sessionSlots, bookedSlots);
+        
+        if (!memberSlot) {
+          setError(`Not enough slots available for all selected family members`);
+          setIsBooking(false);
+          return;
+        }
+
+        appointmentsToCreate.push({
+          patientId: memberId,
+          patientName: member.name,
+          doctorId: selectedDoctor!,
+          appointmentDate: dateStr,
+          appointmentTime: memberSlot,
+          session: selectedSession,
+          duration: selectedDoctorData.consultationDuration || 30,
+          status: 'scheduled',
+          source: 'web',
+          notes: `Booked with ${patient.name}. ${reason.trim()}`,
+          tokenNumber: memberToken,
+          bookedBy: patient.id // Track who booked this appointment
+        });
+
+        bookedSlots.push(memberSlot); // Mark as booked for next iteration
+      }
+      
+      console.log(`📝 Booking ${appointmentsToCreate.length} appointments:`, appointmentsToCreate.map(a => `${a.patientName} - ${a.tokenNumber} - ${a.appointmentTime}`));
+      
+      // Create all appointments
+      const bookingResult = await createMultipleAppointments(appointmentsToCreate);
+      
+      if (bookingResult.success) {
+        const summary = appointmentsToCreate.map(apt => 
+          `${apt.patientName}: Token ${apt.tokenNumber} at ${apt.appointmentTime}`
+        ).join('\n');
+        
+        alert(`✅ Appointments booked successfully!\n\nDoctor: ${selectedDoctorData.user?.name || 'Dr. Unknown'}\nDate: ${selectedDate.toLocaleDateString()}\nSession: ${formatSessionText(selectedSession)}\n\n${summary}`);
           router.push('/Patient/myappoinment');
         } else {
-          setError(response.message || 'Failed to book appointment');
+        setError(bookingResult.error || 'Failed to book appointment');
         }
       } catch (error: any) {
+      console.error('Booking error:', error);
         setError(error.message || 'Failed to book appointment');
       } finally {
         setIsBooking(false);
-      }
-    } else {
-      setError('Please fill in all required fields');
     }
   };
 
-  // Show loading state while checking authentication
-  if (authLoading) {
+  const SessionCard = ({ session }: { session: SessionType }) => {
+    if (!sessionCapacity) return null;
+    
+    const capacity = sessionCapacity[session];
+    const icon = session === 'morning' ? Sun : Moon;
+    const Icon = icon;
+    const isSelected = selectedSession === session;
+    const sessionCheck = selectedDate ? canBookSession(selectedDate, session) : { canBook: false };
+    const isDisabled = !sessionCheck.canBook || capacity.availableSlots === 0;
+    
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <button
+        onClick={() => !isDisabled && setSelectedSession(session)}
+        disabled={isDisabled}
+        className={`
+          relative p-6 rounded-xl border-2 transition-all
+          ${isDisabled
+            ? 'bg-gray-50 border-gray-200 cursor-not-allowed opacity-50'
+            : isSelected
+            ? 'bg-teal-500 border-teal-500 text-white shadow-lg'
+            : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
+          }
+        `}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <Icon className={`w-10 h-10 ${isDisabled ? 'text-gray-300' : isSelected ? 'text-white' : 'text-teal-500'}`} />
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-teal-500" />
-          <p className="text-gray-500">Checking authentication...</p>
+            <h3 className={`text-lg font-bold mb-1 ${isDisabled ? 'text-gray-400' : isSelected ? 'text-white' : 'text-gray-900'}`}>
+              {session === 'morning' ? '🌅 Morning' : '🌆 Evening'}
+            </h3>
+            <p className={`text-sm mb-2 ${isDisabled ? 'text-gray-400' : isSelected ? 'text-teal-50' : 'text-gray-600'}`}>
+              {getSessionTimeRange(session)}
+            </p>
+            <div className={`text-xs ${isDisabled ? 'text-gray-400' : isSelected ? 'text-white' : 'text-gray-500'}`}>
+              {capacity.availableSlots} / {capacity.totalSlots} slots available
         </div>
+            {!sessionCheck.canBook && (
+              <div className="mt-2 text-xs text-red-600 font-medium">
+                {sessionCheck.reason}
       </div>
-    );
-  }
-
-  // Show login prompt if not authenticated
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="bg-white rounded-xl p-8 shadow-lg max-w-md mx-auto">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Login Required</h2>
-            <p className="text-gray-600 mb-6">Please log in to book an appointment.</p>
-            <button
-              onClick={() => router.push('/Auth-patientLogin')}
-              className="w-full bg-teal-500 hover:bg-teal-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
-            >
-              Go to Login
-            </button>
+            )}
           </div>
+          {isSelected && (
+            <div className="absolute top-2 right-2">
+              <Check className="w-6 h-6 text-white" />
+            </div>
+          )}
         </div>
-      </div>
+      </button>
     );
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
@@ -167,9 +378,10 @@ export default function BookAppointmentPage() {
           </div>
         </div>
 
-        {/* Error Message - Only show non-authentication errors */}
+        {/* Error Message */}
         {error && !error.includes('Authentication') && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <Info className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
             <p className="text-red-600">{error}</p>
           </div>
         )}
@@ -261,7 +473,7 @@ export default function BookAppointmentPage() {
           )}
 
           {/* No Results */}
-          {filteredDoctors.length === 0 && (
+          {filteredDoctors.length === 0 && !doctorsLoading && (
             <div className="text-center py-12">
               <p className="text-gray-500">No doctors found matching your search.</p>
             </div>
@@ -281,62 +493,161 @@ export default function BookAppointmentPage() {
                 mode="single"
                 selected={selectedDate}
                 onSelect={setSelectedDate}
+                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
                 className="rounded-md border"
               />
             </div>
+            <p className="text-xs text-gray-500 text-center mt-2">
+              ℹ️ You can only book appointments for today or future dates
+            </p>
           </div>
         )}
 
-        {/* Step 3: Select Time Slot - Only show if doctor and date are selected */}
-        {selectedDoctor && (
+        {/* Step 3: Select Session - Only show if doctor and date are selected */}
+        {selectedDoctor && selectedDate && (
           <div className="bg-white rounded-xl p-6 border border-gray-200 mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">
-              Step 3: Select Time Slot
+              Step 3: Select Session
             </h2>
 
-            {/* Time Slots Grid */}
+            {/* Session Info */}
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-800">
+                  <p className="font-medium mb-1">How Session Booking Works:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Choose Morning or Evening session</li>
+                    <li>System automatically assigns your time slot</li>
+                    <li>You'll receive a token number (e.g., #1, #2, #3...)</li>
+                    <li>Lower token numbers are assigned earlier time slots</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Session Cards */}
             {isLoading ? (
               <div className="text-center py-8">
-                <p className="text-gray-500">Loading available time slots...</p>
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-teal-500" />
+                <p className="text-gray-500">Loading session information...</p>
+              </div>
+            ) : sessionCapacity ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <SessionCard session="morning" />
+                <SessionCard session="evening" />
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {timeSlots.map((slot, index) => (
-                  <button
-                    key={index}
-                    onClick={() => !slot.isBooked && setSelectedTime(slot.time)}
-                    disabled={slot.isBooked}
-                    className={`
-                      relative p-4 rounded-lg border-2 transition-all
-                      ${slot.isBooked
-                        ? 'bg-gray-50 border-gray-200 cursor-not-allowed'
-                        : selectedTime === slot.time
-                        ? 'bg-teal-500 border-teal-500 text-white'
-                        : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
-                      }
-                    `}
-                  >
-                    <div className="flex flex-col items-center gap-2">
-                      <Clock className={`w-5 h-5 ${slot.isBooked ? 'text-gray-300' : selectedTime === slot.time ? 'text-white' : 'text-gray-400'}`} />
-                      <span className={`text-sm font-medium ${slot.isBooked ? 'text-gray-400' : selectedTime === slot.time ? 'text-white' : 'text-gray-700'}`}>
-                        {slot.time}
-                      </span>
-                      {slot.isBooked && (
-                        <span className="text-xs text-gray-400">Booked</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
+              <div className="text-center py-8 text-gray-500">
+                No session information available
               </div>
             )}
           </div>
         )}
 
-        {/* Step 4: Reason for Visit - Only show if all selections are made */}
-        {selectedDoctor && selectedTime && (
+        {/* Step 4: Family Members - Only show if session is selected */}
+        {selectedDoctor && selectedDate && selectedSession && (
+          <div className="bg-white rounded-xl p-6 border border-gray-200 mb-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Step 4: Book for Family (Optional)
+              </h2>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <span className="text-sm font-medium text-gray-700">Include Family Members</span>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={includeFamilyMembers}
+                    onChange={(e) => {
+                      setIncludeFamilyMembers(e.target.checked);
+                      if (!e.target.checked) {
+                        setSelectedFamilyMembers([]);
+                      }
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-500"></div>
+                </div>
+              </label>
+            </div>
+
+            {includeFamilyMembers && (
+              <div>
+                {loadingFamilyMembers ? (
+                  <div className="text-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-teal-500" />
+                    <p className="text-gray-500">Loading family members...</p>
+                  </div>
+                ) : familyMembers.length === 0 ? (
+                  <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                    <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-gray-600 mb-2">No family members found</p>
+                    <p className="text-sm text-gray-500">Add family members in your profile to book appointments for them</p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Select family members to book appointments for them in the same session:
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {familyMembers.map((member) => {
+                        const isSelected = selectedFamilyMembers.includes(member.id);
+                        return (
+                          <div
+                            key={member.id}
+                            onClick={() => toggleFamilyMember(member.id)}
+                            className={`
+                              relative p-4 rounded-lg border-2 transition-all cursor-pointer
+                              ${isSelected
+                                ? 'border-teal-500 bg-teal-50'
+                                : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
+                              }
+                            `}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className={`
+                                flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center
+                                ${isSelected ? 'bg-teal-500' : 'bg-gray-200'}
+                              `}>
+                                {isSelected ? (
+                                  <Check className="w-5 h-5 text-white" />
+                                ) : (
+                                  <User className="w-5 h-5 text-gray-600" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-gray-900 mb-1">
+                                  {member.name}
+                                </h4>
+                                <p className="text-xs text-gray-500">
+                                  {member.relationship || 'Family Member'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {selectedFamilyMembers.length > 0 && (
+                      <div className="mt-4 p-3 bg-teal-50 border border-teal-200 rounded-lg">
+                        <p className="text-sm text-teal-800">
+                          ✅ {selectedFamilyMembers.length} family member{selectedFamilyMembers.length !== 1 ? 's' : ''} selected
+                          • Total appointments: {1 + selectedFamilyMembers.length}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 5: Reason for Visit - Only show if all selections are made */}
+        {selectedDoctor && selectedDate && selectedSession && (
           <div className="bg-white rounded-xl p-6 border border-gray-200 mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">
-              Step 4: Reason for Visit
+              Step {includeFamilyMembers ? '5' : '4'}: Reason for Visit
             </h2>
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-900 mb-2">
@@ -354,34 +665,77 @@ export default function BookAppointmentPage() {
         )}
 
         {/* Booking Summary - Only show if all selections are made */}
-        {selectedDoctor && selectedTime && reason.trim() && (
+        {selectedDoctor && selectedDate && selectedSession && reason.trim() && (
           <div className="bg-white rounded-xl p-6 border border-gray-200">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
               Booking Summary
             </h2>
-            <div className="space-y-2 mb-6">
-              <p className="text-gray-700">
-                <span className="font-medium">Doctor:</span> {selectedDoctorData?.user?.name || 'Dr. Unknown'}
-              </p>
-              <p className="text-gray-700">
-                <span className="font-medium">Specialty:</span> {selectedDoctorData?.specialty}
-              </p>
-              <p className="text-gray-700">
-                <span className="font-medium">Date:</span> {selectedDate?.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-              </p>
-              <p className="text-gray-700">
-                <span className="font-medium">Time:</span> {selectedTime}
-              </p>
-              <p className="text-gray-700">
-                <span className="font-medium">Reason:</span> {reason}
+            <div className="space-y-4 mb-6">
+              <div className="flex items-start gap-3">
+                <User className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-500 mb-1">Doctor</p>
+                  <p className="font-medium text-gray-900 break-words">{selectedDoctorData?.user?.name || 'Dr. Unknown'}</p>
+                  <p className="text-sm text-gray-600 mt-0.5">{selectedDoctorData?.specialty}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <CalendarIcon className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-500 mb-1">Date & Session</p>
+                  <p className="font-medium text-gray-900 break-words">
+                    {selectedDate?.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
+                  <p className="font-medium text-gray-900 mt-1">
+                    {formatSessionText(selectedSession)}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1.5 break-words">
+                    {getSessionTimeRange(selectedSession)} • Time slot will be assigned automatically
+                  </p>
+                </div>
+              </div>
+              {includeFamilyMembers && selectedFamilyMembers.length > 0 && (
+                <div className="flex items-start gap-3">
+                  <Users className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-500 mb-1">Family Members ({selectedFamilyMembers.length})</p>
+                    <p className="font-medium text-gray-900 break-words">
+                      {familyMembers
+                        .filter(m => selectedFamilyMembers.includes(m.id))
+                        .map(m => m.name)
+                        .join(', ')}
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-start gap-3">
+                <Clock className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-500 mb-1">Reason</p>
+                  <p className="font-medium text-gray-900 break-words">{reason}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> Your token number and exact time slot will be assigned automatically based on the booking order. You'll receive {1 + selectedFamilyMembers.length} sequential token{1 + selectedFamilyMembers.length !== 1 ? 's' : ''}.
               </p>
             </div>
+
             <button
               onClick={handleConfirmBooking}
               disabled={isBooking}
-              className="w-full sm:w-auto px-8 py-3 bg-teal-500 hover:bg-teal-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+              className="w-full sm:w-auto px-8 py-3 bg-teal-500 hover:bg-teal-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
             >
-              {isBooking ? 'Booking...' : 'Confirm Booking'}
+              {isBooking ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Booking {1 + selectedFamilyMembers.length} Appointment{1 + selectedFamilyMembers.length !== 1 ? 's' : ''}...
+                </>
+              ) : (
+                `Confirm Booking (${1 + selectedFamilyMembers.length} Appointment${1 + selectedFamilyMembers.length !== 1 ? 's' : ''})`
+              )}
             </button>
           </div>
         )}

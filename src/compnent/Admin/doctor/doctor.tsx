@@ -1,10 +1,12 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { Search, Clock, Users, Eye, Edit, UserPlus, X, Phone, Mail, Calendar, MapPin, Save, User, AlertCircle, Loader2, Trash2 } from 'lucide-react';
+import { Search, Clock, Users, Eye, Edit, UserPlus, X, Phone, Mail, Calendar, MapPin, Save, User, AlertCircle, Loader2, Trash2, ChevronDown } from 'lucide-react';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { useAppointments } from '@/lib/hooks/useAppointments';
+import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils, Doctor as ApiDoctor } from '@/lib/api';
+import { generateTimeSlots, formatScheduleDisplay } from '@/lib/utils/timeSlotGenerator';
 
 // TypeScript Interfaces
 interface Patient {
@@ -48,9 +50,11 @@ interface NewDoctorForm {
   phone: string;
   email: string;
   schedule: string;
+  startTime: string;
+  endTime: string;
   room: string;
   slotDuration: string;
-  assistants: string;
+  assistants: string[];
   status: string;
 }
 
@@ -68,11 +72,17 @@ export default function DoctorDashboard() {
     phone: '',
     email: '',
     schedule: '',
+    startTime: '09:00',
+    endTime: '17:00',
     room: '',
-    slotDuration: '10',
-    assistants: '',
+    slotDuration: '20',
+    assistants: [],
     status: 'In'
   });
+  const [previewSlots, setPreviewSlots] = useState<string[]>([]);
+  const [showAssistantsDropdown, setShowAssistantsDropdown] = useState(false);
+  const [editAssistants, setEditAssistants] = useState<string[]>([]);
+  const [showEditAssistantsDropdown, setShowEditAssistantsDropdown] = useState(false);
 
   const {
     doctors,
@@ -85,6 +95,8 @@ export default function DoctorDashboard() {
   } = useDoctors();
 
   const { appointments } = useAppointments();
+  
+  const { assistants, loading: assistantsLoading } = useAssistants();
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -93,6 +105,38 @@ export default function DoctorDashboard() {
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
+
+  // Auto-generate slot preview when schedule changes
+  useEffect(() => {
+    if (newDoctor.startTime && newDoctor.endTime && newDoctor.slotDuration) {
+      const slots = generateTimeSlots({
+        startTime: newDoctor.startTime,
+        endTime: newDoctor.endTime,
+        slotDuration: parseInt(newDoctor.slotDuration)
+      });
+      setPreviewSlots(slots.map(slot => slot.time));
+    } else {
+      setPreviewSlots([]);
+    }
+  }, [newDoctor.startTime, newDoctor.endTime, newDoctor.slotDuration]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showAssistantsDropdown && !target.closest('.relative')) {
+        setShowAssistantsDropdown(false);
+      }
+      if (showEditAssistantsDropdown && !target.closest('.relative')) {
+        setShowEditAssistantsDropdown(false);
+      }
+    };
+
+    if (showAssistantsDropdown || showEditAssistantsDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showAssistantsDropdown, showEditAssistantsDropdown]);
 
   // Transform API doctors to display format
   const transformedDoctors: DoctorDisplay[] = doctors.map((doctor, index) => {
@@ -124,7 +168,7 @@ export default function DoctorDashboard() {
         waiting: waiting 
       },
       slotDuration: `${doctor.consultationDuration} min slots`,
-      assistants: 'Loading...', // This would need to be fetched from assistant assignments
+      assistants: 'No assistants assigned', // TODO: Fetch from assistant assignments
       online: doctor.isActive,
       phone: doctor.user?.phone || 'N/A',
       email: doctor.user?.email || 'N/A',
@@ -145,8 +189,31 @@ export default function DoctorDashboard() {
     setShowQueueDialog(true);
   };
 
-  const openEditDialog = (doctor: DoctorDisplay) => {
+  const openEditDialog = async (doctor: DoctorDisplay) => {
     setSelectedDoctor(doctor);
+    
+    // Fetch doctor data from Firestore to get assignedAssistants
+    try {
+      const { getDoc, doc } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase/config');
+      const doctorDoc = await getDoc(doc(db, 'doctors', doctor.id));
+      
+      if (doctorDoc.exists()) {
+        const doctorData = doctorDoc.data();
+        // Load existing assistants if available
+        if (doctorData.assignedAssistants && Array.isArray(doctorData.assignedAssistants)) {
+          setEditAssistants(doctorData.assignedAssistants);
+        } else {
+          setEditAssistants([]);
+        }
+      } else {
+        setEditAssistants([]);
+      }
+    } catch (error) {
+      console.error('Error loading doctor assistants:', error);
+      setEditAssistants([]);
+    }
+    
     setShowEditDialog(true);
   };
 
@@ -165,15 +232,52 @@ export default function DoctorDashboard() {
       phone: '',
       email: '',
       schedule: '',
+      startTime: '09:00',
+      endTime: '17:00',
       room: '',
-      slotDuration: '10',
-      assistants: '',
+      slotDuration: '20',
+      assistants: [],
       status: 'In'
     });
+    setPreviewSlots([]);
+    setShowAssistantsDropdown(false);
+    setEditAssistants([]);
+    setShowEditAssistantsDropdown(false);
   };
 
   const handleAddDoctorChange = (field: keyof NewDoctorForm, value: string) => {
     setNewDoctor(prev => ({ ...prev, [field]: value }));
+  };
+
+  const toggleAssistant = (assistantId: string) => {
+    setNewDoctor(prev => ({
+      ...prev,
+      assistants: prev.assistants.includes(assistantId)
+        ? prev.assistants.filter(id => id !== assistantId)
+        : [...prev.assistants, assistantId]
+    }));
+  };
+
+  const getSelectedAssistantNames = () => {
+    return assistants
+      .filter(a => newDoctor.assistants.includes(a.id))
+      .map(a => a.user.name)
+      .join(', ') || 'Select assistants';
+  };
+
+  const toggleEditAssistant = (assistantId: string) => {
+    setEditAssistants(prev =>
+      prev.includes(assistantId)
+        ? prev.filter(id => id !== assistantId)
+        : [...prev, assistantId]
+    );
+  };
+
+  const getEditSelectedAssistantNames = () => {
+    return assistants
+      .filter(a => editAssistants.includes(a.id))
+      .map(a => a.user.name)
+      .join(', ') || 'Select assistants';
   };
 
   const handleAddDoctorSubmit = async () => {
@@ -182,8 +286,23 @@ export default function DoctorDashboard() {
       return;
     }
 
+    if (!newDoctor.startTime || !newDoctor.endTime) {
+      setSuccessMessage('Please set schedule start and end times');
+      return;
+    }
+
     setActionLoading(true);
     try {
+      // Generate schedule string
+      const scheduleString = formatScheduleDisplay(newDoctor.startTime, newDoctor.endTime);
+      
+      // Generate time slots
+      const slots = generateTimeSlots({
+        startTime: newDoctor.startTime,
+        endTime: newDoctor.endTime,
+        slotDuration: parseInt(newDoctor.slotDuration)
+      });
+
       const success = await createDoctor({
         name: newDoctor.name,
         email: newDoctor.email,
@@ -191,10 +310,15 @@ export default function DoctorDashboard() {
         specialty: newDoctor.specialty,
         licenseNumber: 'LIC' + Date.now(), // Generate a temporary license number
         consultationDuration: parseInt(newDoctor.slotDuration),
-      });
+        schedule: scheduleString,
+        startTime: newDoctor.startTime,
+        endTime: newDoctor.endTime,
+        availableSlots: slots.map(slot => slot.time), // Store available slots
+        assignedAssistants: newDoctor.assistants, // Include selected assistants
+      } as any);
 
       if (success) {
-        setSuccessMessage('Doctor created successfully');
+        setSuccessMessage(`Doctor created successfully with ${slots.length} time slots!`);
         closeDialogs();
       } else {
         setSuccessMessage('Failed to create doctor');
@@ -220,12 +344,31 @@ export default function DoctorDashboard() {
       }
 
       const formData = new FormData(form);
+      const startTime = formData.get('startTime') as string;
+      const endTime = formData.get('endTime') as string;
+      const slotDuration = parseInt(formData.get('consultationDuration') as string);
+
+      // Generate schedule string
+      const scheduleString = formatScheduleDisplay(startTime, endTime);
+      
+      // Generate time slots
+      const slots = generateTimeSlots({
+        startTime,
+        endTime,
+        slotDuration
+      });
+
       const updates = {
         name: formData.get('name') as string,
         email: formData.get('email') as string,
         phone: formData.get('phone') as string,
         specialty: formData.get('specialty') as string,
-        consultationDuration: parseInt(formData.get('consultationDuration') as string),
+        consultationDuration: slotDuration,
+        schedule: scheduleString,
+        startTime,
+        endTime,
+        availableSlots: slots.map(slot => slot.time),
+        assignedAssistants: editAssistants, // Include selected assistants
       };
 
       // Handle status change separately
@@ -245,10 +388,10 @@ export default function DoctorDashboard() {
         }
       }
 
-      const success = await updateDoctor(selectedDoctor.id, updates);
+      const success = await updateDoctor(selectedDoctor.id, updates as any);
 
       if (success) {
-        setSuccessMessage('Doctor updated successfully');
+        setSuccessMessage(`Doctor updated successfully with ${slots.length} time slots!`);
         closeDialogs();
       } else {
         setSuccessMessage('Failed to update doctor');
@@ -532,34 +675,47 @@ export default function DoctorDashboard() {
                   </div>
                 </div>
 
-                {/* Schedule and Room */}
+                {/* Schedule Times */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Calendar size={16} className="inline mr-1" />
-                      Schedule <span className="text-red-500">*</span>
+                      <Clock size={16} className="inline mr-1" />
+                      Start Time <span className="text-red-500">*</span>
                     </label>
                     <input
-                      type="text"
-                      value={newDoctor.schedule}
-                      onChange={(e) => handleAddDoctorChange('schedule', e.target.value)}
-                      placeholder="Mon-Fri, 9:00 AM - 5:00 PM"
+                      type="time"
+                      value={newDoctor.startTime}
+                      onChange={(e) => handleAddDoctorChange('startTime', e.target.value)}
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <MapPin size={16} className="inline mr-1" />
-                      Room <span className="text-red-500">*</span>
+                      <Clock size={16} className="inline mr-1" />
+                      End Time <span className="text-red-500">*</span>
                     </label>
                     <input
-                      type="text"
-                      value={newDoctor.room}
-                      onChange={(e) => handleAddDoctorChange('room', e.target.value)}
-                      placeholder="Room 101"
+                      type="time"
+                      value={newDoctor.endTime}
+                      onChange={(e) => handleAddDoctorChange('endTime', e.target.value)}
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
                   </div>
+                </div>
+
+                {/* Room */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <MapPin size={16} className="inline mr-1" />
+                    Room <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newDoctor.room}
+                    onChange={(e) => handleAddDoctorChange('room', e.target.value)}
+                    placeholder="Room 101"
+                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  />
                 </div>
 
                 {/* Slot Duration */}
@@ -580,19 +736,89 @@ export default function DoctorDashboard() {
                   </select>
                 </div>
 
-                {/* Assistants */}
-                <div>
+                {/* Auto-Generated Slots Preview */}
+                {previewSlots.length > 0 && (
+                  <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-4 rounded-lg border border-teal-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Clock size={18} className="text-teal-600" />
+                      <h4 className="text-sm font-semibold text-gray-900">
+                        Auto-Generated Time Slots ({previewSlots.length} slots)
+                      </h4>
+                    </div>
+                    <p className="text-xs text-gray-600 mb-3">
+                      Schedule: {newDoctor.startTime} - {newDoctor.endTime} | Duration: {newDoctor.slotDuration} min
+                    </p>
+                    <div className="grid grid-cols-6 gap-2 max-h-32 overflow-y-auto">
+                      {previewSlots.map((slot, idx) => (
+                        <div 
+                          key={idx}
+                          className="bg-white px-2 py-1.5 rounded text-center text-xs font-medium text-gray-700 border border-gray-200 shadow-sm"
+                        >
+                          {slot}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Assistants - Multi-select Dropdown */}
+                <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Users size={16} className="inline mr-1" />
-                    Assistants
+                    Assistants {assistantsLoading && <span className="text-xs text-gray-500">(Loading...)</span>}
                   </label>
-                  <input
-                    type="text"
-                    value={newDoctor.assistants}
-                    onChange={(e) => handleAddDoctorChange('assistants', e.target.value)}
-                    placeholder="Comma separated names (e.g., Priya, Ravi)"
-                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  />
+                  
+                  {/* Dropdown Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAssistantsDropdown(!showAssistantsDropdown)}
+                    className="w-full px-4 py-2.5 text-left text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white flex items-center justify-between"
+                  >
+                    <span className={newDoctor.assistants.length === 0 ? 'text-gray-400' : ''}>
+                      {getSelectedAssistantNames()}
+                    </span>
+                    <ChevronDown size={18} className={`text-gray-400 transition-transform ${showAssistantsDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {showAssistantsDropdown && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {assistants.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500 text-sm">
+                          {assistantsLoading ? 'Loading assistants...' : 'No assistants available'}
+                        </div>
+                      ) : (
+                        assistants.map((assistant) => (
+                          <div
+                            key={assistant.id}
+                            onClick={() => toggleAssistant(assistant.id)}
+                            className="px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-center gap-3 border-b border-gray-100 last:border-b-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={newDoctor.assistants.includes(assistant.id)}
+                              onChange={() => {}} // Handled by parent onClick
+                              className="w-4 h-4 text-teal-600 rounded focus:ring-teal-500"
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">{assistant.user.name}</div>
+                              <div className="text-xs text-gray-500">{assistant.user.email}</div>
+                            </div>
+                            {!assistant.isActive && (
+                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">Inactive</span>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Selected Count */}
+                  {newDoctor.assistants.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {newDoctor.assistants.length} assistant{newDoctor.assistants.length !== 1 ? 's' : ''} selected
+                    </p>
+                  )}
                 </div>
 
                 {/* Status */}
@@ -792,32 +1018,46 @@ export default function DoctorDashboard() {
                   </div>
                 </div>
 
-                {/* Schedule and Room */}
+                {/* Schedule Times */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Calendar size={16} className="inline mr-1" />
-                      Schedule
+                      <Clock size={16} className="inline mr-1" />
+                      Start Time
                     </label>
                     <input
-                      type="text"
-                      name="schedule"
-                      defaultValue={selectedDoctor.schedule}
+                      type="time"
+                      name="startTime"
+                      defaultValue="09:00"
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <MapPin size={16} className="inline mr-1" />
-                      Room
+                      <Clock size={16} className="inline mr-1" />
+                      End Time
                     </label>
                     <input
-                      type="text"
-                      name="room"
-                      defaultValue={selectedDoctor.room}
+                      type="time"
+                      name="endTime"
+                      defaultValue="17:00"
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
                   </div>
+                </div>
+
+                {/* Room */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <MapPin size={16} className="inline mr-1" />
+                    Room
+                  </label>
+                  <input
+                    type="text"
+                    name="room"
+                    defaultValue={selectedDoctor.room}
+                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  />
                 </div>
 
                 {/* Slot Duration */}
@@ -838,19 +1078,64 @@ export default function DoctorDashboard() {
                   </select>
                 </div>
 
-                {/* Assistants */}
-                <div>
+                {/* Assistants - Multi-select Dropdown */}
+                <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Users size={16} className="inline mr-1" />
-                    Assistants
+                    Assistants {assistantsLoading && <span className="text-xs text-gray-500">(Loading...)</span>}
                   </label>
-                  <input
-                    type="text"
-                    name="assistants"
-                    defaultValue={selectedDoctor.assistants}
-                    placeholder="Comma separated names"
-                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  />
+                  
+                  {/* Dropdown Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowEditAssistantsDropdown(!showEditAssistantsDropdown)}
+                    className="w-full px-4 py-2.5 text-left text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white flex items-center justify-between"
+                  >
+                    <span className={editAssistants.length === 0 ? 'text-gray-400' : ''}>
+                      {getEditSelectedAssistantNames()}
+                    </span>
+                    <ChevronDown size={18} className={`text-gray-400 transition-transform ${showEditAssistantsDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {showEditAssistantsDropdown && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {assistants.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500 text-sm">
+                          {assistantsLoading ? 'Loading assistants...' : 'No assistants available'}
+                        </div>
+                      ) : (
+                        assistants.map((assistant) => (
+                          <div
+                            key={assistant.id}
+                            onClick={() => toggleEditAssistant(assistant.id)}
+                            className="px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-center gap-3 border-b border-gray-100 last:border-b-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={editAssistants.includes(assistant.id)}
+                              onChange={() => {}} // Handled by parent onClick
+                              className="w-4 h-4 text-teal-600 rounded focus:ring-teal-500"
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium text-gray-900">{assistant.user.name}</div>
+                              <div className="text-xs text-gray-500">{assistant.user.email}</div>
+                            </div>
+                            {!assistant.isActive && (
+                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">Inactive</span>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* Selected Count */}
+                  {editAssistants.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {editAssistants.length} assistant{editAssistants.length !== 1 ? 's' : ''} selected
+                    </p>
+                  )}
                 </div>
 
                 {/* Status */}

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Save, X, Edit2, User, Mail, Phone, MapPin, Calendar, Activity, Plus, Trash2, UserPlus } from 'lucide-react';
+import { Loader2, Save, X, Edit2, User, Mail, Phone, MapPin, Calendar, Activity, Plus, Trash2, UserPlus, RefreshCw } from 'lucide-react';
 import { usePatientProfile } from '@/lib/hooks/usePatientProfile';
 import { useFamilyMembers } from '@/lib/hooks/useFamilyMembers';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
@@ -628,19 +628,43 @@ export default function PatientProfileWithEdit() {
         {/* Family Members Section */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
           <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-gray-900">
                 <UserPlus className="h-5 w-5 inline mr-2" />
                 Family Members
               </h3>
-              <button
-                onClick={handleAddMemberClick}
-                className="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-              >
-                <Plus className="h-4 w-4" />
-                Add Member
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    console.log('🔄 Manual refresh triggered');
+                    console.log('Current patient:', patient);
+                    const { refreshMembers } = await import('@/lib/hooks/useFamilyMembers');
+                    window.location.reload();
+                  }}
+                  className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors font-medium"
+                  title="Refresh family members list"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </button>
+                <button
+                  onClick={handleAddMemberClick}
+                  className="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Member
+                </button>
+              </div>
             </div>
+
+            {/* Debug Info */}
+            {patient && (
+              <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono">
+                <p className="text-gray-600">
+                  <strong>Debug:</strong> Patient ID: {patient.id} | Family ID: {patient.familyId || patient.id} | Members Count: {familyMembers.length}
+                </p>
+              </div>
+            )}
 
             {familyLoading ? (
               <div className="text-center py-8">

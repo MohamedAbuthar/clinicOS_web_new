@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { patientRegistrationApi } from "@/lib/api";
+import { registerPatient } from "@/lib/firebase/auth";
 import { usePatientAuth } from "@/lib/contexts/PatientAuthContext";
 
 export default function RegisterForm() {
@@ -26,7 +26,7 @@ export default function RegisterForm() {
     dateOfBirth: "",
     gender: "",
     phone: searchParams?.get('phone') || "",
-    email: "",
+    email: searchParams?.get('email') || "", // Get email from URL
     address: "",
     bloodGroup: "",
     height: "",
@@ -37,27 +37,15 @@ export default function RegisterForm() {
 
   // Load registration options on component mount
   useEffect(() => {
-    const loadRegistrationOptions = async () => {
-      try {
-        const response = await patientRegistrationApi.getRegistrationOptions();
-        if (response.success && response.data) {
-          setRegistrationOptions(response.data);
-        }
-      } catch (error) {
-        console.error('Error loading registration options:', error);
-        // Set default options if API fails
-        setRegistrationOptions({
-          bloodGroups: ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'],
-          genders: [
-            { value: 'male', label: 'Male' },
-            { value: 'female', label: 'Female' },
-            { value: 'other', label: 'Other' }
-          ]
-        });
-      }
-    };
-
-    loadRegistrationOptions();
+    // Set default options (no backend API needed)
+    setRegistrationOptions({
+      bloodGroups: ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'],
+      genders: [
+        { value: 'male', label: 'Male' },
+        { value: 'female', label: 'Female' },
+        { value: 'other', label: 'Other' }
+      ]
+    });
   }, []);
 
   const handleChange = (
@@ -94,38 +82,72 @@ export default function RegisterForm() {
       return;
     }
 
+    // Validate email is present
+    if (!formData.email) {
+      setError("Email is required for registration");
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
     try {
-      const registrationData = {
+      // Build patient data - only include fields that have values (no undefined)
+      const patientData: any = {
         name: formData.fullName,
         phone: formData.phone,
-        email: formData.email || undefined,
         dateOfBirth: formData.dateOfBirth,
         gender: formData.gender as 'male' | 'female' | 'other',
-        address: formData.address || undefined,
-        bloodGroup: formData.bloodGroup || undefined,
-        height: parseFloat(formData.height) || undefined,
-        weight: parseFloat(formData.weight) || undefined,
-        allergies: formData.allergies || undefined,
-        chronicConditions: formData.chronicConditions || undefined,
+        isActive: true,
       };
 
-      const response = await patientRegistrationApi.registerPatient(registrationData);
+      // Only add optional fields if they have values
+      if (formData.address && formData.address.trim()) {
+        patientData.address = formData.address.trim();
+      }
+      if (formData.bloodGroup) {
+        patientData.bloodGroup = formData.bloodGroup;
+      }
+      if (formData.height && parseFloat(formData.height)) {
+        patientData.height = parseFloat(formData.height);
+      }
+      if (formData.weight && parseFloat(formData.weight)) {
+        patientData.weight = parseFloat(formData.weight);
+      }
+      if (formData.allergies && formData.allergies.trim()) {
+        patientData.allergies = formData.allergies.trim();
+      }
+      if (formData.chronicConditions && formData.chronicConditions.trim()) {
+        patientData.chronicConditions = formData.chronicConditions.trim();
+      }
+
+      // Use email as password (temporary - in production, should generate or ask for password)
+      const response = await registerPatient(
+        formData.email,
+        formData.email, // Using email as password
+        patientData
+      );
       
-      if (response.success && response.data) {
-        // Store the token and patient data
-        localStorage.setItem('patientToken', response.data.token);
-        localStorage.setItem('patientData', JSON.stringify(response.data.patient));
-        
-        // Redirect to dashboard
+      if (response.success && response.patient) {
+        console.log('✅ Registration successful!');
+        // Redirect to dashboard for newly registered patients
         router.push('/Patient/dashboard');
       } else {
         setError(response.message || 'Registration failed');
       }
     } catch (error: any) {
-      setError(error.message || 'Registration failed. Please try again.');
+      console.error('Registration error:', error);
+      
+      // Handle specific Firebase errors
+      if (error.message?.includes('email-already-in-use') || error.message?.includes('already in use')) {
+        setError('This email is already registered. Please login instead or use a different email.');
+      } else if (error.message?.includes('invalid-email')) {
+        setError('Invalid email format. Please check your email address.');
+      } else if (error.message?.includes('weak-password')) {
+        setError('Password is too weak. Please use a stronger password.');
+      } else {
+        setError(error.message || 'Registration failed. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -243,8 +265,12 @@ export default function RegisterForm() {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  className="w-full border px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  required
+                  className="w-full border px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 bg-gray-50"
+                  readOnly
+                  title="Email verified via OTP"
                 />
+                <p className="text-xs text-gray-500 mt-1">✓ Email verified</p>
               </div>
 
               <div>
@@ -318,6 +344,34 @@ export default function RegisterForm() {
                     className="w-full border px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block mb-2 font-medium text-gray-700">
+                  Allergies <span className="text-sm text-gray-500">(Optional)</span>
+                </label>
+                <textarea
+                  name="allergies"
+                  value={formData.allergies}
+                  onChange={handleChange}
+                  rows={2}
+                  placeholder="Any known allergies..."
+                  className="w-full border px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-2 font-medium text-gray-700">
+                  Chronic Conditions <span className="text-sm text-gray-500">(Optional)</span>
+                </label>
+                <textarea
+                  name="chronicConditions"
+                  value={formData.chronicConditions}
+                  onChange={handleChange}
+                  rows={2}
+                  placeholder="Any chronic medical conditions..."
+                  className="w-full border px-4 py-2 rounded focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
               </div>
 
               <div className="flex justify-between mt-6">

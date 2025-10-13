@@ -1,5 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
-import { scheduleApi, DoctorSchedule, apiUtils } from '../api';
+import { useState, useCallback } from 'react';
+import { getDoctorSchedule } from '../firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { db } from '../firebase/config';
+
+export interface DoctorSchedule {
+  id: string;
+  doctorId: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+  createdAt: any;
+  updatedAt: any;
+}
 
 export interface UseScheduleReturn {
   schedules: DoctorSchedule[];
@@ -7,16 +20,8 @@ export interface UseScheduleReturn {
   error: string | null;
   setError: (error: string | null) => void;
   fetchSchedules: (doctorId: string) => Promise<void>;
-  createSchedule: (doctorId: string, data: {
-    dayOfWeek: number;
-    startTime: string;
-    endTime: string;
-  }) => Promise<boolean>;
-  updateSchedule: (doctorId: string, scheduleId: string, data: {
-    dayOfWeek: number;
-    startTime: string;
-    endTime: string;
-  }) => Promise<boolean>;
+  createSchedule: (doctorId: string, data: any) => Promise<boolean>;
+  updateSchedule: (doctorId: string, scheduleId: string, data: any) => Promise<boolean>;
   deleteSchedule: (doctorId: string, scheduleId: string) => Promise<boolean>;
   refreshSchedules: (doctorId: string) => Promise<void>;
 }
@@ -26,7 +31,6 @@ export const useSchedule = (): UseScheduleReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch schedules for a doctor
   const fetchSchedules = useCallback(async (doctorId: string) => {
     if (!doctorId) return;
     
@@ -34,98 +38,75 @@ export const useSchedule = (): UseScheduleReturn => {
     setError(null);
     
     try {
-      const response = await scheduleApi.getDoctorSchedule(doctorId);
-      
-      if (response.success && response.data) {
-        setSchedules(response.data);
+      const result = await getDoctorSchedule(doctorId);
+      if (result.success && result.data) {
+        setSchedules(result.data as DoctorSchedule[]);
       }
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
+    } catch (err: any) {
+      setError(err.message);
       console.error('Failed to fetch schedules:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Create schedule
-  const createSchedule = useCallback(async (doctorId: string, data: {
-    dayOfWeek: number;
-    startTime: string;
-    endTime: string;
-  }): Promise<boolean> => {
+  const createSchedule = useCallback(async (doctorId: string, data: any): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await scheduleApi.createSchedule(doctorId, data);
-      
-      if (response.success) {
-        await fetchSchedules(doctorId);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to create schedule:', err);
+      await addDoc(collection(db, 'doctorSchedules'), {
+        doctorId,
+        ...data,
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      await fetchSchedules(doctorId);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
   }, [fetchSchedules]);
 
-  // Update schedule
-  const updateSchedule = useCallback(async (doctorId: string, scheduleId: string, data: {
-    dayOfWeek: number;
-    startTime: string;
-    endTime: string;
-  }): Promise<boolean> => {
+  const updateSchedule = useCallback(async (doctorId: string, scheduleId: string, data: any): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await scheduleApi.updateSchedule(doctorId, scheduleId, data);
-      
-      if (response.success) {
-        await fetchSchedules(doctorId);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to update schedule:', err);
+      await updateDoc(doc(db, 'doctorSchedules', scheduleId), {
+        ...data,
+        updatedAt: Timestamp.now()
+      });
+      await fetchSchedules(doctorId);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
   }, [fetchSchedules]);
 
-  // Delete schedule
   const deleteSchedule = useCallback(async (doctorId: string, scheduleId: string): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await scheduleApi.deleteSchedule(doctorId, scheduleId);
-      
-      if (response.success) {
-        await fetchSchedules(doctorId);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to delete schedule:', err);
+      await deleteDoc(doc(db, 'doctorSchedules', scheduleId));
+      await fetchSchedules(doctorId);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
   }, [fetchSchedules]);
 
-  // Refresh schedules
   const refreshSchedules = useCallback(async (doctorId: string) => {
     await fetchSchedules(doctorId);
   }, [fetchSchedules]);

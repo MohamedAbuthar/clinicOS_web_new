@@ -1,17 +1,26 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { patientAuthApi, Patient, PatientAuthResponse } from '../api';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { auth } from '../firebase/config';
+import { 
+  patientSignInWithEmail,
+  signOut as firebaseSignOut,
+  PatientProfile 
+} from '../firebase/auth';
+import { getPatientProfile } from '../firebase/firestore';
+import { sendOTPEmail, verifyOTP as verifyOTPEmail, resendOTP as resendOTPEmail } from '../services/emailOTPService';
 
 interface PatientAuthContextType {
-  patient: Patient | null;
-  token: string | null;
+  patient: PatientProfile | null;
+  firebaseUser: FirebaseUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, otp: string) => Promise<PatientAuthResponse>;
+  sendOTP: (email: string) => Promise<any>;
+  verifyOTP: (email: string, otp: string) => Promise<any>;
+  resendOTP: (email: string) => Promise<any>;
+  login: (email: string, otp: string) => Promise<any>;
   logout: () => void;
-  sendOTP: (email: string) => Promise<{ success: boolean; message: string }>;
-  resendOTP: (email: string) => Promise<{ success: boolean; message: string }>;
   refreshPatient: () => Promise<void>;
 }
 
@@ -30,79 +39,62 @@ interface PatientAuthProviderProps {
 }
 
 export const PatientAuthProvider: React.FC<PatientAuthProviderProps> = ({ children }) => {
-  const [patient, setPatient] = useState<Patient | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [patient, setPatient] = useState<PatientProfile | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const isAuthenticated = !!token && !!patient;
+  const isAuthenticated = !!firebaseUser && !!patient;
 
-  // Initialize auth state from localStorage
+  // Firebase auth state listener
   useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        const storedToken = localStorage.getItem('patientToken');
-        const storedPatient = localStorage.getItem('patientData');
-
-        if (storedToken && storedPatient) {
-          setToken(storedToken);
-          setPatient(JSON.parse(storedPatient));
-          
-          // Verify token is still valid by making an API call
-          try {
-            const response = await patientAuthApi.getCurrentPatient();
-            if (response.success && response.data) {
-              // Token is valid, update patient data
-              setPatient(response.data);
-              localStorage.setItem('patientData', JSON.stringify(response.data));
-            } else {
-              // Token is invalid, clear storage
-              console.log('Token invalid, clearing auth');
-              localStorage.removeItem('patientToken');
-              localStorage.removeItem('patientData');
-              setToken(null);
-              setPatient(null);
-            }
-          } catch (error) {
-            // Token is invalid or API call failed, clear storage
-            console.log('Token verification failed, clearing auth');
-            localStorage.removeItem('patientToken');
-            localStorage.removeItem('patientData');
-            setToken(null);
+    console.log('🔄 Setting up Firebase auth state listener...');
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('🔐 Auth state changed:', user ? `User logged in: ${user.email}` : 'No user');
+      setFirebaseUser(user);
+      
+      if (user) {
+        // User is signed in, get patient profile from Firestore
+        try {
+          console.log('📥 Fetching patient profile for:', user.uid);
+          const result = await getPatientProfile(user.uid);
+          if (result.success && result.data) {
+            console.log('✅ Patient profile loaded:', result.data);
+            setPatient(result.data as PatientProfile);
+          } else {
+            console.log('⚠️ Patient profile not found - user may need to complete registration');
+            console.log('   Error:', result.error);
             setPatient(null);
+            // Note: User has Firebase auth but no Firestore patient profile
+            // They should complete registration at /Patient/register
           }
-        } else {
-          // No stored auth, user needs to log in
-          console.log('No stored auth, user must log in');
+        } catch (error) {
+          console.error('❌ Error fetching patient profile:', error);
+          setPatient(null);
         }
-      } catch (error) {
-        console.error('Error initializing patient auth:', error);
-        localStorage.removeItem('patientToken');
-        localStorage.removeItem('patientData');
-        setToken(null);
+      } else {
+        // User is signed out
+        console.log('👤 No authenticated user');
         setPatient(null);
-      } finally {
-        setIsLoading(false);
       }
-    };
+      
+      setIsLoading(false);
+      console.log('✅ Auth state loading complete');
+    });
 
-    initializeAuth();
+    // Cleanup subscription
+    return () => {
+      console.log('🧹 Cleaning up auth state listener');
+      unsubscribe();
+    };
   }, []);
 
-  const sendOTP = async (email: string): Promise<{ success: boolean; message: string }> => {
+  // Send OTP to email
+  const sendOTP = async (email: string) => {
     try {
-      const response = await patientAuthApi.sendOTP(email);
-      
-      // Log OTP to console for development/testing
-      if (response.success && response.data?.otp) {
-        console.log('🔐 OTP for testing:', response.data.otp);
-        console.log('📧 Email address:', email);
-      }
-      
-      return {
-        success: response.success,
-        message: response.message || 'OTP sent successfully'
-      };
+      const result = await sendOTPEmail(email);
+      return result;
     } catch (error: any) {
+      console.error('Error sending OTP:', error);
       return {
         success: false,
         message: error.message || 'Failed to send OTP'
@@ -110,21 +102,27 @@ export const PatientAuthProvider: React.FC<PatientAuthProviderProps> = ({ childr
     }
   };
 
-  const resendOTP = async (email: string): Promise<{ success: boolean; message: string }> => {
+  // Verify OTP only (used internally)
+  const verifyOTP = async (email: string, otp: string) => {
     try {
-      const response = await patientAuthApi.resendOTP(email);
-      
-      // Log OTP to console for development/testing
-      if (response.success && response.data?.otp) {
-        console.log('🔄 Resent OTP for testing:', response.data.otp);
-        console.log('📧 Email address:', email);
-      }
-      
-      return {
-        success: response.success,
-        message: response.message || 'OTP resent successfully'
-      };
+      const result = await verifyOTPEmail(email, otp);
+      return result;
     } catch (error: any) {
+      console.error('Error verifying OTP:', error);
+      return {
+        success: false,
+        message: error.message || 'Failed to verify OTP'
+      };
+    }
+  };
+
+  // Resend OTP to email
+  const resendOTP = async (email: string) => {
+    try {
+      const result = await resendOTPEmail(email);
+      return result;
+    } catch (error: any) {
+      console.error('Error resending OTP:', error);
       return {
         success: false,
         message: error.message || 'Failed to resend OTP'
@@ -132,27 +130,66 @@ export const PatientAuthProvider: React.FC<PatientAuthProviderProps> = ({ childr
     }
   };
 
-  const login = async (email: string, otp: string): Promise<PatientAuthResponse> => {
+  // Login with email and OTP
+  const login = async (email: string, otp: string) => {
     try {
-      console.log('Verifying OTP for email:', email); // Debug log
-      const response = await patientAuthApi.verifyOTP(email, otp);
-      console.log('API response:', response); // Debug log
+      console.log('Verifying OTP for email:', email);
       
-      if (response.success && response.token && response.patient) {
-        console.log('Setting patient data:', response.patient); // Debug log
-        console.log('Storing patient token:', response.token.substring(0, 20) + '...'); // Debug log
-        setToken(response.token);
-        setPatient(response.patient);
-        
-        // Store in localStorage
-        localStorage.setItem('patientToken', response.token);
-        localStorage.setItem('patientData', JSON.stringify(response.patient));
-        console.log('Token stored in localStorage:', localStorage.getItem('patientToken') ? 'Yes' : 'No'); // Debug log
+      // Step 1: Verify OTP via backend
+      const otpResult = await verifyOTPEmail(email, otp);
+      
+      if (!otpResult.success) {
+        return {
+          success: false,
+          message: otpResult.message
+        };
       }
-      
-      return response;
+
+      console.log('OTP verified successfully, checking patient profile...');
+
+      // Step 2: Try to sign in with Firebase Auth (use email as password since that's what we set during registration)
+      try {
+        const result = await patientSignInWithEmail(email, email); // Use email as password
+        
+        if (result.success && result.patient && result.firebaseUser) {
+          console.log('Patient found and signed in successfully');
+          setPatient(result.patient);
+          setFirebaseUser(result.firebaseUser);
+          
+          // Store token for protected routes
+          localStorage.setItem('patientToken', result.firebaseUser.uid);
+          
+          return {
+            success: true,
+            message: 'Login successful',
+            patient: result.patient,
+            token: result.firebaseUser.uid,
+            isNewUser: false // Existing user
+          };
+        } else {
+          // Patient doesn't exist, needs to register
+          console.log('Patient not found, needs registration');
+          return {
+            success: true,
+            message: 'OTP verified, please complete registration',
+            patient: null,
+            token: null,
+            isNewUser: true // New user needs registration
+          };
+        }
+      } catch (firebaseError: any) {
+        // If Firebase auth fails, patient doesn't exist yet
+        console.log('Firebase auth failed, patient needs to register:', firebaseError.message);
+        return {
+          success: true,
+          message: 'OTP verified, please complete registration',
+          patient: null,
+          token: null,
+          isNewUser: true // New user needs registration
+        };
+      }
     } catch (error: any) {
-      console.log('Login error in context:', error); // Debug log
+      console.error('Login error in context:', error);
       return {
         success: false,
         message: error.message || 'Login failed'
@@ -162,45 +199,38 @@ export const PatientAuthProvider: React.FC<PatientAuthProviderProps> = ({ childr
 
   const logout = async () => {
     try {
-      if (token) {
-        await patientAuthApi.logout();
-      }
+      await firebaseSignOut();
+      setPatient(null);
+      setFirebaseUser(null);
     } catch (error) {
       console.error('Error during logout:', error);
-    } finally {
-      // Clear state and localStorage regardless of API call success
-      setPatient(null);
-      setToken(null);
-      localStorage.removeItem('patientToken');
-      localStorage.removeItem('patientData');
     }
   };
 
   const refreshPatient = async (): Promise<void> => {
-    if (!token) return;
+    if (!firebaseUser) return;
 
     try {
-      const response = await patientAuthApi.getCurrentPatient();
-      if (response.success && response.data) {
-        setPatient(response.data);
-        localStorage.setItem('patientData', JSON.stringify(response.data));
+      const result = await getPatientProfile(firebaseUser.uid);
+      if (result.success && result.data) {
+        setPatient(result.data as PatientProfile);
       }
     } catch (error) {
       console.error('Error refreshing patient data:', error);
-      // If refresh fails, logout the user
-      logout();
+      await logout();
     }
   };
 
   const value: PatientAuthContextType = {
     patient,
-    token,
+    firebaseUser,
     isLoading,
     isAuthenticated,
+    sendOTP,
+    verifyOTP,
+    resendOTP,
     login,
     logout,
-    sendOTP,
-    resendOTP,
     refreshPatient,
   };
 

@@ -1,5 +1,24 @@
 import { useState, useEffect, useCallback } from 'react';
-import { assistantApi, doctorApi, ApiError, Assistant, Doctor, apiUtils } from '../api';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, Timestamp, setDoc, getDoc } from 'firebase/firestore';
+import { db, getSecondaryAuth } from '../firebase/config';
+import { getAllDoctors } from '../firebase/firestore';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+
+export interface Assistant {
+  id: string;
+  userId: string;
+  assignedDoctors: string[];
+  isActive: boolean;
+  createdAt: any;
+  updatedAt: any;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    isActive: boolean;
+  };
+}
 
 export interface AssistantWithUser extends Assistant {
   user: {
@@ -14,7 +33,7 @@ export interface AssistantWithUser extends Assistant {
 
 export interface UseAssistantsReturn {
   assistants: AssistantWithUser[];
-  doctors: Doctor[];
+  doctors: any[];
   loading: boolean;
   doctorsLoading: boolean;
   error: string | null;
@@ -28,191 +47,250 @@ export interface UseAssistantsReturn {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   fetchAssistants: (page?: number) => Promise<void>;
-  createAssistant: (data: {
-    name: string;
-    email: string;
-    phone: string;
-    role: string;
-    assignedDoctors: string[];
-  }) => Promise<boolean>;
-  updateAssistant: (id: string, data: Partial<{
-    assignedDoctors: string[];
-    isActive: boolean;
-    user?: {
-      name: string;
-      email: string;
-      phone: string;
-    };
-  }>) => Promise<boolean>;
+  createAssistant: (data: any) => Promise<boolean>;
+  updateAssistant: (id: string, data: any) => Promise<boolean>;
   deleteAssistant: (id: string) => Promise<boolean>;
   refreshAssistants: () => Promise<void>;
 }
 
 export const useAssistants = (): UseAssistantsReturn => {
   const [assistants, setAssistants] = useState<AssistantWithUser[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [doctors, setDoctors] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
     total: 0,
     totalPages: 0,
   });
-  const [searchQuery, setSearchQuery] = useState('');
 
-  // Fetch doctors for assignment dropdown
+  // Fetch doctors
   const fetchDoctors = useCallback(async () => {
     setDoctorsLoading(true);
     try {
-      const response = await doctorApi.getAll(1, 100); // Get all doctors
-      if (response.success && response.data) {
-        setDoctors(response.data);
+      const result = await getAllDoctors();
+      if (Array.isArray(result)) {
+        // If result is an array, use it directly
+        setDoctors(result);
+      } else if (result && result.success && Array.isArray(result.data)) {
+        // If result is an object with success and data properties
+        setDoctors(result.data);
+      } else {
+        setDoctors([]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch doctors:', err);
+      setDoctors([]);
     } finally {
       setDoctorsLoading(false);
     }
   }, []);
 
-  // Fetch assistants
-  const fetchAssistants = useCallback(async (page = 1) => {
+  const fetchAssistants = useCallback(async (page: number = 1) => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await assistantApi.getAll(page, pagination.limit);
+      const q = query(collection(db, 'assistants'));
+      const snapshot = await getDocs(q);
       
-      if (response.success && response.data) {
-        // Transform assistants to include user data and doctor names
-        const assistantsWithUser: AssistantWithUser[] = response.data.map(assistant => {
-          // Find assigned doctor names
-          const assignedDoctorNames = assistant.assignedDoctors
-            .map(doctorId => {
-              const doctor = doctors.find(d => d.id === doctorId);
-              return doctor ? `${doctor.user?.name || 'Unknown'} - ${doctor.specialty}` : 'Unknown Doctor';
-            });
-
+      // Fetch user data and doctor names for each assistant
+      const assistantsData = await Promise.all(
+        snapshot.docs.map(async (docSnapshot) => {
+          const assistantData = docSnapshot.data();
+          
+          // Fetch user data
+          let userData = null;
+          try {
+            const userDoc = await getDoc(doc(db, 'users', assistantData.userId));
+            if (userDoc.exists()) {
+              userData = userDoc.data();
+            }
+          } catch (err) {
+            console.error(`Failed to fetch user data for assistant ${docSnapshot.id}:`, err);
+          }
+          
+          // Fetch assigned doctor names
+          const assignedDoctorNames: string[] = [];
+          if (assistantData.assignedDoctors && Array.isArray(assistantData.assignedDoctors)) {
+            for (const doctorId of assistantData.assignedDoctors) {
+              try {
+                const doctorDoc = await getDoc(doc(db, 'doctors', doctorId));
+                if (doctorDoc.exists()) {
+                  const doctorData = doctorDoc.data();
+                  const userDoc = await getDoc(doc(db, 'users', doctorData.userId));
+                  if (userDoc.exists()) {
+                    assignedDoctorNames.push(userDoc.data().name || 'Unknown');
+                  }
+                }
+              } catch (err) {
+                console.error(`Failed to fetch doctor ${doctorId}:`, err);
+              }
+            }
+          }
+          
           return {
-            ...assistant,
-            user: assistant.user || {
-              id: assistant.userId,
-              name: 'Loading...',
-              email: 'Loading...',
-              phone: 'Loading...',
-              isActive: assistant.isActive,
+            id: docSnapshot.id,
+            ...assistantData,
+            user: userData || {
+              id: assistantData.userId,
+              name: 'Unknown',
+              email: 'Unknown',
+              phone: '',
+              isActive: true,
             },
             assignedDoctorNames,
-          };
-        });
-
-        setAssistants(assistantsWithUser);
-        setPagination(response.pagination);
-      }
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
+          } as AssistantWithUser;
+        })
+      );
+      
+      setAssistants(assistantsData);
+      setPagination({
+        page,
+        limit: 10,
+        total: assistantsData.length,
+        totalPages: Math.ceil(assistantsData.length / 10),
+      });
+    } catch (err: any) {
+      setError(err.message);
       console.error('Failed to fetch assistants:', err);
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit]);
+  }, []);
 
-  // Create assistant
-  const createAssistant = useCallback(async (data: {
-    name: string;
-    email: string;
-    phone: string;
-    role: string;
-    assignedDoctors: string[];
-  }): Promise<boolean> => {
+  const createAssistant = useCallback(async (data: any): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await assistantApi.create(data);
+      // Use secondary auth instance to create user without affecting admin session
+      const secondaryAuth = getSecondaryAuth();
       
-      if (response.success) {
-        await fetchAssistants(pagination.page);
-        return true;
-      }
+      const userCredential = await createUserWithEmailAndPassword(
+        secondaryAuth, 
+        data.email, 
+        data.password || 'DefaultPassword123!'
+      );
+      const userId = userCredential.user.uid;
+      
+      // Create user profile in Firestore using UID as document ID
+      await setDoc(doc(db, 'users', userId), {
+        id: userId,
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        role: 'assistant',
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      
+      await addDoc(collection(db, 'assistants'), {
+        userId,
+        assignedDoctors: data.assignedDoctors || [],
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      
+      console.log('Assistant created successfully. Admin session maintained.');
+      
+      await fetchAssistants();
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      console.error('Error creating assistant:', err);
       return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to create assistant:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAssistants]);
+
+  const updateAssistant = useCallback(async (id: string, data: any): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Get the assistant document to find userId
+      const assistantDoc = await getDoc(doc(db, 'assistants', id));
+      if (!assistantDoc.exists()) {
+        throw new Error('Assistant not found');
+      }
+      
+      const assistantData = assistantDoc.data();
+      const userId = assistantData.userId;
+      
+      // Separate user fields from assistant fields
+      const userFields: any = {};
+      const assistantFields: any = {};
+      
+      // User-related fields that should be updated in the users collection
+      if (data.user) {
+        if (data.user.name !== undefined) userFields.name = data.user.name;
+        if (data.user.email !== undefined) userFields.email = data.user.email;
+        if (data.user.phone !== undefined) userFields.phone = data.user.phone;
+      }
+      
+      // Assistant-specific fields that should be updated in the assistants collection
+      if (data.assignedDoctors !== undefined) assistantFields.assignedDoctors = data.assignedDoctors;
+      if (data.isActive !== undefined) assistantFields.isActive = data.isActive;
+      
+      // Update user document if there are user field changes
+      if (Object.keys(userFields).length > 0 && userId) {
+        await updateDoc(doc(db, 'users', userId), {
+          ...userFields,
+          updatedAt: Timestamp.now()
+        });
+      }
+      
+      // Update assistant document if there are assistant field changes
+      if (Object.keys(assistantFields).length > 0) {
+        await updateDoc(doc(db, 'assistants', id), {
+          ...assistantFields,
+          updatedAt: Timestamp.now()
+        });
+      }
+      
+      await fetchAssistants(pagination.page);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      console.error('Error updating assistant:', err);
       return false;
     } finally {
       setLoading(false);
     }
   }, [fetchAssistants, pagination.page]);
 
-  // Update assistant
-  const updateAssistant = useCallback(async (id: string, data: Partial<{
-    assignedDoctors: string[];
-    isActive: boolean;
-    user?: {
-      name: string;
-      email: string;
-      phone: string;
-    };
-  }>): Promise<boolean> => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await assistantApi.update(id, data);
-      
-      if (response.success) {
-        await fetchAssistants(pagination.page);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to update assistant:', err);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchAssistants, pagination.page]);
-
-  // Delete assistant
   const deleteAssistant = useCallback(async (id: string): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await assistantApi.delete(id);
-      
-      if (response.success) {
-        await fetchAssistants(pagination.page);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to delete assistant:', err);
+      await deleteDoc(doc(db, 'assistants', id));
+      await fetchAssistants(pagination.page);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      console.error('Error deleting assistant:', err);
       return false;
     } finally {
       setLoading(false);
     }
   }, [fetchAssistants, pagination.page]);
 
-  // Refresh assistants
   const refreshAssistants = useCallback(async () => {
     await fetchAssistants(pagination.page);
   }, [fetchAssistants, pagination.page]);
 
-  // Load data on mount
   useEffect(() => {
-    fetchDoctors();
     fetchAssistants();
-  }, []); // Empty dependency array to run only once on mount
+    fetchDoctors();
+  }, [fetchAssistants, fetchDoctors]);
 
   return {
     assistants,

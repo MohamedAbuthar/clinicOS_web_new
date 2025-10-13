@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, User, ChevronRight, Plus } from 'lucide-react';
 import { Appointment, RecentVisit, PatientStatsCard, DashboardSection, AppointmentCard, RecentVisitCard } from '../reusable';
-import { patientDashboardApi, PatientDashboardStats, PatientRecentVisit } from '@/lib/api';
+import { PatientDashboardStats, PatientRecentVisit } from '@/lib/api';
+import { getAppointments, getDoctors } from '@/lib/firebase/firestore';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 import { useRouter } from 'next/navigation';
 
@@ -55,35 +56,88 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   // Load dashboard data
   useEffect(() => {
     const loadDashboardData = async () => {
-      // Skip authentication check for development
-      // if (!isAuthenticated) {
-      //   router.push('/Auth-patientLogin');
-      //   return;
-      // }
+      if (!patient?.id) {
+        setIsLoading(false);
+        return;
+      }
 
       try {
         setIsLoading(true);
         setError('');
 
-        // Load dashboard stats, upcoming appointments, and recent visits in parallel
-        const [statsResponse, appointmentsResponse, visitsResponse] = await Promise.all([
-          patientDashboardApi.getDashboardStats(),
-          patientDashboardApi.getUpcomingAppointments(5),
-          patientDashboardApi.getRecentVisits(10)
-        ]);
-
-        if (statsResponse.success && statsResponse.data) {
-          setDashboardStats(statsResponse.data);
+        // Get all appointments for the patient
+        const allAppointments = await getAppointments(patient.id);
+        
+        if (!allAppointments) {
+          throw new Error('Failed to load appointments');
         }
 
-        if (appointmentsResponse.success && appointmentsResponse.data) {
-          setUpcomingAppointments(appointmentsResponse.data);
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        
+        // Separate upcoming and completed appointments
+        const upcoming = allAppointments
+          .filter(apt => {
+            const aptDate = new Date(apt.appointmentDate);
+            return aptDate >= now && (apt.status === 'scheduled' || apt.status === 'confirmed');
+          })
+          .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())
+          .slice(0, 5);
+        
+        const completed = allAppointments
+          .filter(apt => apt.status === 'completed')
+          .sort((a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime())
+          .slice(0, 10);
+
+        // Get doctors to enrich appointment data
+        const doctors = await getDoctors();
+        const doctorMap = new Map(doctors?.map(d => [d.id, d]) || []);
+
+        // Set upcoming appointments
+        setUpcomingAppointments(upcoming);
+
+        // Convert completed appointments to recent visits format
+        const visits: PatientRecentVisit[] = completed.map(apt => {
+          const doctor = doctorMap.get(apt.doctorId);
+          return {
+            id: apt.id,
+            doctorName: doctor?.user?.name || 'Unknown Doctor',
+            doctorSpecialty: doctor?.specialty || 'General',
+            appointmentDate: apt.appointmentDate,
+            appointmentTime: apt.appointmentTime,
+            diagnosis: apt.notes || 'Checkup completed',
+            status: 'completed' as const
+          };
+        });
+        setRecentVisitsData(visits);
+
+        // Calculate dashboard stats
+        const stats: PatientDashboardStats = {
+          totalAppointments: allAppointments.length,
+          upcomingAppointments: upcoming.length,
+          completedAppointments: completed.length,
+          cancelledAppointments: allAppointments.filter(a => a.status === 'cancelled').length,
+          recentVisits: visits
+        };
+
+        // Add next appointment info if exists
+        if (upcoming.length > 0) {
+          const nextApt = upcoming[0];
+          const nextDoctor = doctorMap.get(nextApt.doctorId);
+          stats.nextAppointment = {
+            id: nextApt.id,
+            doctorName: nextDoctor?.user?.name || 'Unknown Doctor',
+            doctorSpecialty: nextDoctor?.specialty || 'General',
+            appointmentDate: nextApt.appointmentDate,
+            appointmentTime: nextApt.appointmentTime,
+            room: '',
+            token: nextApt.tokenNumber
+          };
         }
 
-        if (visitsResponse.success && visitsResponse.data) {
-          setRecentVisitsData(visitsResponse.data);
-        }
+        setDashboardStats(stats);
       } catch (error: any) {
+        console.error('Dashboard data error:', error);
         setError(error.message || 'Failed to load dashboard data');
       } finally {
         setIsLoading(false);
@@ -91,21 +145,21 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
     };
 
     loadDashboardData();
-  }, [router]); // Removed isAuthenticated dependency for development
+  }, [patient?.id]); // Depend on patient ID
 
   const defaultStats: Required<PatientStats> = {
     nextAppointment: dashboardStats?.nextAppointment ? {
-      date: dashboardStats.nextAppointment.date,
-      time: dashboardStats.nextAppointment.time
+      date: dashboardStats.nextAppointment.appointmentDate,
+      time: dashboardStats.nextAppointment.appointmentTime
     } : {
       date: 'No upcoming',
       time: 'appointments'
     },
-    totalVisits: dashboardStats?.totalVisits || {
-      count: 0,
-      period: 'This year'
+    totalVisits: {
+      count: dashboardStats?.completedAppointments || 0,
+      period: 'Total visits'
     },
-    pendingReports: dashboardStats?.pendingReports || {
+    pendingReports: {
       count: 0,
       status: 'No pending reports'
     },

@@ -14,27 +14,30 @@ export default function PatientLayout({ children }: PatientLayoutProps) {
   const { isAuthenticated, isLoading, patient, logout } = usePatientAuth();
   const router = useRouter();
 
-  // Skip authentication check for development
-  // useEffect(() => {
-  //   if (!isLoading && !isAuthenticated) {
-  //     router.push('/Auth-patientLogin');
-  //   }
-  // }, [isAuthenticated, isLoading, router]);
+  // Redirect to login if not authenticated (after loading completes)
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      console.log('🔒 Not authenticated, redirecting to login...');
+      router.push('/Auth-patientLogin');
+    }
+  }, [isAuthenticated, isLoading, router]);
 
-  // if (isLoading) {
-  //   return (
-  //     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-  //       <div className="text-center">
-  //         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500 mx-auto mb-4"></div>
-  //         <p className="text-gray-600">Loading...</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
 
-  // if (!isAuthenticated) {
-  //   return null; // Will redirect to login
-  // }
+  // Return null while redirecting to prevent flash of content
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

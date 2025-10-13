@@ -1,190 +1,109 @@
 import { useState, useEffect, useCallback } from 'react';
-import { patientApi, ApiError, Patient, apiUtils } from '../api';
+import { getAllPatients, getPatientProfile, updatePatientProfile, getFamilyMembers } from '../firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { db } from '../firebase/config';
+import { PatientProfile } from '../firebase/auth';
 
 export interface UsePatientsReturn {
-  patients: Patient[];
+  patients: PatientProfile[];
   loading: boolean;
   error: string | null;
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  fetchPatients: (page?: number, search?: string) => Promise<void>;
-  createPatient: (data: {
-    name: string;
-    phone: string;
-    email?: string;
-    dateOfBirth: string;
-    gender: 'male' | 'female' | 'other';
-    address?: string;
-    bloodGroup?: string;
-    height?: number;
-    weight?: number;
-    allergies?: string;
-    chronicConditions?: string;
-    familyId?: string;
-  }) => Promise<boolean>;
-  updatePatient: (id: string, data: Partial<{
-    name: string;
-    phone: string;
-    email: string;
-    dateOfBirth: string;
-    gender: 'male' | 'female' | 'other';
-    address: string;
-    bloodGroup: string;
-    height: number;
-    weight: number;
-    allergies: string;
-    chronicConditions: string;
-    familyId: string;
-    isActive: boolean;
-  }>) => Promise<boolean>;
+  fetchPatients: (search?: string) => Promise<void>;
+  createPatient: (data: any) => Promise<string | null>;
+  updatePatient: (id: string, data: any) => Promise<boolean>;
   deletePatient: (id: string) => Promise<boolean>;
-  getPatientById: (id: string) => Promise<Patient | null>;
-  getPatientsByFamily: (familyId: string) => Promise<Patient[]>;
+  getPatientById: (id: string) => Promise<PatientProfile | null>;
+  getPatientsByFamily: (familyId: string) => Promise<PatientProfile[]>;
   refreshPatients: () => Promise<void>;
 }
 
 export const usePatients = (): UsePatientsReturn => {
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<PatientProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0,
-  });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Fetch patients
-  const fetchPatients = useCallback(async (page = 1, search = '') => {
+  const fetchPatients = useCallback(async (search = '') => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await patientApi.getAll(page, pagination.limit, search);
-      
-      if (response.success && response.data) {
-        setPatients(response.data);
-        setPagination(response.pagination);
+      const result = await getAllPatients(search);
+      if (result.success && result.data) {
+        setPatients(result.data as PatientProfile[]);
       }
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
+    } catch (err: any) {
+      setError(err.message);
       console.error('Failed to fetch patients:', err);
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit]);
+  }, []);
 
-  // Create patient
-  const createPatient = useCallback(async (data: {
-    name: string;
-    phone: string;
-    email?: string;
-    dateOfBirth: string;
-    gender: 'male' | 'female' | 'other';
-    address?: string;
-    bloodGroup?: string;
-    height?: number;
-    weight?: number;
-    allergies?: string;
-    chronicConditions?: string;
-    familyId?: string;
-  }): Promise<boolean> => {
+  const createPatient = useCallback(async (data: any): Promise<string | null> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await patientApi.create(data);
-      
-      if (response.success) {
-        await fetchPatients(pagination.page, searchQuery);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to create patient:', err);
-      return false;
+      const docRef = await addDoc(collection(db, 'patients'), {
+        ...data,
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      await fetchPatients(searchQuery);
+      return docRef.id; // Return the created patient's ID
+    } catch (err: any) {
+      setError(err.message);
+      console.error('Error creating patient:', err);
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [fetchPatients, pagination.page, searchQuery]);
+  }, [fetchPatients, searchQuery]);
 
-  // Update patient
-  const updatePatient = useCallback(async (id: string, data: Partial<{
-    name: string;
-    phone: string;
-    email: string;
-    dateOfBirth: string;
-    gender: 'male' | 'female' | 'other';
-    address: string;
-    bloodGroup: string;
-    height: number;
-    weight: number;
-    allergies: string;
-    chronicConditions: string;
-    familyId: string;
-    isActive: boolean;
-  }>): Promise<boolean> => {
+  const updatePatient = useCallback(async (id: string, data: any): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await patientApi.update(id, data);
-      
-      if (response.success) {
-        await fetchPatients(pagination.page, searchQuery);
+      const result = await updatePatientProfile(id, data);
+      if (result.success) {
+        await fetchPatients(searchQuery);
         return true;
       }
       return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to update patient:', err);
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [fetchPatients, pagination.page, searchQuery]);
+  }, [fetchPatients, searchQuery]);
 
-  // Delete patient
   const deletePatient = useCallback(async (id: string): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await patientApi.delete(id);
-      
-      if (response.success) {
-        await fetchPatients(pagination.page, searchQuery);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to delete patient:', err);
+      await deleteDoc(doc(db, 'patients', id));
+      await fetchPatients(searchQuery);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [fetchPatients, pagination.page, searchQuery]);
+  }, [fetchPatients, searchQuery]);
 
-  // Get patient by ID
-  const getPatientById = useCallback(async (id: string): Promise<Patient | null> => {
+  const getPatientById = useCallback(async (id: string): Promise<PatientProfile | null> => {
     try {
-      const response = await patientApi.getById(id);
-      
-      if (response.success && response.data) {
-        return response.data;
+      const result = await getPatientProfile(id);
+      if (result.success && result.data) {
+        return result.data as PatientProfile;
       }
       return null;
     } catch (err) {
@@ -193,13 +112,11 @@ export const usePatients = (): UsePatientsReturn => {
     }
   }, []);
 
-  // Get patients by family
-  const getPatientsByFamily = useCallback(async (familyId: string): Promise<Patient[]> => {
+  const getPatientsByFamily = useCallback(async (familyId: string): Promise<PatientProfile[]> => {
     try {
-      const response = await patientApi.getByFamily(familyId);
-      
-      if (response.success && response.data) {
-        return response.data;
+      const result = await getFamilyMembers(familyId);
+      if (result.success && result.data) {
+        return result.data as PatientProfile[];
       }
       return [];
     } catch (err) {
@@ -208,12 +125,10 @@ export const usePatients = (): UsePatientsReturn => {
     }
   }, []);
 
-  // Refresh patients
   const refreshPatients = useCallback(async () => {
-    await fetchPatients(pagination.page, searchQuery);
-  }, [fetchPatients, pagination.page, searchQuery]);
+    await fetchPatients(searchQuery);
+  }, [fetchPatients, searchQuery]);
 
-  // Load data on mount
   useEffect(() => {
     fetchPatients();
   }, [fetchPatients]);
@@ -222,7 +137,6 @@ export const usePatients = (): UsePatientsReturn => {
     patients,
     loading,
     error,
-    pagination,
     searchQuery,
     setSearchQuery,
     fetchPatients,

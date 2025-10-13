@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { PatientAuthProvider } from "@/lib/contexts/PatientAuthContext";
+import { AuthProvider } from "@/lib/contexts/AuthContext";
 import FirebaseInitializer from "@/lib/firebase/FirebaseInitializer";
 
 const geistSans = Geist({
@@ -30,9 +31,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <FirebaseInitializer />
-        <PatientAuthProvider>
-          {children}
-        </PatientAuthProvider>
+        <AuthProvider>
+          <PatientAuthProvider>
+            {children}
+          </PatientAuthProvider>
+        </AuthProvider>
       </body>
     </html>
   );

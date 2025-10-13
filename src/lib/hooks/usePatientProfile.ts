@@ -1,20 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
-import { patientDashboardApi, Patient } from '../api';
 import { usePatientAuth } from '../contexts/PatientAuthContext';
+import { getPatientProfile, updatePatientProfile } from '../firebase/firestore';
+import { PatientProfile } from '../firebase/auth';
 
 interface UsePatientProfileReturn {
-  profile: Patient | null;
+  profile: PatientProfile | null;
   isLoading: boolean;
   error: string | null;
   isEditing: boolean;
-  updateProfile: (updates: Partial<Patient>) => Promise<void>;
+  updateProfile: (updates: Partial<PatientProfile>) => Promise<void>;
   refreshProfile: () => Promise<void>;
   setIsEditing: (editing: boolean) => void;
 }
 
 export function usePatientProfile(): UsePatientProfileReturn {
-  const { patient, isAuthenticated, refreshPatient } = usePatientAuth();
-  const [profile, setProfile] = useState<Patient | null>(patient);
+  const { patient, isAuthenticated, refreshPatient, firebaseUser } = usePatientAuth();
+  const [profile, setProfile] = useState<PatientProfile | null>(patient);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -24,9 +25,9 @@ export function usePatientProfile(): UsePatientProfileReturn {
     setProfile(patient);
   }, [patient]);
 
-  // Fetch profile from API
+  // Fetch profile from Firebase Firestore
   const refreshProfile = useCallback(async () => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !firebaseUser) {
       setError('Please log in to view your profile');
       return;
     }
@@ -35,14 +36,14 @@ export function usePatientProfile(): UsePatientProfileReturn {
       setIsLoading(true);
       setError(null);
 
-      const response = await patientDashboardApi.getPatientProfile();
+      const result = await getPatientProfile(firebaseUser.uid);
       
-      if (response.success && response.data) {
-        setProfile(response.data);
+      if (result.success && result.data) {
+        setProfile(result.data as PatientProfile);
         // Also refresh the patient data in auth context
         await refreshPatient();
       } else {
-        throw new Error(response.message || 'Failed to load profile');
+        throw new Error(result.error || 'Failed to load profile');
       }
     } catch (err: any) {
       console.error('Error fetching profile:', err);
@@ -50,11 +51,11 @@ export function usePatientProfile(): UsePatientProfileReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, refreshPatient]);
+  }, [isAuthenticated, firebaseUser, refreshPatient]);
 
-  // Update profile
-  const updateProfile = useCallback(async (updates: Partial<Patient>) => {
-    if (!isAuthenticated) {
+  // Update profile in Firebase Firestore
+  const updateProfile = useCallback(async (updates: Partial<PatientProfile>) => {
+    if (!isAuthenticated || !firebaseUser) {
       throw new Error('Please log in to update your profile');
     }
 
@@ -62,15 +63,14 @@ export function usePatientProfile(): UsePatientProfileReturn {
       setIsLoading(true);
       setError(null);
 
-      const response = await patientDashboardApi.updatePatientProfile(updates);
+      const result = await updatePatientProfile(firebaseUser.uid, updates);
       
-      if (response.success && response.data) {
-        setProfile(response.data);
+      if (result.success) {
+        // Refresh to get updated data
+        await refreshProfile();
         setIsEditing(false);
-        // Refresh patient data in auth context
-        await refreshPatient();
       } else {
-        throw new Error(response.message || 'Failed to update profile');
+        throw new Error(result.error || 'Failed to update profile');
       }
     } catch (err: any) {
       console.error('Error updating profile:', err);
@@ -80,14 +80,14 @@ export function usePatientProfile(): UsePatientProfileReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, refreshPatient]);
+  }, [isAuthenticated, firebaseUser, refreshProfile]);
 
   // Initial load
   useEffect(() => {
-    if (isAuthenticated && !profile) {
+    if (isAuthenticated && !profile && firebaseUser) {
       refreshProfile();
     }
-  }, [isAuthenticated, profile, refreshProfile]);
+  }, [isAuthenticated, profile, firebaseUser, refreshProfile]);
 
   return {
     profile,

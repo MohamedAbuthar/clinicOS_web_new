@@ -79,31 +79,29 @@ export default function PatientLogin() {
       
       if (result.success) {
         if (result.patient && result.token) {
-          // Patient exists and is authenticated
-          console.log('Login successful, token stored'); // Debug log
-          console.log('Token in localStorage:', localStorage.getItem('patientToken')); // Debug log
+          // Existing patient - logged in successfully
+          console.log('✅ Existing patient logged in successfully');
+          console.log('Token stored:', localStorage.getItem('patientToken'));
           
           // Wait a bit to ensure token is stored
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 300));
           
-          // Verify token is stored before navigating
-          if (localStorage.getItem('patientToken')) {
-            console.log('Navigating to book appointment'); // Debug log
-            router.push('/Patient/book-appointment');
-          } else {
-            setError('Failed to store authentication token');
-          }
-        } else {
-          // Patient doesn't exist → go to registration form with email prefilled
-          console.log('Navigating to patient registration'); // Debug log
+          // Redirect to dashboard for existing users
+          console.log('Redirecting to dashboard...');
+          router.push('/Patient/dashboard');
+        } else if (result.isNewUser) {
+          // New patient - needs to complete registration
+          console.log('📝 New patient - redirecting to registration');
           router.push(`/Patient/register?email=${encodeURIComponent(email)}`);
+        } else {
+          setError('Login failed. Please try again.');
         }
       } else {
-        console.log('Login failed:', result.message); // Debug log
+        console.log('❌ Login failed:', result.message);
         setError(result.message);
       }
     } catch (error: any) {
-      console.log('Login error:', error); // Debug log
+      console.log('❌ Login error:', error);
       setError(error.message || 'Failed to verify OTP');
     } finally {
       setIsLoading(false);

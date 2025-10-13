@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Bell, LogOut, User } from 'lucide-react';
 import { Patient } from '@/lib/api';
-import { patientNotificationsApi } from '@/lib/api';
+import { getNotifications } from '@/lib/firebase/firestore';
 
 interface PatientHeaderProps {
   patient: Patient | null;
@@ -25,18 +25,19 @@ export default function PatientHeader({ patient, onLogout }: PatientHeaderProps)
 
     // Load notification count
     const loadNotificationCount = async () => {
-      try {
-        const response = await patientNotificationsApi.getNotificationCount();
-        if (response.success && response.data) {
-          setNotificationCount(response.data.unread);
+      if (patient?.id) {
+        try {
+          const notifications = await getNotifications(patient.id);
+          const unreadCount = notifications?.filter(n => !n.isRead).length || 0;
+          setNotificationCount(unreadCount);
+        } catch (error) {
+          console.error('Error loading notification count:', error);
         }
-      } catch (error) {
-        console.error('Error loading notification count:', error);
       }
     };
 
     loadNotificationCount();
-  }, []);
+  }, [patient?.id]);
   return (
     <header className="w-full h-[73.4px] bg-white border-b border-gray-200 px-8 py-4">
       <div className="flex items-center justify-between">

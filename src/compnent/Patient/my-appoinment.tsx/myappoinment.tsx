@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar, Clock, MapPin, Phone, X } from 'lucide-react';
-import { patientAppointmentApi, AppointmentWithDetails } from '@/lib/api';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
+import { getPatientAppointments, cancelAppointment, rescheduleAppointment } from '@/lib/firebase/firestore';
 
 // Define types for different appointment states
 type UpcomingAppointment = {
@@ -43,7 +43,7 @@ type SelectedAppointment = UpcomingAppointment | PastAppointment | CancelledAppo
 
 export default function AppointmentsPage() {
   const router = useRouter();
-  const { isAuthenticated } = usePatientAuth();
+  const { isAuthenticated, patient } = usePatientAuth();
   
   const [activeTab, setActiveTab] = useState('upcoming');
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
@@ -51,7 +51,7 @@ export default function AppointmentsPage() {
   const [showBookAgainDialog, setShowBookAgainDialog] = useState(false);
   const [showBookAppointmentDialog, setShowBookAppointmentDialog] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<SelectedAppointment | null>(null);
-  const [appointments, setAppointments] = useState<AppointmentWithDetails[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [newDate, setNewDate] = useState('');
@@ -69,15 +69,20 @@ export default function AppointmentsPage() {
   // Load appointments on component mount
   useEffect(() => {
     const loadAppointments = async () => {
-      if (isAuthenticated) {
+      if (isAuthenticated && patient?.id) {
         try {
           setIsLoading(true);
-          const response = await patientAppointmentApi.getPatientAppointments();
-          if (response.success && response.data) {
-            setAppointments(response.data);
+          setError('');
+          const appointments = await getPatientAppointments(patient.id);
+          if (appointments) {
+            setAppointments(appointments);
+          } else {
+            setAppointments([]);
           }
         } catch (error: any) {
+          console.error('Error loading appointments:', error);
           setError(error.message || 'Failed to load appointments');
+          setAppointments([]);
         } finally {
           setIsLoading(false);
         }
@@ -85,7 +90,7 @@ export default function AppointmentsPage() {
     };
 
     loadAppointments();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, patient]);
 
   // Filter appointments by status
   const upcomingAppointments = appointments.filter(apt => 
@@ -104,7 +109,7 @@ export default function AppointmentsPage() {
 
   // Handle reschedule appointment
   const handleReschedule = async () => {
-    if (!selectedAppointment || !newDate || !newTime) {
+    if (!selectedAppointment || !newDate || !newTime || !patient?.id) {
       setError('Please select new date and time');
       return;
     }
@@ -113,17 +118,10 @@ export default function AppointmentsPage() {
       setIsRescheduling(true);
       setError('');
       
-      const rescheduleData = {
-        appointmentDate: newDate,
-        appointmentTime: newTime,
-        reason: 'Patient requested reschedule'
-      };
-
-      const response = await patientAppointmentApi.rescheduleAppointment(
+      const response = await rescheduleAppointment(
         selectedAppointment.id.toString(),
-        rescheduleData.appointmentDate,
-        rescheduleData.appointmentTime,
-        rescheduleData.reason
+        newDate,
+        newTime
       );
 
       if (response.success) {
@@ -132,12 +130,12 @@ export default function AppointmentsPage() {
         setNewDate('');
         setNewTime('');
         // Reload appointments
-        const appointmentsResponse = await patientAppointmentApi.getPatientAppointments();
-        if (appointmentsResponse.success && appointmentsResponse.data) {
-          setAppointments(appointmentsResponse.data);
+        const updatedAppointments = await getPatientAppointments(patient.id);
+        if (updatedAppointments) {
+          setAppointments(updatedAppointments);
         }
       } else {
-        setError(response.message || 'Failed to reschedule appointment');
+        setError(response.error || 'Failed to reschedule appointment');
       }
     } catch (error: any) {
       setError(error.message || 'Failed to reschedule appointment');
@@ -148,7 +146,7 @@ export default function AppointmentsPage() {
 
   // Handle cancel appointment
   const handleCancel = async (appointmentId: string) => {
-    if (!confirm('Are you sure you want to cancel this appointment?')) {
+    if (!confirm('Are you sure you want to cancel this appointment?') || !patient?.id) {
       return;
     }
 
@@ -156,17 +154,17 @@ export default function AppointmentsPage() {
       setIsCancelling(true);
       setError('');
       
-      const response = await patientAppointmentApi.cancelAppointment(appointmentId, 'Patient requested cancellation');
+      const response = await cancelAppointment(appointmentId, 'Patient requested cancellation');
 
       if (response.success) {
         alert('Appointment cancelled successfully!');
         // Reload appointments
-        const appointmentsResponse = await patientAppointmentApi.getPatientAppointments();
-        if (appointmentsResponse.success && appointmentsResponse.data) {
-          setAppointments(appointmentsResponse.data);
+        const updatedAppointments = await getPatientAppointments(patient.id);
+        if (updatedAppointments) {
+          setAppointments(updatedAppointments);
         }
       } else {
-        setError(response.message || 'Failed to cancel appointment');
+        setError(response.error || 'Failed to cancel appointment');
       }
     } catch (error: any) {
       setError(error.message || 'Failed to cancel appointment');

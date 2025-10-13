@@ -210,15 +210,7 @@ const AssistantsPage = () => {
       .map(doctor => doctor.trim())
       .filter(doctor => doctor.length > 0);
     
-    // Validate that all assigned doctors are valid UUIDs
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    const invalidDoctors = assignedDoctorsArray.filter(doctor => !uuidRegex.test(doctor));
-    
-    if (invalidDoctors.length > 0) {
-      setError('Please select valid doctors from the dropdown. Invalid doctor IDs detected.');
-      setActionLoading(false);
-      return;
-    }
+    console.log('Assigned doctors:', assignedDoctorsArray);
     
     const success = await createAssistant({
       name: formData.name,
@@ -246,15 +238,7 @@ const AssistantsPage = () => {
       .map(doctor => doctor.trim())
       .filter(doctor => doctor.length > 0);
     
-    // Validate that all assigned doctors are valid UUIDs
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    const invalidDoctors = assignedDoctorsArray.filter(doctor => !uuidRegex.test(doctor));
-    
-    if (invalidDoctors.length > 0) {
-      setError('Please select valid doctors from the dropdown. Invalid doctor IDs detected.');
-      setActionLoading(false);
-      return;
-    }
+    console.log('Assigned doctors for edit:', assignedDoctorsArray);
     
     const success = await updateAssistant(selectedAssistant.id, {
       assignedDoctors: assignedDoctorsArray,

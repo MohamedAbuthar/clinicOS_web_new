@@ -1,0 +1,51 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isStaff() {
+      return isAuthenticated() && 
+             (request.auth.token.role == 'admin' || 
+              request.auth.token.role == 'doctor' || 
+              request.auth.token.role == 'assistant');
+    }
+    
+    // Patient profile images
+    match /patients/{patientId}/profile/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+                      (isStaff() || request.auth.uid == patientId) &&
+                      request.resource.size < 5 * 1024 * 1024 && // Max 5MB
+                      request.resource.contentType.matches('image/.*');
+    }
+    
+    // Staff profile images
+    match /users/{userId}/profile/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+                      (isStaff() || request.auth.uid == userId) &&
+                      request.resource.size < 5 * 1024 * 1024 && // Max 5MB
+                      request.resource.contentType.matches('image/.*');
+    }
+    
+    // Medical Records documents
+    match /medicalRecords/{patientId}/{fileName} {
+      allow read: if isStaff() || request.auth.uid == patientId;
+      allow write: if isStaff() &&
+                      request.resource.size < 10 * 1024 * 1024; // Max 10MB
+    }
+    
+    // Prescription documents
+    match /prescriptions/{patientId}/{fileName} {
+      allow read: if isStaff() || request.auth.uid == patientId;
+      allow write: if isStaff() &&
+                      request.resource.size < 10 * 1024 * 1024; // Max 10MB
+    }
+  }
+}
+

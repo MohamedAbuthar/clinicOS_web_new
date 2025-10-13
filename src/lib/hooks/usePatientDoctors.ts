@@ -1,5 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
-import { patientDoctorApi, ApiError, Doctor, apiUtils } from '../api';
+import { getAllDoctors } from '../firebase/firestore';
+
+export interface Doctor {
+  id: string;
+  userId: string;
+  specialty: string;
+  licenseNumber: string;
+  consultationDuration: number;
+  isActive: boolean;
+  status?: 'active' | 'break' | 'offline';
+  schedule?: string;
+  startTime?: string;
+  endTime?: string;
+  availableSlots?: string[];
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    isActive: boolean;
+  };
+}
 
 export interface UsePatientDoctorsReturn {
   doctors: Doctor[];
@@ -14,35 +35,34 @@ export const usePatientDoctors = (): UsePatientDoctorsReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch available doctors for patient booking - using patient API (no auth)
   const fetchDoctors = useCallback(async () => {
     setLoading(true);
     setError(null);
     
     try {
-      // Use patient doctor API that works without authentication
-      const response = await patientDoctorApi.getAvailableDoctors();
+      console.log('usePatientDoctors: Fetching doctors...');
+      const result = await getAllDoctors();
+      console.log('usePatientDoctors: Result:', result);
       
-      if (response.success && response.data) {
-        setDoctors(response.data);
+      if (result.success && result.data) {
+        console.log('usePatientDoctors: Setting doctors:', result.data.length);
+        setDoctors(result.data as Doctor[]);
       } else {
-        setError(response.message || 'Failed to fetch doctors');
+        console.error('usePatientDoctors: Error:', result.error);
+        setError(result.error || 'Failed to fetch doctors');
       }
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
+    } catch (err: any) {
+      setError(err.message);
       console.error('Failed to fetch doctors:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Refresh doctors
   const refreshDoctors = useCallback(async () => {
     await fetchDoctors();
   }, [fetchDoctors]);
 
-  // Load data on mount
   useEffect(() => {
     fetchDoctors();
   }, [fetchDoctors]);

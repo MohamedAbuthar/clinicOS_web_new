@@ -14,22 +14,22 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children, 
   requiredRole 
 }) => {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, user, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
+    if (!isLoading && !isAuthenticated) {
       router.push('/auth-login');
     }
-  }, [isAuthenticated, loading, router]);
+  }, [isAuthenticated, isLoading, router]);
 
   useEffect(() => {
-    if (!loading && isAuthenticated && requiredRole && user?.role !== requiredRole) {
+    if (!isLoading && isAuthenticated && requiredRole && user?.role !== requiredRole) {
       router.push('/Admin/dashboard'); // Redirect to dashboard if role doesn't match
     }
-  }, [isAuthenticated, loading, requiredRole, user, router]);
+  }, [isAuthenticated, isLoading, requiredRole, user, router]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

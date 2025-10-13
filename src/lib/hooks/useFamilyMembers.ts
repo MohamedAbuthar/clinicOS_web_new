@@ -1,28 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
-import { patientFamilyApi, Patient } from '../api';
 import { usePatientAuth } from '../contexts/PatientAuthContext';
+import { getFamilyMembers, addFamilyMember } from '../firebase/firestore';
+import { updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase/config';
+import { PatientProfile } from '../firebase/auth';
 
 interface UseFamilyMembersReturn {
-  familyMembers: Patient[];
+  familyMembers: PatientProfile[];
   isLoading: boolean;
   error: string | null;
-  addMember: (memberData: Partial<Patient>) => Promise<void>;
-  updateMember: (memberId: string, updates: Partial<Patient>) => Promise<void>;
+  addMember: (memberData: Partial<PatientProfile>) => Promise<void>;
+  updateMember: (memberId: string, updates: Partial<PatientProfile>) => Promise<void>;
   deleteMember: (memberId: string) => Promise<void>;
   refreshMembers: () => Promise<void>;
-  getMember: (memberId: string) => Patient | undefined;
+  getMember: (memberId: string) => PatientProfile | undefined;
 }
 
 export function useFamilyMembers(): UseFamilyMembersReturn {
-  const { isAuthenticated } = usePatientAuth();
-  const [familyMembers, setFamilyMembers] = useState<Patient[]>([]);
+  const { isAuthenticated, patient } = usePatientAuth();
+  const [familyMembers, setFamilyMembers] = useState<PatientProfile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch family members from API
   const refreshMembers = useCallback(async () => {
-    if (!isAuthenticated) {
-      setError('Please log in to view family members');
+    if (!isAuthenticated || !patient?.id) {
+      console.log('Not authenticated or no patient ID, skipping family members refresh');
+      setFamilyMembers([]);
       return;
     }
 
@@ -30,12 +33,20 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
       setIsLoading(true);
       setError(null);
 
-      const response = await patientFamilyApi.getFamilyMembers();
+      // Use patient's own ID as familyId if not set
+      const familyId = patient.familyId || patient.id;
+      console.log('Loading family members for familyId:', familyId);
+
+      const result = await getFamilyMembers(familyId);
       
-      if (response.success && response.data) {
-        setFamilyMembers(response.data);
+      if (result.success && result.data) {
+        // Filter out the current patient from family members list
+        const members = (result.data as PatientProfile[]).filter(m => m.id !== patient.id);
+        setFamilyMembers(members);
+        console.log(`Loaded ${members.length} family members`);
       } else {
-        throw new Error(response.message || 'Failed to load family members');
+        console.log('No family members found or error:', result.error);
+        setFamilyMembers([]);
       }
     } catch (err: any) {
       console.error('Error fetching family members:', err);
@@ -44,11 +55,10 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, patient]);
 
-  // Add a new family member
-  const addMember = useCallback(async (memberData: Partial<Patient>) => {
-    if (!isAuthenticated) {
+  const addMember = useCallback(async (memberData: Partial<PatientProfile>) => {
+    if (!isAuthenticated || !patient?.id) {
       throw new Error('Please log in to add family members');
     }
 
@@ -56,13 +66,26 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
       setIsLoading(true);
       setError(null);
 
-      const response = await patientFamilyApi.addFamilyMember(memberData);
+      // Use patient's own ID as familyId if not set
+      const familyId = patient.familyId || patient.id;
+      console.log('Adding family member to familyId:', familyId);
+
+      // If patient doesn't have familyId set yet, update it
+      if (!patient.familyId) {
+        const { updateDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('../firebase/config');
+        await updateDoc(doc(db, 'patients', patient.id), {
+          familyId: patient.id
+        });
+      }
+
+      const result = await addFamilyMember(familyId, memberData);
       
-      if (response.success && response.data) {
-        // Add the new member to the list
-        setFamilyMembers(prev => [...prev, response.data as Patient]);
+      if (result.success) {
+        console.log('Family member added successfully');
+        await refreshMembers();
       } else {
-        throw new Error(response.message || 'Failed to add family member');
+        throw new Error(result.error || 'Failed to add family member');
       }
     } catch (err: any) {
       console.error('Error adding family member:', err);
@@ -72,10 +95,9 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, patient, refreshMembers]);
 
-  // Update a family member
-  const updateMember = useCallback(async (memberId: string, updates: Partial<Patient>) => {
+  const updateMember = useCallback(async (memberId: string, updates: Partial<PatientProfile>) => {
     if (!isAuthenticated) {
       throw new Error('Please log in to update family members');
     }
@@ -84,16 +106,8 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
       setIsLoading(true);
       setError(null);
 
-      const response = await patientFamilyApi.updateFamilyMember(memberId, updates);
-      
-      if (response.success && response.data) {
-        // Update the member in the list
-        setFamilyMembers(prev => 
-          prev.map(member => member.id === memberId ? response.data as Patient : member)
-        );
-      } else {
-        throw new Error(response.message || 'Failed to update family member');
-      }
+      await updateDoc(doc(db, 'patients', memberId), updates);
+      await refreshMembers();
     } catch (err: any) {
       console.error('Error updating family member:', err);
       const errorMessage = err.message || 'Failed to update family member';
@@ -102,9 +116,8 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshMembers]);
 
-  // Delete a family member
   const deleteMember = useCallback(async (memberId: string) => {
     if (!isAuthenticated) {
       throw new Error('Please log in to delete family members');
@@ -114,14 +127,8 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
       setIsLoading(true);
       setError(null);
 
-      const response = await patientFamilyApi.deleteFamilyMember(memberId);
-      
-      if (response.success) {
-        // Remove the member from the list
-        setFamilyMembers(prev => prev.filter(member => member.id !== memberId));
-      } else {
-        throw new Error(response.message || 'Failed to delete family member');
-      }
+      await deleteDoc(doc(db, 'patients', memberId));
+      await refreshMembers();
     } catch (err: any) {
       console.error('Error deleting family member:', err);
       const errorMessage = err.message || 'Failed to delete family member';
@@ -130,19 +137,19 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, refreshMembers]);
 
-  // Get a specific member
-  const getMember = useCallback((memberId: string): Patient | undefined => {
+  const getMember = useCallback((memberId: string): PatientProfile | undefined => {
     return familyMembers.find(member => member.id === memberId);
   }, [familyMembers]);
 
-  // Initial load
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && patient?.id) {
       refreshMembers();
+    } else if (!isAuthenticated) {
+      setFamilyMembers([]);
     }
-  }, [isAuthenticated, refreshMembers]);
+  }, [isAuthenticated, patient?.id, refreshMembers]);
 
   return {
     familyMembers,
@@ -155,4 +162,3 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
     getMember,
   };
 }
-

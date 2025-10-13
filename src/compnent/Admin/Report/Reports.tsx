@@ -21,8 +21,8 @@ const ReportsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { appointments, stats, fetchAppointmentStats } = useAppointments();
-  const { doctors } = useDoctors();
+  const { appointments, loading: appointmentsLoading } = useAppointments();
+  const { doctors, loading: doctorsLoading } = useDoctors();
   const { queueStats } = useQueue();
 
   const timeRangeOptions = [
@@ -32,22 +32,10 @@ const ReportsPage: React.FC = () => {
   
   ];
 
-  // Load data on component mount
+  // Update loading state based on data hooks
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        await fetchAppointmentStats();
-      } catch (err) {
-        setError(apiUtils.handleError(err));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
-  }, [fetchAppointmentStats]);
+    setLoading(appointmentsLoading || doctorsLoading);
+  }, [appointmentsLoading, doctorsLoading]);
 
   const getTimeRangeLabel = () => {
     return timeRangeOptions.find(opt => opt.value === timeRange)?.label || 'This Week';
@@ -71,7 +59,7 @@ const ReportsPage: React.FC = () => {
     },
     {
       title: 'Avg Wait Time',
-      value: queueStats?.averageWaitTime ? `${queueStats.averageWaitTime} min` : 'N/A',
+      value: queueStats?.avgWaitTime || 'N/A',
       change: '8% improvement',
       changeType: 'positive',
       icon: Clock,
@@ -118,17 +106,19 @@ const ReportsPage: React.FC = () => {
   ];
 
   // Doctor performance data from real data
-  const doctorPerformance: DoctorPerformanceCardProps[] = doctors.map(doctor => {
-    const doctorAppointments = appointments.filter(apt => apt.doctorId === doctor.id);
-    const completedAppointments = doctorAppointments.filter(apt => apt.status === 'completed');
-    
-    return {
-      doctorName: doctor.user.name,
-      patientsServed: completedAppointments.length,
-      avgConsultTime: `${doctor.consultationDuration} min`,
-      onTimeRate: '94%', // This would need more complex calculation
-    };
-  });
+  const doctorPerformance: DoctorPerformanceCardProps[] = doctors
+    .filter(doctor => doctor.user) // Filter out doctors without user data
+    .map(doctor => {
+      const doctorAppointments = appointments.filter(apt => apt.doctorId === doctor.id);
+      const completedAppointments = doctorAppointments.filter(apt => apt.status === 'completed');
+      
+      return {
+        doctorName: doctor.user!.name,
+        patientsServed: completedAppointments.length,
+        avgConsultTime: `${doctor.consultationDuration} min`,
+        onTimeRate: '94%', // This would need more complex calculation
+      };
+    });
 
   const handleExport = () => {
     console.log('Export report');
