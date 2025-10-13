@@ -1,10 +1,10 @@
-import AppointmentsPage from "@/compnent/Admin/appoinment/appoinment";
-import PatientRootLayout from "@/compnent/Patient/layout/rootlayout";
+import AppointmentsPage from "@/compnent/Patient/my-appoinment.tsx/myappoinment";
+import PatientLayout from "@/compnent/Patient/layout/PatientLayout";
 
 export default function MyAppoinment() {
   return (
-    <PatientRootLayout>
+    <PatientLayout>
       <AppointmentsPage />
-    </PatientRootLayout>
+    </PatientLayout>
   )
 }

@@ -11,7 +11,7 @@ import {
 import QueueDetailsDialog from './QueueDetailsDialog';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useDoctors } from '@/lib/hooks/useDoctors';
-import { appointmentApi, doctorApi, Doctor as ApiDoctor } from '@/lib/api';
+import { Doctor as ApiDoctor } from '@/lib/api';
 
 export default function DashboardPage() {
   const [isQueueDialogOpen, setIsQueueDialogOpen] = useState(false);
@@ -27,70 +27,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { appointments, stats, fetchTodayAppointments, fetchAppointmentStats } = useAppointments();
-  const { doctors: doctorsData, fetchDoctors } = useDoctors();
+  const { appointments, loading: appointmentsLoading } = useAppointments();
+  const { doctors: doctorsData, loading: doctorsLoading, fetchDoctors } = useDoctors();
 
   // Load dashboard data
   useEffect(() => {
     const loadDashboardData = async () => {
       setLoading(true);
       try {
-        // Fetch all data in parallel
-        await Promise.all([
-          fetchTodayAppointments(),
-          fetchAppointmentStats(),
-          fetchDoctors(),
-        ]);
-
-        // Calculate dashboard metrics
-        const appointmentsToday = appointments.length;
-        const patientsWaiting = appointments.filter(apt => 
-          apt.status === 'scheduled' || apt.status === 'confirmed'
-        ).length;
-        const doctorsActive = doctorsData.filter(doctor => 
-          doctor.status === 'active'
-        ).length;
-        const noShows = appointments.filter(apt => 
-          apt.status === 'no_show'
-        ).length;
-
-        setDashboardData({
-          appointmentsToday,
-          patientsWaiting,
-          doctorsActive,
-          noShows,
-        });
-
-        // Transform doctors data for display
-        const transformedDoctors: ApiDoctor[] = doctorsData.map(doctor => ({
-          id: doctor.id,
-          name: doctor.user.name,
-          specialty: doctor.specialty,
-          currentToken: doctor.currentToken || null,
-          queueLength: doctor.queueLength,
-          estimatedLastPatient: doctor.estimatedLastPatient || null,
-          status: doctor.status === 'active' ? 'Active' : 
-                  doctor.status === 'break' ? 'Break' : 'Offline'
-        }));
-
-        setDoctors(transformedDoctors);
-
-        // Generate sample alerts (in real app, this would come from notifications API)
-        setAlerts([
-          {
-            id: '1',
-            message: "System initialized successfully",
-            timestamp: 'Just now',
-            type: 'success'
-          },
-          {
-            id: '2',
-            message: `Loaded ${appointmentsToday} appointments for today`,
-            timestamp: 'Just now',
-            type: 'info'
-          }
-        ]);
-
+        // Make sure doctors are fetched
+        await fetchDoctors();
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load dashboard data';
         setError(errorMessage);
@@ -101,7 +47,71 @@ export default function DashboardPage() {
     };
 
     loadDashboardData();
-  }, [fetchTodayAppointments, fetchAppointmentStats, fetchDoctors]);
+  }, [fetchDoctors]);
+
+  // Update dashboard data when appointments or doctors change
+  useEffect(() => {
+    if (appointmentsLoading || doctorsLoading) return;
+
+    try {
+      // Filter today's appointments
+      const today = new Date().toISOString().split('T')[0];
+      const todayAppointments = appointments.filter(apt => 
+        apt.appointmentDate === today
+      );
+
+      // Calculate dashboard metrics
+      const appointmentsToday = todayAppointments.length;
+      const patientsWaiting = todayAppointments.filter(apt => 
+        apt.status === 'scheduled' || apt.status === 'confirmed'
+      ).length;
+      const doctorsActive = doctorsData.filter(doctor => 
+        doctor.status === 'active'
+      ).length;
+      const noShows = todayAppointments.filter(apt => 
+        apt.status === 'no_show'
+      ).length;
+
+      setDashboardData({
+        appointmentsToday,
+        patientsWaiting,
+        doctorsActive,
+        noShows,
+      });
+
+      // Transform doctors data for display
+      const transformedDoctors: ApiDoctor[] = doctorsData.map(doctor => ({
+        id: doctor.id,
+        name: doctor.user.name,
+        specialty: doctor.specialty,
+        currentToken: doctor.currentToken || null,
+        queueLength: doctor.queueLength,
+        estimatedLastPatient: doctor.estimatedLastPatient || null,
+        status: doctor.status === 'active' ? 'Active' : 
+                doctor.status === 'break' ? 'Break' : 'Offline'
+      }));
+
+      setDoctors(transformedDoctors);
+
+      // Generate sample alerts
+      setAlerts([
+        {
+          id: '1',
+          message: "System initialized successfully",
+          timestamp: 'Just now',
+          type: 'success'
+        },
+        {
+          id: '2',
+          message: `Loaded ${appointmentsToday} appointments for today`,
+          timestamp: 'Just now',
+          type: 'info'
+        }
+      ]);
+    } catch (err) {
+      console.error('Error processing dashboard data:', err);
+    }
+  }, [appointments, doctorsData, appointmentsLoading, doctorsLoading]);
 
   const handleViewQueue = (doctor: ApiDoctor) => {
     setSelectedDoctor(doctor);
@@ -148,7 +158,6 @@ export default function DashboardPage() {
             title="Appointments Today"
             value={dashboardData.appointmentsToday}
             icon={<Calendar className="w-6 h-6 text-blue-600" />}
-            trend={stats ? { value: `${Math.round((stats.completed / stats.total) * 100)}%`, label: "completed" } : undefined}
             iconBgColor="bg-blue-50"
           />
           <StatCard

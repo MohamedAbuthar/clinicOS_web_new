@@ -1,5 +1,10 @@
-import React, { useState } from 'react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Calendar, Clock, MapPin, Phone, X } from 'lucide-react';
+import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
+import { getPatientAppointments, cancelAppointment, rescheduleAppointment } from '@/lib/firebase/firestore';
 
 // Define types for different appointment states
 type UpcomingAppointment = {
@@ -37,70 +42,136 @@ type CancelledAppointment = {
 type SelectedAppointment = UpcomingAppointment | PastAppointment | CancelledAppointment;
 
 export default function AppointmentsPage() {
+  const router = useRouter();
+  const { isAuthenticated, patient } = usePatientAuth();
+  
   const [activeTab, setActiveTab] = useState('upcoming');
   const [showRescheduleDialog, setShowRescheduleDialog] = useState(false);
   const [showViewReportDialog, setShowViewReportDialog] = useState(false);
   const [showBookAgainDialog, setShowBookAgainDialog] = useState(false);
   const [showBookAppointmentDialog, setShowBookAppointmentDialog] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<SelectedAppointment | null>(null);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const [isRescheduling, setIsRescheduling] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
-  const upcomingAppointments: UpcomingAppointment[] = [
-    {
-      id: 1,
-      doctorName: 'Dr. Priya Sharma',
-      specialty: 'General Physician',
-      date: '10/12/2025',
-      time: '10:30 AM',
-      room: 'Room 201',
-      phone: '+91 98765 43210',
-      token: 'T-042',
-      status: 'confirmed'
-    },
-    {
-      id: 2,
-      doctorName: 'Dr. Rajesh Kumar',
-      specialty: 'Cardiologist',
-      date: '10/15/2025',
-      time: '2:00 PM',
-      room: 'Room 305',
-      phone: '+91 98765 43211',
-      token: 'T-018',
-      status: 'confirmed'
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/Auth-patientLogin');
     }
-  ];
+  }, [isAuthenticated, router]);
 
-  const pastAppointments: PastAppointment[] = [
-    {
-      id: 1,
-      doctorName: 'Dr. Siva Raman',
-      specialty: 'Dermatologist',
-      diagnosis: 'Routine Checkup',
-      date: '9/28/2025',
-      time: '11:00 AM',
-      status: 'completed'
-    },
-    {
-      id: 2,
-      doctorName: 'Dr. Priya Sharma',
-      specialty: 'General Physician',
-      diagnosis: 'Seasonal Flu',
-      date: '9/15/2025',
-      time: '3:30 PM',
-      status: 'completed'
-    }
-  ];
+  // Load appointments on component mount
+  useEffect(() => {
+    const loadAppointments = async () => {
+      if (isAuthenticated && patient?.id) {
+        try {
+          setIsLoading(true);
+          setError('');
+          const appointments = await getPatientAppointments(patient.id);
+          if (appointments) {
+            setAppointments(appointments);
+          } else {
+            setAppointments([]);
+          }
+        } catch (error: any) {
+          console.error('Error loading appointments:', error);
+          setError(error.message || 'Failed to load appointments');
+          setAppointments([]);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
 
-  const cancelledAppointments: CancelledAppointment[] = [
-    {
-      id: 1,
-      doctorName: 'Dr. Meena Lakshmi',
-      specialty: 'Pediatrician',
-      reason: 'Patient Request',
-      date: '9/10/2025',
-      time: '9:00 AM',
-      status: 'cancelled'
+    loadAppointments();
+  }, [isAuthenticated, patient]);
+
+  // Filter appointments by status
+  const upcomingAppointments = appointments.filter(apt => 
+    ['scheduled', 'confirmed'].includes(apt.status) && 
+    new Date(apt.appointmentDate) >= new Date()
+  );
+
+  const pastAppointments = appointments.filter(apt => 
+    apt.status === 'completed' || 
+    (['scheduled', 'confirmed'].includes(apt.status) && new Date(apt.appointmentDate) < new Date())
+  );
+
+  const cancelledAppointments = appointments.filter(apt => 
+    apt.status === 'cancelled'
+  );
+
+  // Handle reschedule appointment
+  const handleReschedule = async () => {
+    if (!selectedAppointment || !newDate || !newTime || !patient?.id) {
+      setError('Please select new date and time');
+      return;
     }
-  ];
+
+    try {
+      setIsRescheduling(true);
+      setError('');
+      
+      const response = await rescheduleAppointment(
+        selectedAppointment.id.toString(),
+        newDate,
+        newTime
+      );
+
+      if (response.success) {
+        alert('Appointment rescheduled successfully!');
+        setShowRescheduleDialog(false);
+        setNewDate('');
+        setNewTime('');
+        // Reload appointments
+        const updatedAppointments = await getPatientAppointments(patient.id);
+        if (updatedAppointments) {
+          setAppointments(updatedAppointments);
+        }
+      } else {
+        setError(response.error || 'Failed to reschedule appointment');
+      }
+    } catch (error: any) {
+      setError(error.message || 'Failed to reschedule appointment');
+    } finally {
+      setIsRescheduling(false);
+    }
+  };
+
+  // Handle cancel appointment
+  const handleCancel = async (appointmentId: string) => {
+    if (!confirm('Are you sure you want to cancel this appointment?') || !patient?.id) {
+      return;
+    }
+
+    try {
+      setIsCancelling(true);
+      setError('');
+      
+      const response = await cancelAppointment(appointmentId, 'Patient requested cancellation');
+
+      if (response.success) {
+        alert('Appointment cancelled successfully!');
+        // Reload appointments
+        const updatedAppointments = await getPatientAppointments(patient.id);
+        if (updatedAppointments) {
+          setAppointments(updatedAppointments);
+        }
+      } else {
+        setError(response.error || 'Failed to cancel appointment');
+      }
+    } catch (error: any) {
+      setError(error.message || 'Failed to cancel appointment');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -112,12 +183,26 @@ export default function AppointmentsPage() {
             <p className="text-gray-500 text-lg">View and manage your appointments</p>
           </div>
           <button 
-            onClick={() => setShowBookAppointmentDialog(true)}
+            onClick={() => router.push('/Patient/book-appointment')}
             className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-3 rounded-lg font-semibold text-lg transition-colors"
           >
             Book New Appointment
           </button>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-600">{error}</p>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="text-center py-12">
+            <p className="text-gray-500">Loading appointments...</p>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="inline-flex bg-gray-100 rounded-lg p-1 mb-6">
@@ -154,215 +239,222 @@ export default function AppointmentsPage() {
         </div>
 
         {/* Appointments List */}
-        <div className="space-y-4">
-          {activeTab === 'upcoming' && upcomingAppointments.map((appointment) => (
-            <div
-              key={appointment.id}
-              className="bg-white rounded-lg shadow-sm p-6 border border-gray-100"
-            >
-              <div className="flex justify-between items-start mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                    <svg
-                      className="w-8 h-8 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                      />
-                    </svg>
+        {!isLoading && (
+          <div className="space-y-4">
+            {activeTab === 'upcoming' && upcomingAppointments.map((appointment) => (
+              <div
+                key={appointment.id}
+                className="bg-white rounded-lg shadow-sm p-6 border border-gray-100"
+              >
+                <div className="flex justify-between items-start mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                      <svg
+                        className="w-8 h-8 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-1">
+                        {appointment.doctorName || 'Dr. Unknown'}
+                      </h3>
+                      <p className="text-gray-500 text-base">{appointment.doctorSpecialty || 'General Practice'}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-1">
-                      {appointment.doctorName}
-                    </h3>
-                    <p className="text-gray-500 text-base">{appointment.specialty}</p>
+                  <span className="bg-green-50 text-green-600 px-4 py-1 rounded-md text-sm font-medium">
+                    {appointment.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-6 mb-6">
+                  <div className="flex items-center gap-3 text-gray-700">
+                    <Calendar className="w-5 h-5 text-gray-400" />
+                    <span className="text-base">{new Date(appointment.appointmentDate).toLocaleDateString()}</span>
                   </div>
-                </div>
-                <span className="bg-green-50 text-green-600 px-4 py-1 rounded-md text-sm font-medium">
-                  {appointment.status}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6 mb-6">
-                <div className="flex items-center gap-3 text-gray-700">
-                  <Calendar className="w-5 h-5 text-gray-400" />
-                  <span className="text-base">{appointment.date}</span>
-                </div>
-                <div className="flex items-center gap-3 text-gray-700">
-                  <Clock className="w-5 h-5 text-gray-400" />
-                  <span className="text-base">{appointment.time}</span>
-                </div>
-                <div className="flex items-center gap-3 text-gray-700">
-                  <MapPin className="w-5 h-5 text-gray-400" />
-                  <span className="text-base">{appointment.room}</span>
-                </div>
-                <div className="flex items-center gap-3 text-gray-700">
-                  <Phone className="w-5 h-5 text-gray-400" />
-                  <span className="text-base">{appointment.phone}</span>
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <span className="inline-block bg-teal-600 text-white px-4 py-1 rounded-full text-sm font-semibold">
-                  Token: {appointment.token}
-                </span>
-              </div>
-
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => {
-                    setSelectedAppointment(appointment);
-                    setShowRescheduleDialog(true);
-                  }}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-                >
-                  Reschedule
-                </button>
-                <button className="px-6 py-2 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors">
-                  Cancel
-                </button>
-                <button className="px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors">
-                  Get Directions
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {activeTab === 'past' && pastAppointments.map((appointment) => (
-            <div
-              key={appointment.id}
-              className="bg-white rounded-lg shadow-sm p-6 border border-gray-100"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                    <svg
-                      className="w-8 h-8 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                      />
-                    </svg>
+                  <div className="flex items-center gap-3 text-gray-700">
+                    <Clock className="w-5 h-5 text-gray-400" />
+                    <span className="text-base">{appointment.appointmentTime}</span>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-1">
-                      {appointment.doctorName}
-                    </h3>
-                    <p className="text-gray-500 text-base">{appointment.specialty}</p>
-                    <p className="text-gray-500 text-base">Diagnosis: {appointment.diagnosis}</p>
+                  <div className="flex items-center gap-3 text-gray-700">
+                    <MapPin className="w-5 h-5 text-gray-400" />
+                    <span className="text-base">{appointment.room || 'Room TBD'}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-gray-700">
+                    <Phone className="w-5 h-5 text-gray-400" />
+                    <span className="text-base">{appointment.doctorPhone || 'Contact clinic'}</span>
                   </div>
                 </div>
-                <span className="bg-teal-500 text-white px-4 py-1 rounded-full text-sm font-medium">
-                  {appointment.status}
-                </span>
-              </div>
 
-              <div className="flex items-center gap-6 mb-6 mt-4">
-                <div className="flex items-center gap-3 text-gray-700">
-                  <Calendar className="w-5 h-5 text-gray-400" />
-                  <span className="text-base">{appointment.date}</span>
-                </div>
-                <div className="flex items-center gap-3 text-gray-700">
-                  <Clock className="w-5 h-5 text-gray-400" />
-                  <span className="text-base">{appointment.time}</span>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => {
-                    setSelectedAppointment(appointment);
-                    setShowViewReportDialog(true);
-                  }}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-                >
-                  View Report
-                </button>
-                <button 
-                  onClick={() => {
-                    setSelectedAppointment(appointment);
-                    setShowBookAgainDialog(true);
-                  }}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-                >
-                  Book Again
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {activeTab === 'cancelled' && cancelledAppointments.map((appointment) => (
-            <div
-              key={appointment.id}
-              className="bg-white rounded-lg shadow-sm p-6 border border-gray-100"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                    <svg
-                      className="w-8 h-8 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                      />
-                    </svg>
+                {(appointment.token || appointment.tokenNumber) && (
+                  <div className="mb-6">
+                    <span className="inline-block bg-teal-600 text-white px-4 py-1 rounded-full text-sm font-semibold">
+                      Token: {appointment.token || appointment.tokenNumber}
+                    </span>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-1">
-                      {appointment.doctorName}
-                    </h3>
-                    <p className="text-gray-500 text-base">{appointment.specialty}</p>
-                    <p className="text-gray-500 text-base">Reason: {appointment.reason}</p>
+                )}
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => {
+                      setSelectedAppointment(appointment as any);
+                      setShowRescheduleDialog(true);
+                    }}
+                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    Reschedule
+                  </button>
+                  <button 
+                    onClick={() => handleCancel(appointment.id)}
+                    disabled={isCancelling}
+                    className="px-6 py-2 text-red-600 rounded-lg font-medium hover:bg-red-50 transition-colors disabled:opacity-50"
+                  >
+                    {isCancelling ? 'Cancelling...' : 'Cancel'}
+                  </button>
+                  <button className="px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors">
+                    Get Directions
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {activeTab === 'past' && pastAppointments.map((appointment) => (
+              <div
+                key={appointment.id}
+                className="bg-white rounded-lg shadow-sm p-6 border border-gray-100"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                      <svg
+                        className="w-8 h-8 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-1">
+                        {appointment.doctorName || 'Dr. Unknown'}
+                      </h3>
+                      <p className="text-gray-500 text-base">{appointment.doctorSpecialty || 'General Practice'}</p>
+                    </div>
+                  </div>
+                  <span className="bg-teal-500 text-white px-4 py-1 rounded-full text-sm font-medium">
+                    {appointment.status}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-6 mb-6 mt-4">
+                  <div className="flex items-center gap-3 text-gray-700">
+                    <Calendar className="w-5 h-5 text-gray-400" />
+                    <span className="text-base">{new Date(appointment.appointmentDate).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-gray-700">
+                    <Clock className="w-5 h-5 text-gray-400" />
+                    <span className="text-base">{appointment.appointmentTime}</span>
                   </div>
                 </div>
-                <span className="bg-red-500 text-white px-4 py-1 rounded-full text-sm font-medium">
-                  {appointment.status}
-                </span>
-              </div>
 
-              <div className="flex items-center gap-6 mb-6 mt-4">
-                <div className="flex items-center gap-3 text-gray-700">
-                  <Calendar className="w-5 h-5 text-gray-400" />
-                  <span className="text-base">{appointment.date}</span>
-                </div>
-                <div className="flex items-center gap-3 text-gray-700">
-                  <Clock className="w-5 h-5 text-gray-400" />
-                  <span className="text-base">{appointment.time}</span>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => {
+                      setSelectedAppointment(appointment as any);
+                      setShowViewReportDialog(true);
+                    }}
+                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    View Report
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setSelectedAppointment(appointment as any);
+                      setShowBookAgainDialog(true);
+                    }}
+                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    Book Again
+                  </button>
                 </div>
               </div>
+            ))}
 
-              <div>
-                <button 
-                  onClick={() => {
-                    setSelectedAppointment(appointment);
-                    setShowBookAppointmentDialog(true);
-                  }}
-                  className="px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors"
-                >
-                  Book New Appointment
-                </button>
+            {activeTab === 'cancelled' && cancelledAppointments.map((appointment) => (
+              <div
+                key={appointment.id}
+                className="bg-white rounded-lg shadow-sm p-6 border border-gray-100"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                      <svg
+                        className="w-8 h-8 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-1">
+                        {appointment.doctorName || 'Dr. Unknown'}
+                      </h3>
+                      <p className="text-gray-500 text-base">{appointment.doctorSpecialty || 'General Practice'}</p>
+                      <p className="text-gray-500 text-base">Reason: {appointment.cancellationReason || appointment.reason || 'Patient request'}</p>
+                    </div>
+                  </div>
+                  <span className="bg-red-500 text-white px-4 py-1 rounded-full text-sm font-medium">
+                    {appointment.status}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-6 mb-6 mt-4">
+                  <div className="flex items-center gap-3 text-gray-700">
+                    <Calendar className="w-5 h-5 text-gray-400" />
+                    <span className="text-base">{new Date(appointment.appointmentDate).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-gray-700">
+                    <Clock className="w-5 h-5 text-gray-400" />
+                    <span className="text-base">{appointment.appointmentTime}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <button 
+                    onClick={() => {
+                      setSelectedAppointment(appointment as any);
+                      setShowBookAppointmentDialog(true);
+                    }}
+                    className="px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors"
+                  >
+                    Book New Appointment
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* Reschedule Dialog */}
         {showRescheduleDialog && selectedAppointment && (
@@ -391,6 +483,8 @@ export default function AppointmentsPage() {
                   </label>
                   <input
                     type="date"
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-900"
                   />
                 </div>
@@ -399,15 +493,12 @@ export default function AppointmentsPage() {
                   <label className="block text-sm font-medium text-gray-900 mb-2">
                     Select Time Slot
                   </label>
-                  <select className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-900">
-                    <option value="">Select a time</option>
-                    <option>9:00 AM</option>
-                    <option>10:00 AM</option>
-                    <option>11:00 AM</option>
-                    <option>2:00 PM</option>
-                    <option>3:00 PM</option>
-                    <option>4:00 PM</option>
-                  </select>
+                  <input
+                    type="time"
+                    value={newTime}
+                    onChange={(e) => setNewTime(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-gray-900"
+                  />
                 </div>
               </div>
 
@@ -419,13 +510,11 @@ export default function AppointmentsPage() {
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    setShowRescheduleDialog(false);
-                    alert('Appointment rescheduled successfully!');
-                  }}
-                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors"
+                  onClick={handleReschedule}
+                  disabled={isRescheduling}
+                  className="flex-1 px-6 py-2 bg-teal-500 text-white rounded-lg font-medium hover:bg-teal-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
-                  Confirm
+                  {isRescheduling ? 'Rescheduling...' : 'Confirm'}
                 </button>
               </div>
             </div>

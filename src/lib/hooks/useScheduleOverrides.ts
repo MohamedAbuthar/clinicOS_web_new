@@ -1,5 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
-import { scheduleOverrideApi, ScheduleOverride, apiUtils } from '../api';
+import { useState, useCallback } from 'react';
+import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { db } from '../firebase/config';
+
+export interface ScheduleOverride {
+  id: string;
+  doctorId: string;
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  reason: string;
+  type: 'holiday' | 'extended_hours' | 'reduced_hours';
+  isActive: boolean;
+  createdAt: any;
+  updatedAt: any;
+}
 
 export interface UseScheduleOverridesReturn {
   overrides: ScheduleOverride[];
@@ -7,20 +21,8 @@ export interface UseScheduleOverridesReturn {
   error: string | null;
   setError: (error: string | null) => void;
   fetchOverrides: (doctorId: string) => Promise<void>;
-  createOverride: (doctorId: string, data: {
-    date: string;
-    startTime?: string;
-    endTime?: string;
-    reason: string;
-    type: 'holiday' | 'extended_hours' | 'reduced_hours';
-  }) => Promise<boolean>;
-  updateOverride: (doctorId: string, overrideId: string, data: {
-    date: string;
-    startTime?: string;
-    endTime?: string;
-    reason: string;
-    type: 'holiday' | 'extended_hours' | 'reduced_hours';
-  }) => Promise<boolean>;
+  createOverride: (doctorId: string, data: any) => Promise<boolean>;
+  updateOverride: (doctorId: string, overrideId: string, data: any) => Promise<boolean>;
   deleteOverride: (doctorId: string, overrideId: string) => Promise<boolean>;
   refreshOverrides: (doctorId: string) => Promise<void>;
 }
@@ -30,7 +32,6 @@ export const useScheduleOverrides = (): UseScheduleOverridesReturn => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch overrides for a doctor
   const fetchOverrides = useCallback(async (doctorId: string) => {
     if (!doctorId) return;
     
@@ -38,102 +39,82 @@ export const useScheduleOverrides = (): UseScheduleOverridesReturn => {
     setError(null);
     
     try {
-      const response = await scheduleOverrideApi.getDoctorOverrides(doctorId);
-      
-      if (response.success && response.data) {
-        setOverrides(response.data);
-      }
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
+      const q = query(
+        collection(db, 'scheduleOverrides'),
+        where('doctorId', '==', doctorId),
+        where('isActive', '==', true)
+      );
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as ScheduleOverride[];
+      setOverrides(data);
+    } catch (err: any) {
+      setError(err.message);
       console.error('Failed to fetch schedule overrides:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Create override
-  const createOverride = useCallback(async (doctorId: string, data: {
-    date: string;
-    startTime?: string;
-    endTime?: string;
-    reason: string;
-    type: 'holiday' | 'extended_hours' | 'reduced_hours';
-  }): Promise<boolean> => {
+  const createOverride = useCallback(async (doctorId: string, data: any): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await scheduleOverrideApi.createOverride(doctorId, data);
-      
-      if (response.success) {
-        await fetchOverrides(doctorId);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to create schedule override:', err);
+      await addDoc(collection(db, 'scheduleOverrides'), {
+        doctorId,
+        ...data,
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      await fetchOverrides(doctorId);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
   }, [fetchOverrides]);
 
-  // Update override
-  const updateOverride = useCallback(async (doctorId: string, overrideId: string, data: {
-    date: string;
-    startTime?: string;
-    endTime?: string;
-    reason: string;
-    type: 'holiday' | 'extended_hours' | 'reduced_hours';
-  }): Promise<boolean> => {
+  const updateOverride = useCallback(async (doctorId: string, overrideId: string, data: any): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await scheduleOverrideApi.updateOverride(doctorId, overrideId, data);
-      
-      if (response.success) {
-        await fetchOverrides(doctorId);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to update schedule override:', err);
+      await updateDoc(doc(db, 'scheduleOverrides', overrideId), {
+        ...data,
+        updatedAt: Timestamp.now()
+      });
+      await fetchOverrides(doctorId);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
   }, [fetchOverrides]);
 
-  // Delete override
   const deleteOverride = useCallback(async (doctorId: string, overrideId: string): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await scheduleOverrideApi.deleteOverride(doctorId, overrideId);
-      
-      if (response.success) {
-        await fetchOverrides(doctorId);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to delete schedule override:', err);
+      await deleteDoc(doc(db, 'scheduleOverrides', overrideId));
+      await fetchOverrides(doctorId);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
   }, [fetchOverrides]);
 
-  // Refresh overrides
   const refreshOverrides = useCallback(async (doctorId: string) => {
     await fetchOverrides(doctorId);
   }, [fetchOverrides]);

@@ -1,347 +1,221 @@
 import { useState, useEffect, useCallback } from 'react';
-import { appointmentApi, ApiError, Appointment, AppointmentStats, apiUtils } from '../api';
+import {
+  createAppointment as createAppointmentFirestore,
+  getPatientAppointments,
+  getDoctorAppointments,
+  cancelAppointment as cancelAppointmentFirestore,
+  rescheduleAppointment as rescheduleAppointmentFirestore,
+} from '../firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, Timestamp } from 'firebase/firestore';
+import { db } from '../firebase/config';
+
+export interface Appointment {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  duration?: number;
+  status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed' | 'no_show' | 'rescheduled';
+  source: 'web' | 'assistant' | 'walk_in' | 'phone';
+  notes?: string;
+  tokenNumber?: string;
+  createdAt: any;
+  updatedAt: any;
+}
 
 export interface UseAppointmentsReturn {
   appointments: Appointment[];
-  stats: AppointmentStats | null;
   loading: boolean;
   error: string | null;
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-  searchQuery: string;
-  setSearchQuery: (query: string) => void;
-  fetchAppointments: (page?: number, startDate?: string, endDate?: string) => Promise<void>;
-  fetchTodayAppointments: () => Promise<void>;
-  fetchAppointmentStats: () => Promise<void>;
-  createAppointment: (data: {
-    patientId: string;
-    doctorId: string;
-    appointmentDate: string;
-    appointmentTime: string;
-    duration?: number;
-    notes?: string;
-    source?: 'web' | 'assistant' | 'walk_in' | 'phone';
-  }) => Promise<boolean>;
-  updateAppointment: (id: string, data: Partial<{
-    patientId: string;
-    doctorId: string;
-    appointmentDate: string;
-    appointmentTime: string;
-    duration: number;
-    notes: string;
-    source: 'web' | 'assistant' | 'walk_in' | 'phone';
-  }>) => Promise<boolean>;
-  cancelAppointment: (id: string) => Promise<boolean>;
+  createAppointment: (data: any) => Promise<boolean>;
+  updateAppointment: (id: string, data: any) => Promise<boolean>;
+  cancelAppointment: (id: string, reason: string) => Promise<boolean>;
   rescheduleAppointment: (id: string, newDate: string, newTime: string) => Promise<boolean>;
   completeAppointment: (id: string) => Promise<boolean>;
   markNoShow: (id: string) => Promise<boolean>;
-  getAvailableSlots: (doctorId: string, date: string) => Promise<string[]>;
+  getAvailableSlots: (doctorId: string, date: string) => Promise<any[]>;
   refreshAppointments: () => Promise<void>;
 }
 
-export const useAppointments = (): UseAppointmentsReturn => {
+export const useAppointments = (patientId?: string, doctorId?: string): UseAppointmentsReturn => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [stats, setStats] = useState<AppointmentStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 0,
-  });
-  const [searchQuery, setSearchQuery] = useState('');
 
-  // Fetch appointments by date range
-  const fetchAppointments = useCallback(async (page = 1, startDate?: string, endDate?: string) => {
+  const fetchAppointments = useCallback(async () => {
     setLoading(true);
     setError(null);
     
     try {
-      let response;
-      if (startDate && endDate) {
-        response = await appointmentApi.getByDateRange(startDate, endDate, page, pagination.limit);
+      let data;
+      if (patientId) {
+        data = await getPatientAppointments(patientId);
+      } else if (doctorId) {
+        const result = await getDoctorAppointments(doctorId);
+        data = result?.success && result?.data ? result.data : [];
       } else {
-        // Default to today's appointments if no date range provided
-        response = await appointmentApi.getToday();
-        if (response.success && response.data) {
-          setAppointments(response.data);
-          setPagination({
-            page: 1,
-            limit: response.data.length,
-            total: response.data.length,
-            totalPages: 1,
-          });
-        }
-        return;
+        const q = query(collection(db, 'appointments'));
+        const snapshot = await getDocs(q);
+        data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       }
       
-      if (response.success && response.data) {
-        setAppointments(response.data);
-        setPagination(response.pagination);
+      if (data) {
+        setAppointments(data as Appointment[]);
       }
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
+    } catch (err: any) {
+      setError(err.message);
       console.error('Failed to fetch appointments:', err);
     } finally {
       setLoading(false);
     }
-  }, [pagination.limit]);
+  }, [patientId, doctorId]);
 
-  // Fetch today's appointments
-  const fetchTodayAppointments = useCallback(async () => {
+  const createAppointment = useCallback(async (data: any): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await appointmentApi.getToday();
-      
-      if (response.success && response.data) {
-        setAppointments(response.data);
-        setPagination({
-          page: 1,
-          limit: response.data.length,
-          total: response.data.length,
-          totalPages: 1,
-        });
-      }
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to fetch today\'s appointments:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch appointment stats
-  const fetchAppointmentStats = useCallback(async () => {
-    try {
-      const response = await appointmentApi.getStats();
-      
-      if (response.success && response.data) {
-        setStats(response.data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch appointment stats:', err);
-    }
-  }, []);
-
-  // Create appointment
-  const createAppointment = useCallback(async (data: {
-    patientId: string;
-    doctorId: string;
-    appointmentDate: string;
-    appointmentTime: string;
-    duration?: number;
-    notes?: string;
-    source?: 'web' | 'assistant' | 'walk_in' | 'phone';
-  }): Promise<boolean> => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await appointmentApi.create(data);
-      
-      if (response.success) {
-        await fetchTodayAppointments();
-        await fetchAppointmentStats();
+      const result = await createAppointmentFirestore(data);
+      if (result.success) {
+        await fetchAppointments();
         return true;
       }
       return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to create appointment:', err);
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [fetchTodayAppointments, fetchAppointmentStats]);
+  }, [fetchAppointments]);
 
-  // Update appointment
-  const updateAppointment = useCallback(async (id: string, data: Partial<{
-    patientId: string;
-    doctorId: string;
-    appointmentDate: string;
-    appointmentTime: string;
-    duration: number;
-    notes: string;
-    source: 'web' | 'assistant' | 'walk_in' | 'phone';
-  }>): Promise<boolean> => {
+  const cancelAppointment = useCallback(async (id: string, reason: string): Promise<boolean> => {
     setLoading(true);
-    setError(null);
-    
     try {
-      const response = await appointmentApi.update(id, data);
-      
-      if (response.success) {
-        await fetchTodayAppointments();
+      const result = await cancelAppointmentFirestore(id, reason);
+      if (result.success) {
+        await fetchAppointments();
         return true;
       }
       return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to update appointment:', err);
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [fetchTodayAppointments]);
+  }, [fetchAppointments]);
 
-  // Cancel appointment
-  const cancelAppointment = useCallback(async (id: string): Promise<boolean> => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await appointmentApi.cancel(id);
-      
-      if (response.success) {
-        await fetchTodayAppointments();
-        await fetchAppointmentStats();
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to cancel appointment:', err);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchTodayAppointments, fetchAppointmentStats]);
-
-  // Reschedule appointment
   const rescheduleAppointment = useCallback(async (id: string, newDate: string, newTime: string): Promise<boolean> => {
     setLoading(true);
-    setError(null);
-    
     try {
-      const response = await appointmentApi.reschedule(id, newDate, newTime);
-      
-      if (response.success) {
-        await fetchTodayAppointments();
+      const result = await rescheduleAppointmentFirestore(id, newDate, newTime);
+      if (result.success) {
+        await fetchAppointments();
         return true;
       }
       return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to reschedule appointment:', err);
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [fetchTodayAppointments]);
+  }, [fetchAppointments]);
 
-  // Complete appointment
   const completeAppointment = useCallback(async (id: string): Promise<boolean> => {
     setLoading(true);
-    setError(null);
-    
     try {
-      const response = await appointmentApi.complete(id);
-      
-      if (response.success) {
-        await fetchTodayAppointments();
-        await fetchAppointmentStats();
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to complete appointment:', err);
+      await updateDoc(doc(db, 'appointments', id), {
+        status: 'completed',
+        updatedAt: Timestamp.now()
+      });
+      await fetchAppointments();
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [fetchTodayAppointments, fetchAppointmentStats]);
+  }, [fetchAppointments]);
 
-  // Mark as no-show
   const markNoShow = useCallback(async (id: string): Promise<boolean> => {
     setLoading(true);
-    setError(null);
-    
     try {
-      const response = await appointmentApi.noShow(id);
-      
-      if (response.success) {
-        await fetchTodayAppointments();
-        await fetchAppointmentStats();
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to mark as no-show:', err);
+      await updateDoc(doc(db, 'appointments', id), {
+        status: 'no_show',
+        updatedAt: Timestamp.now()
+      });
+      await fetchAppointments();
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [fetchTodayAppointments, fetchAppointmentStats]);
+  }, [fetchAppointments]);
 
-  // Get available slots
-  const getAvailableSlots = useCallback(async (doctorId: string, date: string): Promise<string[]> => {
+  const updateAppointment = useCallback(async (id: string, data: any): Promise<boolean> => {
+    setLoading(true);
     try {
-      const response = await appointmentApi.getAvailableSlots(doctorId, date);
-      
-      if (response.success && response.data) {
-        return response.data;
+      await updateDoc(doc(db, 'appointments', id), {
+        ...data,
+        updatedAt: Timestamp.now()
+      });
+      await fetchAppointments();
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchAppointments]);
+
+  const getAvailableSlots = useCallback(async (doctorId: string, date: string): Promise<any[]> => {
+    try {
+      // Get all appointments for this doctor on this date
+      const q = query(
+        collection(db, 'appointments'),
+        where('doctorId', '==', doctorId),
+        where('appointmentDate', '==', date)
+      );
+      const snapshot = await getDocs(q);
+      const bookedTimes = snapshot.docs.map(doc => doc.data().appointmentTime);
+
+      // Generate time slots (9 AM to 5 PM, 30-minute intervals)
+      const slots = [];
+      for (let hour = 9; hour < 17; hour++) {
+        for (let minute of [0, 30]) {
+          const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+          slots.push({
+            time,
+            isBooked: bookedTimes.includes(time)
+          });
+        }
       }
-      return [];
-    } catch (err) {
-      console.error('Failed to fetch available slots:', err);
+      return slots;
+    } catch (err: any) {
+      console.error('Error getting available slots:', err);
       return [];
     }
   }, []);
 
-  // Refresh appointments
   const refreshAppointments = useCallback(async () => {
-    // Load appointments for the current week instead of just today
-    const today = new Date();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
-    const endOfWeek = new Date(today);
-    endOfWeek.setDate(today.getDate() + (6 - today.getDay())); // End of week (Saturday)
-    
-    await fetchAppointments(1, startOfWeek.toISOString().split('T')[0], endOfWeek.toISOString().split('T')[0]);
-    await fetchAppointmentStats();
-  }, [fetchAppointments, fetchAppointmentStats]);
+    await fetchAppointments();
+  }, [fetchAppointments]);
 
-  // Load data on mount
   useEffect(() => {
-    // Load appointments for the current week instead of just today
-    const today = new Date();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
-    const endOfWeek = new Date(today);
-    endOfWeek.setDate(today.getDate() + (6 - today.getDay())); // End of week (Saturday)
-    
-    fetchAppointments(1, startOfWeek.toISOString().split('T')[0], endOfWeek.toISOString().split('T')[0]);
-    fetchAppointmentStats();
-  }, []); // Empty dependency array to run only once on mount
+    fetchAppointments();
+  }, [fetchAppointments]);
 
   return {
     appointments,
-    stats,
     loading,
     error,
-    pagination,
-    searchQuery,
-    setSearchQuery,
-    fetchAppointments,
-    fetchTodayAppointments,
-    fetchAppointmentStats,
     createAppointment,
     updateAppointment,
     cancelAppointment,

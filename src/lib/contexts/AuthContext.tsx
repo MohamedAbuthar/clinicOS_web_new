@@ -1,23 +1,20 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
-import { authApi, apiUtils } from '@/lib/api';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { auth } from '../firebase/config';
+import { adminSignIn, signOut as firebaseSignOut, UserProfile } from '../firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
 interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  user: UserProfile | null;
+  firebaseUser: FirebaseUser | null;
+  isLoading: boolean;
   isAuthenticated: boolean;
+  login: (email: string, password: string) => Promise<any>;
+  logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -35,58 +32,111 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
+  const isAuthenticated = !!firebaseUser && !!user;
+
+  // Firebase auth state listener
   useEffect(() => {
-    // Check for stored token on mount
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setFirebaseUser(firebaseUser);
+      
+      if (firebaseUser) {
+        // User is signed in, get user profile from Firestore
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as UserProfile;
+            
+            // Verify user is admin, doctor, or assistant
+            if (['admin', 'doctor', 'assistant'].includes(userData.role)) {
+              setUser(userData);
+            } else {
+              console.log('User is not authorized (not staff)');
+              await firebaseSignOut();
+              setUser(null);
+            }
+          } else {
+            console.log('User profile not found');
+            setUser(null);
+          }
+        } catch (error) {
+          console.error('Error fetching user profile:', error);
+          setUser(null);
+        }
+      } else {
+        // User is signed out
+        setUser(null);
+      }
+      
+      setIsLoading(false);
+    });
 
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
+    // Cleanup subscription
+    return () => unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string) => {
     try {
-      const response = await authApi.login(email, password);
+      console.log('Signing in admin/staff with email:', email);
+      const result = await adminSignIn(email, password);
       
-      if (response.success && response.data) {
-        setToken(response.data.token);
-        setUser(response.data.user);
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        return true;
+      if (result.success && result.user && result.firebaseUser) {
+        console.log('Admin signed in successfully');
+        setUser(result.user);
+        setFirebaseUser(result.firebaseUser);
+        
+        return {
+          success: true,
+          message: 'Login successful',
+          user: result.user
+        };
+      } else {
+        throw new Error('Login failed');
       }
-      return false;
-    } catch (error) {
-      console.error('Login error:', error);
-      return false;
+    } catch (error: any) {
+      console.error('Login error in context:', error);
+      return {
+        success: false,
+        message: error.message || 'Login failed'
+      };
     }
   };
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/auth-login');
+  const logout = async () => {
+    try {
+      await firebaseSignOut();
+      setUser(null);
+      setFirebaseUser(null);
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
   };
 
-  const isAuthenticated = !!token && !!user;
+  const refreshUser = async (): Promise<void> => {
+    if (!firebaseUser) return;
+
+    try {
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      if (userDoc.exists()) {
+        setUser(userDoc.data() as UserProfile);
+      }
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
+      await logout();
+    }
+  };
 
   const value: AuthContextType = {
     user,
-    token,
-    loading,
+    firebaseUser,
+    isLoading,
+    isAuthenticated,
     login,
     logout,
-    isAuthenticated,
+    refreshUser,
   };
 
   return (

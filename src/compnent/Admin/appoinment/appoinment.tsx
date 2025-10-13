@@ -41,6 +41,13 @@ export default function AppointmentsPage() {
   const { doctors } = useDoctors();
   const { patients, createPatient } = usePatients();
 
+  // Debug: Log doctors and appointments when they change
+  useEffect(() => {
+    console.log('Appointments page - doctors:', doctors);
+    console.log('Appointments page - appointments:', appointments);
+    console.log('Appointments page - patients:', patients);
+  }, [doctors, appointments, patients]);
+
   // Show success message and hide after 3 seconds
   useEffect(() => {
     if (successMessage) {
@@ -55,6 +62,8 @@ export default function AppointmentsPage() {
   };
 
   const handleSubmit = async () => {
+    console.log('handleSubmit: Starting...', formData);
+    
     if (!formData.patientName || !formData.phone || !formData.doctor || !formData.date || !formData.time) {
       setSuccessMessage('Please fill in all required fields');
       return;
@@ -64,41 +73,44 @@ export default function AppointmentsPage() {
     try {
       // First, create or find patient
       let patientId = patients.find(p => p.phone === formData.phone)?.id;
+      console.log('Existing patient ID:', patientId);
       
       if (!patientId) {
-        // Create new patient
-        const patientCreated = await createPatient({
+        console.log('Creating new patient...');
+        // Create new patient - this returns the new patient's ID
+        const newPatientData = {
           name: formData.patientName,
           phone: formData.phone,
           email: formData.email || undefined,
-          dateOfBirth: '1990-01-01', // Default date, should be collected in real app
-          gender: 'other', // Default gender, should be collected in real app
-        });
+          dateOfBirth: '1990-01-01', // Default date
+          gender: 'other' as const, // Default gender
+        };
         
-        if (!patientCreated) {
+        const newPatientId = await createPatient(newPatientData);
+        console.log('Patient created with ID:', newPatientId);
+        
+        if (!newPatientId) {
           setSuccessMessage('Failed to create patient');
+          setActionLoading(false);
           return;
         }
         
-        // Find the newly created patient
-        const newPatient = patients.find(p => p.phone === formData.phone);
-        patientId = newPatient?.id;
+        patientId = newPatientId;
       }
 
-      if (!patientId) {
-        setSuccessMessage('Failed to find or create patient');
-        return;
-      }
+      console.log('Creating appointment with patientId:', patientId);
 
       // Create appointment
       const success = await createAppointment({
-        patientId,
+        patientId: patientId,
         doctorId: formData.doctor,
         appointmentDate: formData.date,
         appointmentTime: formData.time,
         notes: formData.notes,
         source: formData.source as 'web' | 'assistant' | 'walk_in' | 'phone',
       });
+
+      console.log('Appointment creation result:', success);
 
       if (success) {
         setSuccessMessage('Appointment created successfully');
@@ -109,8 +121,9 @@ export default function AppointmentsPage() {
       } else {
         setSuccessMessage('Failed to create appointment');
       }
-    } catch (err) {
-      setSuccessMessage(apiUtils.handleError(err));
+    } catch (err: any) {
+      console.error('Error creating appointment:', err);
+      setSuccessMessage(err.message || 'Failed to create appointment');
     } finally {
       setActionLoading(false);
     }
@@ -136,7 +149,7 @@ export default function AppointmentsPage() {
       
       switch (action) {
         case 'cancel':
-          success = await cancelAppointment(appointmentId);
+          success = await cancelAppointment(appointmentId, 'Cancelled by admin');
           break;
         case 'complete':
           success = await completeAppointment(appointmentId);
@@ -382,8 +395,12 @@ export default function AppointmentsPage() {
             );
           })
         ) : (
-          <div className="col-span-11 px-6 py-12 text-center text-gray-500">
-            No appointments found
+          <div className="px-6 py-12 text-center">
+            <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg font-medium">No appointments found</p>
+            <p className="text-gray-400 text-sm mt-2">
+              {loading ? 'Loading appointments...' : 'Create your first appointment to get started'}
+            </p>
           </div>
         )}
       </div>

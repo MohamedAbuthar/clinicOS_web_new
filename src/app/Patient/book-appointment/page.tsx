@@ -1,10 +1,10 @@
 import BookAppointmentPage from "@/compnent/Patient/appointment/bookappointment";
-import PatientRootLayout from "@/compnent/Patient/layout/rootlayout";
+import PatientLayout from "@/compnent/Patient/layout/PatientLayout";
 
 export default function BookAppointment() {
     return (
-        <PatientRootLayout>
+        <PatientLayout>
           <BookAppointmentPage />
-        </PatientRootLayout>
+        </PatientLayout>
     ) 
 }

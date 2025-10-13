@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { FileText, Download, Eye, Syringe, Calendar, X } from 'lucide-react';
+import { patientMedicalRecordsApi, MedicalReport, Prescription, Vaccination } from '@/lib/api';
+import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 
 // TypeScript Interfaces
 interface Report {
@@ -48,70 +51,62 @@ interface ViewDialogData {
 }
 
 export default function MedicalRecordsPage() {
+  const router = useRouter();
+  const { isAuthenticated } = usePatientAuth();
+  
   const [activeTab, setActiveTab] = useState<'reports' | 'prescriptions' | 'vaccinations'>('reports');
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [viewDialogData, setViewDialogData] = useState<ViewDialogData | null>(null);
+  const [reports, setReports] = useState<MedicalReport[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const reports: Report[] = [
-    {
-      id: 1,
-      title: 'Blood Test Report',
-      doctor: 'Dr. Priya Sharma',
-      date: '9/28/2025',
-      type: 'Lab Report',
-      category: 'lab'
-    },
-    {
-      id: 2,
-      title: 'X-Ray Chest',
-      doctor: 'Dr. Siva Raman',
-      date: '9/15/2025',
-      type: 'Imaging',
-      category: 'imaging'
-    },
-    {
-      id: 3,
-      title: 'ECG Report',
-      doctor: 'Dr. Rajesh Kumar',
-      date: '8/22/2025',
-      type: 'Cardiac',
-      category: 'cardiac'
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/Auth-patientLogin');
     }
-  ];
+  }, [isAuthenticated, router]);
 
-  const prescriptions: Prescription[] = [
-    {
-      id: 1,
-      doctor: 'Dr. Priya Sharma',
-      date: '9/28/2025',
-      medications: ['Paracetamol 500mg', 'Vitamin D3'],
-      daysRemaining: 7
-    },
-    {
-      id: 2,
-      doctor: 'Dr. Siva Raman',
-      date: '9/15/2025',
-      medications: ['Antibiotic Cream', 'Moisturizer'],
-      daysRemaining: 14
-    }
-  ];
+  // Load medical records on component mount
+  useEffect(() => {
+    const loadMedicalRecords = async () => {
+      if (isAuthenticated) {
+        try {
+          setIsLoading(true);
+          setError('');
+          
+          // Load all medical records in parallel
+          const [reportsResponse, prescriptionsResponse, vaccinationsResponse] = await Promise.all([
+            patientMedicalRecordsApi.getMedicalReports(),
+            patientMedicalRecordsApi.getPrescriptions(),
+            patientMedicalRecordsApi.getVaccinations()
+          ]);
 
-  const vaccinations: Vaccination[] = [
-    {
-      id: 1,
-      name: 'COVID-19 Booster',
-      administered: '3/15/2025',
-      nextDue: '3/15/2026',
-      status: 'Completed'
-    },
-    {
-      id: 2,
-      name: 'Tetanus Toxoid',
-      administered: '1/10/2024',
-      nextDue: '1/10/2034',
-      status: 'Completed'
-    }
-  ];
+          if (reportsResponse.success && reportsResponse.data) {
+            setReports(reportsResponse.data);
+          }
+
+          if (prescriptionsResponse.success && prescriptionsResponse.data) {
+            setPrescriptions(prescriptionsResponse.data);
+          }
+
+          if (vaccinationsResponse.success && vaccinationsResponse.data) {
+            setVaccinations(vaccinationsResponse.data);
+          }
+        } catch (error: any) {
+          setError(error.message || 'Failed to load medical records');
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadMedicalRecords();
+  }, [isAuthenticated]);
+
 
   const tabs = [
     { id: 'reports' as const, label: 'Reports' },
@@ -119,15 +114,15 @@ export default function MedicalRecordsPage() {
     { id: 'vaccinations' as const, label: 'Vaccinations' }
   ];
 
-  const handleViewReport = (report: Report) => {
+  const handleViewReport = (report: MedicalReport) => {
     setViewDialogData({
       title: report.title,
-      doctor: report.doctor,
-      date: report.date,
+      doctor: report.doctorName,
+      date: new Date(report.reportDate).toLocaleDateString(),
       type: 'report',
       content: {
-        findings: 'All parameters are within normal range. No abnormalities detected.',
-        recommendations: 'Continue with regular health checkups. Maintain a balanced diet and regular exercise.'
+        findings: report.findings || 'No specific findings recorded.',
+        recommendations: report.recommendations || 'Follow up as needed.'
       }
     });
     setShowViewDialog(true);
@@ -136,12 +131,12 @@ export default function MedicalRecordsPage() {
   const handleViewPrescription = (prescription: Prescription) => {
     setViewDialogData({
       title: 'Prescription Details',
-      doctor: prescription.doctor,
-      date: prescription.date,
+      doctor: prescription.doctorName,
+      date: new Date(prescription.prescriptionDate).toLocaleDateString(),
       type: 'prescription',
       content: {
-        medications: prescription.medications,
-        instructions: 'Take medications as prescribed. Complete the full course.'
+        medications: prescription.medications.map(med => `${med.medicationName} ${med.dosage} - ${med.instructions}`),
+        instructions: prescription.instructions || 'Take medications as prescribed. Complete the full course.'
       }
     });
     setShowViewDialog(true);
@@ -155,6 +150,20 @@ export default function MedicalRecordsPage() {
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Medical Records</h1>
           <p className="text-gray-500 text-lg">View your medical history and reports</p>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-600">{error}</p>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="text-center py-12">
+            <p className="text-gray-500">Loading medical records...</p>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="bg-gray-100 rounded-2xl p-2 mb-6 inline-flex gap-1">
@@ -174,115 +183,135 @@ export default function MedicalRecordsPage() {
         </div>
 
         {/* Content Area */}
-        <div>
-          {/* Reports Tab */}
-          {activeTab === 'reports' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {reports.map((report) => (
-                <div key={report.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-14 h-14 bg-teal-50 rounded-full flex items-center justify-center">
-                      <FileText className="w-7 h-7 text-teal-600" />
-                    </div>
-                    <span className="bg-teal-600 text-white px-3 py-1 rounded-full text-xs font-medium">
-                      {report.type}
-                    </span>
+        {!isLoading && (
+          <div>
+            {/* Reports Tab */}
+            {activeTab === 'reports' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {reports.length === 0 ? (
+                  <div className="col-span-full text-center py-12">
+                    <p className="text-gray-500">No medical reports found.</p>
                   </div>
-
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">{report.title}</h3>
-                  <p className="text-gray-500 mb-1">{report.doctor}</p>
-                  <div className="flex items-center gap-2 text-gray-500 text-sm mb-6">
-                    <Calendar className="w-4 h-4" />
-                    <span>{report.date}</span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleViewReport(report)}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-50 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
-                    >
-                      <Eye className="w-4 h-4" />
-                      View
-                    </button>
-                    <button className="p-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
-                      <Download className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Prescriptions Tab */}
-          {activeTab === 'prescriptions' && (
-            <div className="space-y-4">
-              {prescriptions.map((prescription) => (
-                <div key={prescription.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-1">{prescription.doctor}</h3>
-                      <p className="text-gray-500">{prescription.date}</p>
-                    </div>
-                    <span className="bg-teal-600 text-white px-3 py-1 rounded-full text-sm font-medium">
-                      {prescription.daysRemaining} days
-                    </span>
-                  </div>
-
-                  <div className="mb-4">
-                    <h4 className="font-bold text-gray-900 mb-2">Medications:</h4>
-                    <ul className="space-y-1">
-                      {prescription.medications.map((med, idx) => (
-                        <li key={idx} className="flex items-start gap-2 text-gray-700">
-                          <span className="w-1.5 h-1.5 bg-teal-600 rounded-full mt-2"></span>
-                          <span>{med}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => handleViewPrescription(prescription)}
-                      className="flex items-center gap-2 px-6 py-2 bg-gray-50 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
-                    >
-                      <Eye className="w-4 h-4" />
-                      View Full
-                    </button>
-                    <button className="flex items-center gap-2 px-6 py-2 bg-gray-50 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors">
-                      <Download className="w-4 h-4" />
-                      Download
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Vaccinations Tab */}
-          {activeTab === 'vaccinations' && (
-            <div className="space-y-4">
-              {vaccinations.map((vaccination) => (
-                <div key={vaccination.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4">
-                      <div className="w-14 h-14 bg-teal-50 rounded-full flex items-center justify-center">
-                        <Syringe className="w-6 h-6 text-teal-600" />
+                ) : (
+                  reports.map((report) => (
+                    <div key={report.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="w-14 h-14 bg-teal-50 rounded-full flex items-center justify-center">
+                          <FileText className="w-7 h-7 text-teal-600" />
+                        </div>
+                        <span className="bg-teal-600 text-white px-3 py-1 rounded-full text-xs font-medium">
+                          {report.reportType}
+                        </span>
                       </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-2">{vaccination.name}</h3>
-                        <p className="text-gray-500 text-sm mb-1">Administered: {vaccination.administered}</p>
-                        <p className="text-gray-500 text-sm">Next Due: {vaccination.nextDue}</p>
+
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">{report.title}</h3>
+                      <p className="text-gray-500 mb-1">{report.doctorName}</p>
+                      <div className="flex items-center gap-2 text-gray-500 text-sm mb-6">
+                        <Calendar className="w-4 h-4" />
+                        <span>{new Date(report.reportDate).toLocaleDateString()}</span>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleViewReport(report)}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-50 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View
+                        </button>
+                        <button className="p-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                          <Download className="w-5 h-5" />
+                        </button>
                       </div>
                     </div>
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-md text-sm font-medium">
-                      {vaccination.status}
-                    </span>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Prescriptions Tab */}
+            {activeTab === 'prescriptions' && (
+              <div className="space-y-4">
+                {prescriptions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No prescriptions found.</p>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ) : (
+                  prescriptions.map((prescription) => (
+                    <div key={prescription.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900 mb-1">{prescription.doctorName}</h3>
+                          <p className="text-gray-500">{new Date(prescription.prescriptionDate).toLocaleDateString()}</p>
+                        </div>
+                        <span className="bg-teal-600 text-white px-3 py-1 rounded-full text-sm font-medium">
+                          {prescription.daysRemaining || 0} days
+                        </span>
+                      </div>
+
+                      <div className="mb-4">
+                        <h4 className="font-bold text-gray-900 mb-2">Medications:</h4>
+                        <ul className="space-y-1">
+                          {prescription.medications.map((med, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-gray-700">
+                              <span className="w-1.5 h-1.5 bg-teal-600 rounded-full mt-2"></span>
+                              <span>{med.medicationName} {med.dosage}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleViewPrescription(prescription)}
+                          className="flex items-center gap-2 px-6 py-2 bg-gray-50 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View Full
+                        </button>
+                        <button className="flex items-center gap-2 px-6 py-2 bg-gray-50 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors">
+                          <Download className="w-4 h-4" />
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Vaccinations Tab */}
+            {activeTab === 'vaccinations' && (
+              <div className="space-y-4">
+                {vaccinations.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No vaccination records found.</p>
+                  </div>
+                ) : (
+                  vaccinations.map((vaccination) => (
+                    <div key={vaccination.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-4">
+                          <div className="w-14 h-14 bg-teal-50 rounded-full flex items-center justify-center">
+                            <Syringe className="w-6 h-6 text-teal-600" />
+                          </div>
+                          <div>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">{vaccination.vaccineName}</h3>
+                            <p className="text-gray-500 text-sm mb-1">Administered: {new Date(vaccination.administeredDate).toLocaleDateString()}</p>
+                            <p className="text-gray-500 text-sm">Next Due: {vaccination.nextDueDate ? new Date(vaccination.nextDueDate).toLocaleDateString() : 'N/A'}</p>
+                          </div>
+                        </div>
+                        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-md text-sm font-medium">
+                          {vaccination.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* View Dialog */}

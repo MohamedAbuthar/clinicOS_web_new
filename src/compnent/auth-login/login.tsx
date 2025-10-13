@@ -2,7 +2,10 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authApi, apiUtils } from '@/lib/api';
+import { signUpWithEmail, signOut } from '@/lib/firebase/auth';
+import { db } from '@/lib/firebase/config';
+import { doc, setDoc } from 'firebase/firestore';
+import { useAuth } from '@/lib/contexts/AuthContext';
 import { AlertCircle, Loader2, CheckCircle } from 'lucide-react';
 
 const Auth = () => {
@@ -15,6 +18,7 @@ const Auth = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const router = useRouter();
+  const { login: contextLogin } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,16 +28,26 @@ const Auth = () => {
 
     try {
       if (activeTab === 'signup') {
-        // Handle signup logic
-        const response = await authApi.register({
-          name: fullName,
-          email: email,
-          password: password,
-          phone: phone,
-          role: 'admin' // Default role for new users
-        });
+        // Handle signup logic with Firebase
+        const user = await signUpWithEmail(email, password);
+        
+        if (user) {
+          // Create user profile in Firestore
+          await setDoc(doc(db, 'users', user.uid), {
+            id: user.uid,
+            name: fullName,
+            email: email,
+            role: 'admin',
+            phone: phone,
+            avatar: '',
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
 
-        if (response.success) {
+          // Sign out after signup so user can log in fresh
+          await signOut();
+
           setSuccessMessage('Account created successfully! Please sign in.');
           // Clear form and switch to login
           setActiveTab('login');
@@ -42,29 +56,25 @@ const Auth = () => {
           setPassword('');
           setPhone('');
         } else {
-          setError(response.message || 'Failed to create account');
+          setError('Failed to create account');
         }
       } else {
-        // Handle login logic
-        const response = await authApi.login(email, password);
+        // Handle login logic using AuthContext
+        const result = await contextLogin(email, password);
 
-        if (response.success && response.data) {
-          // Store token in localStorage
-          localStorage.setItem('token', response.data.token);
-          localStorage.setItem('user', JSON.stringify(response.data.user));
-          
+        if (result.success) {
           setSuccessMessage('Login successful! Redirecting...');
           
-          // Redirect to dashboard after a short delay
-          setTimeout(() => {
-            router.push('/Admin/dashboard');
-          }, 1000);
+          // Wait a bit for auth state to propagate, then redirect
+          console.log('Redirecting to dashboard...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          router.push('/Admin/dashboard');
         } else {
-          setError(response.message || 'Invalid email or password');
+          setError(result.message || 'Invalid email or password');
         }
       }
-    } catch (err) {
-      setError(apiUtils.handleError(err));
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
     } finally {
       setLoading(false);
     }

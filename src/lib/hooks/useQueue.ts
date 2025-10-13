@@ -1,11 +1,44 @@
 import { useState, useEffect, useCallback } from 'react';
-import { queueApi, ApiError, QueueItem, QueueAnalytics, apiUtils } from '../api';
+import { getDoctorQueue } from '../firebase/firestore';
+import { collection, addDoc, updateDoc, doc, Timestamp, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { db } from '../firebase/config';
+
+export interface QueueItem {
+  id: string;
+  appointmentId: string;
+  patientId: string;
+  doctorId: string;
+  tokenNumber: string;
+  position: number;
+  status: 'waiting' | 'current' | 'completed' | 'skipped' | 'cancelled';
+  arrivedAt?: any;
+  calledAt?: any;
+  completedAt?: any;
+  skippedAt?: any;
+  waitingTime?: number;
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface QueueStats {
+  total: number;
+  waiting: number;
+  completed: number;
+  avgWaitTime: string;
+}
+
+export interface Activity {
+  id: string;
+  message: string;
+  timestamp: string;
+  type: 'success' | 'warning' | 'info';
+}
 
 export interface UseQueueReturn {
   currentPatient: QueueItem | null;
   waitingQueue: QueueItem[];
-  queueStats: QueueAnalytics | null;
-  activities: any[];
+  queueStats: QueueStats;
+  activities: Activity[];
   loading: boolean;
   error: string | null;
   selectedDoctorId: string | null;
@@ -13,235 +46,194 @@ export interface UseQueueReturn {
   fetchQueueData: (doctorId: string) => Promise<void>;
   callNextPatient: () => Promise<boolean>;
   skipPatient: (queueItemId: string, reason?: string) => Promise<boolean>;
-  reinsertPatient: (queueItemId: string) => Promise<boolean>;
   completePatient: (queueItemId: string) => Promise<boolean>;
+  reinsertPatient: (queueItemId: string) => Promise<boolean>;
   updateQueuePosition: (queueItemId: string, newPosition: number) => Promise<boolean>;
-  addToQueue: (data: {
-    appointmentId: string;
-    patientId: string;
-    doctorId: string;
-    tokenNumber: string;
-  }) => Promise<boolean>;
+  addToQueue: (data: any) => Promise<boolean>;
   refreshQueue: () => Promise<void>;
 }
 
 export const useQueue = (): UseQueueReturn => {
   const [currentPatient, setCurrentPatient] = useState<QueueItem | null>(null);
   const [waitingQueue, setWaitingQueue] = useState<QueueItem[]>([]);
-  const [queueStats, setQueueStats] = useState<QueueAnalytics | null>(null);
-  const [activities, setActivities] = useState<any[]>([]);
+  const [queueStats, setQueueStats] = useState<QueueStats>({
+    total: 0,
+    waiting: 0,
+    completed: 0,
+    avgWaitTime: '0 min'
+  });
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
 
-  // Fetch queue data for a specific doctor
   const fetchQueueData = useCallback(async (doctorId: string) => {
     setLoading(true);
     setError(null);
     
     try {
-      const [currentResponse, waitingResponse, statsResponse] = await Promise.all([
-        queueApi.getCurrentPatient(doctorId),
-        queueApi.getWaitingQueue(doctorId),
-        queueApi.getStats(doctorId),
-      ]);
-
-      if (currentResponse.success && currentResponse.data) {
-        setCurrentPatient(currentResponse.data);
-      } else {
-        setCurrentPatient(null);
+      const result = await getDoctorQueue(doctorId);
+      if (result.success && result.data) {
+        const queue = result.data as QueueItem[];
+        const current = queue.find(item => item.status === 'current') || null;
+        const waiting = queue.filter(item => item.status === 'waiting');
+        const completed = queue.filter(item => item.status === 'completed');
+        
+        setCurrentPatient(current);
+        setWaitingQueue(waiting);
+        
+        // Calculate stats
+        setQueueStats({
+          total: queue.length,
+          waiting: waiting.length,
+          completed: completed.length,
+          avgWaitTime: '15 min' // TODO: Calculate actual average
+        });
       }
-
-      if (waitingResponse.success && waitingResponse.data) {
-        setWaitingQueue(waitingResponse.data);
-      } else {
-        setWaitingQueue([]);
-      }
-
-      if (statsResponse.success && statsResponse.data) {
-        setQueueStats(statsResponse.data);
-      }
-
-      // Generate sample activities (in real app, this would come from activities API)
-      setActivities([
-        {
-          id: '1',
-          message: 'Queue initialized',
-          timestamp: 'Just now',
-          type: 'info'
-        }
-      ]);
-
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
+    } catch (err: any) {
+      setError(err.message);
       console.error('Failed to fetch queue data:', err);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Call next patient
   const callNextPatient = useCallback(async (): Promise<boolean> => {
     if (!selectedDoctorId) return false;
     
     setLoading(true);
-    setError(null);
-    
     try {
-      const response = await queueApi.callNext(selectedDoctorId);
-      
-      if (response.success) {
-        await fetchQueueData(selectedDoctorId);
-        return true;
+      if (currentPatient) {
+        await updateDoc(doc(db, 'queue', currentPatient.id), {
+          status: 'completed',
+          completedAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
       }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to call next patient:', err);
+      
+      if (waitingQueue.length > 0) {
+        const nextPatient = waitingQueue[0];
+        await updateDoc(doc(db, 'queue', nextPatient.id), {
+          status: 'current',
+          calledAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        });
+      }
+      
+      await fetchQueueData(selectedDoctorId);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [selectedDoctorId, fetchQueueData]);
+  }, [selectedDoctorId, currentPatient, waitingQueue, fetchQueueData]);
 
-  // Skip patient
   const skipPatient = useCallback(async (queueItemId: string, reason?: string): Promise<boolean> => {
     setLoading(true);
-    setError(null);
-    
     try {
-      const response = await queueApi.skip(queueItemId, reason);
-      
-      if (response.success) {
-        if (selectedDoctorId) {
-          await fetchQueueData(selectedDoctorId);
-        }
-        return true;
+      await updateDoc(doc(db, 'queue', queueItemId), {
+        status: 'skipped',
+        skippedAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      if (selectedDoctorId) {
+        await fetchQueueData(selectedDoctorId);
       }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to skip patient:', err);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
   }, [selectedDoctorId, fetchQueueData]);
 
-  // Reinsert patient
-  const reinsertPatient = useCallback(async (queueItemId: string): Promise<boolean> => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await queueApi.reinsert(queueItemId);
-      
-      if (response.success) {
-        if (selectedDoctorId) {
-          await fetchQueueData(selectedDoctorId);
-        }
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to reinsert patient:', err);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedDoctorId, fetchQueueData]);
-
-  // Complete patient
   const completePatient = useCallback(async (queueItemId: string): Promise<boolean> => {
     setLoading(true);
-    setError(null);
-    
     try {
-      const response = await queueApi.complete(queueItemId);
-      
-      if (response.success) {
-        if (selectedDoctorId) {
-          await fetchQueueData(selectedDoctorId);
-        }
-        return true;
+      await updateDoc(doc(db, 'queue', queueItemId), {
+        status: 'completed',
+        completedAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      if (selectedDoctorId) {
+        await fetchQueueData(selectedDoctorId);
       }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to complete patient:', err);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
   }, [selectedDoctorId, fetchQueueData]);
 
-  // Update queue position
-  const updateQueuePosition = useCallback(async (queueItemId: string, newPosition: number): Promise<boolean> => {
+  const addToQueue = useCallback(async (data: any): Promise<boolean> => {
     setLoading(true);
-    setError(null);
-    
     try {
-      const response = await queueApi.updatePosition({ queueItemId, newPosition });
-      
-      if (response.success) {
-        if (selectedDoctorId) {
-          await fetchQueueData(selectedDoctorId);
-        }
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to update queue position:', err);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedDoctorId, fetchQueueData]);
-
-  // Add to queue
-  const addToQueue = useCallback(async (data: {
-    appointmentId: string;
-    patientId: string;
-    doctorId: string;
-    tokenNumber: string;
-  }): Promise<boolean> => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await queueApi.addToQueue(data);
-      
-      if (response.success) {
-        await fetchQueueData(data.doctorId);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      const errorMessage = apiUtils.handleError(err);
-      setError(errorMessage);
-      console.error('Failed to add to queue:', err);
+      await addDoc(collection(db, 'queue'), {
+        ...data,
+        status: 'waiting',
+        arrivedAt: Timestamp.now(),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      await fetchQueueData(data.doctorId);
+      return true;
+    } catch (err: any) {
+      setError(err.message);
       return false;
     } finally {
       setLoading(false);
     }
   }, [fetchQueueData]);
 
-  // Refresh queue
+  const reinsertPatient = useCallback(async (queueItemId: string): Promise<boolean> => {
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'queue', queueItemId), {
+        status: 'waiting',
+        updatedAt: Timestamp.now()
+      });
+      if (selectedDoctorId) {
+        await fetchQueueData(selectedDoctorId);
+      }
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedDoctorId, fetchQueueData]);
+
+  const updateQueuePosition = useCallback(async (queueItemId: string, newPosition: number): Promise<boolean> => {
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'queue', queueItemId), {
+        position: newPosition,
+        updatedAt: Timestamp.now()
+      });
+      if (selectedDoctorId) {
+        await fetchQueueData(selectedDoctorId);
+      }
+      return true;
+    } catch (err: any) {
+      setError(err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedDoctorId, fetchQueueData]);
+
   const refreshQueue = useCallback(async () => {
     if (selectedDoctorId) {
       await fetchQueueData(selectedDoctorId);
     }
   }, [selectedDoctorId, fetchQueueData]);
 
-  // Load queue data when doctor is selected
   useEffect(() => {
     if (selectedDoctorId) {
       fetchQueueData(selectedDoctorId);
@@ -260,8 +252,8 @@ export const useQueue = (): UseQueueReturn => {
     fetchQueueData,
     callNextPatient,
     skipPatient,
-    reinsertPatient,
     completePatient,
+    reinsertPatient,
     updateQueuePosition,
     addToQueue,
     refreshQueue,
