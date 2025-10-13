@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Save, X, Edit2, User, Mail, Phone, MapPin, Calendar, Activity, Plus, Trash2, UserPlus, RefreshCw } from 'lucide-react';
+import { Loader2, Save, X, Edit2, User, Mail, Phone, MapPin, Calendar, Activity, Plus, Trash2, UserPlus, RefreshCw, Wrench } from 'lucide-react';
 import { usePatientProfile } from '@/lib/hooks/usePatientProfile';
 import { useFamilyMembers } from '@/lib/hooks/useFamilyMembers';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 import { Patient } from '@/lib/api';
+import { fixExistingFamilyMembers, listAllPatientsForDebug } from '@/lib/utils/fixFamilyMembers';
 
 export default function PatientProfileWithEdit() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function PatientProfileWithEdit() {
   const [selectedMember, setSelectedMember] = useState<Patient | null>(null);
   const [memberFormData, setMemberFormData] = useState<Partial<Patient>>({});
   const [isSavingMember, setIsSavingMember] = useState(false);
+  const [isFixingFamilyMembers, setIsFixingFamilyMembers] = useState(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -236,6 +238,15 @@ export default function PatientProfileWithEdit() {
       setIsSavingMember(true);
       setErrorMessage('');
 
+      console.log('💾 Starting to save family member...');
+      console.log('   Patient ID:', patient?.id);
+      console.log('   Patient FamilyId:', patient?.familyId);
+      console.log('   Member Data:', { 
+        name: memberFormData.name, 
+        dateOfBirth: memberFormData.dateOfBirth,
+        gender: memberFormData.gender 
+      });
+
       // Validation
       if (!memberFormData.name || memberFormData.name.trim().length < 2) {
         throw new Error('Name must be at least 2 characters');
@@ -249,11 +260,20 @@ export default function PatientProfileWithEdit() {
         throw new Error('Gender is required');
       }
 
+      console.log('✅ Validation passed, calling addMember...');
       await addMember(memberFormData);
+      
+      console.log('✅ Family member added, closing modal...');
       setShowAddMemberModal(false);
-      setSuccessMessage('Family member added successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      setSuccessMessage('✅ Family member added successfully! Refreshing in 2 seconds...');
+      
+      // Force refresh after 2 seconds
+      setTimeout(() => {
+        console.log('🔄 Auto-refreshing page...');
+        window.location.reload();
+      }, 2000);
     } catch (err: any) {
+      console.error('❌ Error saving family member:', err);
       setErrorMessage(err.message || 'Failed to add family member');
     } finally {
       setIsSavingMember(false);
@@ -310,6 +330,42 @@ export default function PatientProfileWithEdit() {
     setSelectedMember(null);
     setMemberFormData({});
     setErrorMessage('');
+  };
+
+  const handleFixFamilyMembers = async () => {
+    if (!patient?.id || !patient?.email) {
+      setErrorMessage('Patient information not available');
+      return;
+    }
+
+    try {
+      setIsFixingFamilyMembers(true);
+      setErrorMessage('');
+      setSuccessMessage('');
+
+      console.log('🔧 Starting family member fix process...');
+      
+      // First, list all patients for debugging
+      await listAllPatientsForDebug();
+      
+      // Then fix the family members
+      const result = await fixExistingFamilyMembers(patient.id, patient.email);
+      
+      if (result.success) {
+        setSuccessMessage(`✅ Fixed ${result.fixedCount} family members! Found ${result.totalFamilyMembers} total. Refreshing...`);
+        
+        // Wait a moment then refresh the page
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else {
+        setErrorMessage(result.error || 'Failed to fix family members');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to fix family members');
+    } finally {
+      setIsFixingFamilyMembers(false);
+    }
   };
 
   const calculateMemberAge = (dateOfBirth: string) => {
@@ -633,19 +689,36 @@ export default function PatientProfileWithEdit() {
                 <UserPlus className="h-5 w-5 inline mr-2" />
                 Family Members
               </h3>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
-                  onClick={async () => {
+                  onClick={() => {
                     console.log('🔄 Manual refresh triggered');
                     console.log('Current patient:', patient);
-                    const { refreshMembers } = await import('@/lib/hooks/useFamilyMembers');
                     window.location.reload();
                   }}
-                  className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors font-medium"
+                  className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg transition-colors font-medium text-sm"
                   title="Refresh family members list"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Refresh
+                </button>
+                <button
+                  onClick={handleFixFamilyMembers}
+                  disabled={isFixingFamilyMembers}
+                  className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Fix family members that aren't showing (one-time fix)"
+                >
+                  {isFixingFamilyMembers ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Fixing...
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="h-4 w-4" />
+                      Fix Members
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={handleAddMemberClick}
@@ -659,10 +732,44 @@ export default function PatientProfileWithEdit() {
 
             {/* Debug Info */}
             {patient && (
-              <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono">
-                <p className="text-gray-600">
-                  <strong>Debug:</strong> Patient ID: {patient.id} | Family ID: {patient.familyId || patient.id} | Members Count: {familyMembers.length}
-                </p>
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <p className="text-xs font-mono text-blue-800 mb-2">
+                      <strong>Debug Info:</strong>
+                    </p>
+                    <p className="text-xs font-mono text-blue-700">
+                      • Patient ID: <strong>{patient.id}</strong>
+                    </p>
+                    <p className="text-xs font-mono text-blue-700">
+                      • Family ID: <strong>{patient.familyId || patient.id}</strong>
+                    </p>
+                    <p className="text-xs font-mono text-blue-700">
+                      • Members Count: <strong className={familyMembers.length > 0 ? 'text-green-600' : 'text-red-600'}>{familyMembers.length}</strong>
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      console.log('\n');
+                      console.log('═══════════════════════════════════════════════');
+                      console.log('📊 FULL DEBUG INFO');
+                      console.log('═══════════════════════════════════════════════');
+                      console.log('Patient:', patient);
+                      console.log('Family Members Array:', familyMembers);
+                      console.log('Auth Status:', isAuthenticated ? '✅ Authenticated' : '❌ Not authenticated');
+                      console.log('Loading Status:', familyLoading ? '⏳ Loading...' : '✅ Loaded');
+                      console.log('Error:', familyError || 'None');
+                      console.log('═══════════════════════════════════════════════\n');
+                      
+                      // Also call the list function
+                      await listAllPatientsForDebug();
+                    }}
+                    className="text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors"
+                    title="Print full debug info to console"
+                  >
+                    Show Console Logs
+                  </button>
+                </div>
               </div>
             )}
 
@@ -679,7 +786,7 @@ export default function PatientProfileWithEdit() {
               <div className="text-center py-12 bg-gray-50 rounded-lg">
                 <UserPlus className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600 mb-2">No family members added yet</p>
-                <p className="text-gray-500 text-sm">Click "Add Member" to add your first family member</p>
+                <p className="text-gray-500 text-sm">Click &quot;Add Member&quot; to add your first family member</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -778,7 +885,7 @@ export default function PatientProfileWithEdit() {
 
         {/* Add Family Member Modal */}
         {showAddMemberModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-md flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <div className="flex justify-between items-center mb-6">
@@ -986,7 +1093,7 @@ export default function PatientProfileWithEdit() {
 
         {/* Edit Family Member Modal */}
         {showEditMemberModal && selectedMember && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-md flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <div className="flex justify-between items-center mb-6">
@@ -1187,7 +1294,7 @@ export default function PatientProfileWithEdit() {
 
         {/* Delete Confirmation Modal */}
         {showDeleteMemberModal && selectedMember && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-md flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
               <div className="p-6">
                 <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">

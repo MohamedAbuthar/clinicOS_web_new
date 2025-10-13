@@ -28,7 +28,7 @@ export default function PatientHeader({ patient, onLogout }: PatientHeaderProps)
       if (patient?.id) {
         try {
           const notifications = await getNotifications(patient.id);
-          const unreadCount = notifications?.filter(n => !n.isRead).length || 0;
+          const unreadCount = notifications?.filter((n: any) => !n.isRead).length || 0;
           setNotificationCount(unreadCount);
         } catch (error) {
           console.error('Error loading notification count:', error);

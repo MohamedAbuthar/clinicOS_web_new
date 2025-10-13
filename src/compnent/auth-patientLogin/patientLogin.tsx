@@ -285,7 +285,7 @@ export default function PatientLogin() {
                   </button>
                 ) : (
                   <p className="text-gray-500 text-sm">
-                    Didn't receive OTP? <span className="text-gray-400 text-xs">({formatTime(timeLeft)})</span>
+                    Didn&apos;t receive OTP? <span className="text-gray-400 text-xs">({formatTime(timeLeft)})</span>
                   </p>
                 )}
               </div>

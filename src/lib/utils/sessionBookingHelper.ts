@@ -131,6 +131,36 @@ export function getNextTokenForSession(
 }
 
 /**
+ * Get the next available token for ALL appointments (not session-specific)
+ * This ensures continuous numbering across all appointments for a doctor and date
+ */
+export function getNextTokenForAllAppointments(
+  existingAppointments: any[],
+  appointmentDate: string
+): string {
+  // Filter appointments for the same date
+  const dateAppointments = existingAppointments.filter(apt => {
+    return apt.appointmentDate === appointmentDate;
+  });
+  
+  // Find the highest token number
+  let maxTokenNum = 0;
+  dateAppointments.forEach(apt => {
+    if (apt.tokenNumber) {
+      const tokenMatch = apt.tokenNumber.match(/#(\d+)/);
+      if (tokenMatch) {
+        const tokenNum = parseInt(tokenMatch[1]);
+        if (tokenNum > maxTokenNum) {
+          maxTokenNum = tokenNum;
+        }
+      }
+    }
+  });
+  
+  return `#${maxTokenNum + 1}`;
+}
+
+/**
  * Auto-assign slot based on token number
  * Maps token numbers to sequential slots in the session
  */

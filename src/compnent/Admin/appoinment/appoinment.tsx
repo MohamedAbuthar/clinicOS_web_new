@@ -1,15 +1,16 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { Search, Calendar, Plus, Clock, Phone, X, User, Mail, AlertCircle, Loader2, CheckCircle, XCircle, RotateCcw, UserX } from 'lucide-react';
+import { Search, Calendar, Plus, Clock, Phone, X, User, Mail, AlertCircle, Loader2, CheckCircle, XCircle, RotateCcw, UserX, UserCheck } from 'lucide-react';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { usePatients } from '@/lib/hooks/usePatients';
-import { apiUtils } from '@/lib/api';
+import { apiUtils, Appointment } from '@/lib/api';
+import { migrateAppointmentTokens } from '@/lib/firebase/firestore';
 
 export default function AppointmentsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     patientName: '',
@@ -23,18 +24,19 @@ export default function AppointmentsPage() {
   });
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
 
   const { 
     appointments, 
     loading, 
     error, 
     createAppointment, 
-    updateAppointment, 
     cancelAppointment, 
-    rescheduleAppointment,
     completeAppointment,
     markNoShow,
-    getAvailableSlots,
+    checkInAppointment,
+    acceptAppointment,
+    rejectAppointment,
     refreshAppointments
   } = useAppointments();
   
@@ -103,6 +105,8 @@ export default function AppointmentsPage() {
       // Create appointment
       const success = await createAppointment({
         patientId: patientId,
+        patientName: formData.patientName, // Store patient name directly
+        patientPhone: formData.phone, // Store patient phone directly
         doctorId: formData.doctor,
         appointmentDate: formData.date,
         appointmentTime: formData.time,
@@ -121,9 +125,9 @@ export default function AppointmentsPage() {
       } else {
         setSuccessMessage('Failed to create appointment');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error creating appointment:', err);
-      setSuccessMessage(err.message || 'Failed to create appointment');
+      setSuccessMessage(err instanceof Error ? err.message : 'Failed to create appointment');
     } finally {
       setActionLoading(false);
     }
@@ -142,9 +146,49 @@ export default function AppointmentsPage() {
     });
   };
 
+  const handleMigrateTokens = async () => {
+    setIsMigrating(true);
+    try {
+      console.log('🔄 Starting token migration...');
+      const result = await migrateAppointmentTokens();
+      
+      if (result.success) {
+        setSuccessMessage(`Token migration completed! Updated: ${result.updated}, Skipped: ${result.skipped}`);
+        // Refresh appointments to show updated tokens
+        await refreshAppointments();
+      } else {
+        setSuccessMessage(`Migration failed: ${result.error}`);
+      }
+    } catch (error: unknown) {
+      console.error('Migration error:', error);
+      setSuccessMessage(`Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
+
   const handleAppointmentAction = async (appointmentId: string, action: string) => {
     setActionLoading(true);
     try {
+      console.log('=== APPOINTMENT ACTION ===');
+      console.log('Appointment ID:', appointmentId);
+      console.log('Action:', action);
+      
+      // Get appointment details for logging
+      const appointment = appointments.find(apt => apt.id === appointmentId);
+      if (appointment) {
+        console.log('Appointment Details:', {
+          tokenNumber: appointment.tokenNumber,
+          doctorId: appointment.doctorId,
+          patientId: appointment.patientId,
+          date: appointment.appointmentDate,
+          time: appointment.appointmentTime,
+          status: appointment.status,
+          checkedInAt: appointment.checkedInAt
+        });
+      }
+      
       let success = false;
       
       switch (action) {
@@ -157,18 +201,39 @@ export default function AppointmentsPage() {
         case 'no-show':
           success = await markNoShow(appointmentId);
           break;
+        case 'check-in':
+          console.log('Executing check-in...');
+          success = await checkInAppointment(appointmentId);
+          console.log('Check-in result:', success);
+          break;
+        case 'accept':
+          success = await acceptAppointment(appointmentId);
+          break;
+        case 'reject':
+          success = await rejectAppointment(appointmentId);
+          break;
         default:
           success = false;
       }
 
       if (success) {
-        setSuccessMessage(`Appointment ${action}ed successfully`);
+        const actionMessages: Record<string, string> = {
+          'check-in': 'checked in successfully',
+          'accept': 'accepted',
+          'reject': 'rejected',
+          'cancel': 'cancelled',
+          'complete': 'completed',
+          'no-show': 'marked as no-show'
+        };
+        setSuccessMessage(`Appointment ${actionMessages[action] || action + 'ed'} successfully`);
         // Refresh the appointments list to show updated data
         await refreshAppointments();
+        console.log('Appointments refreshed');
       } else {
         setSuccessMessage(`Failed to ${action} appointment`);
       }
     } catch (err) {
+      console.error('Appointment action error:', err);
       setSuccessMessage(apiUtils.handleError(err));
     } finally {
       setActionLoading(false);
@@ -213,6 +278,33 @@ export default function AppointmentsPage() {
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
+  const formatTimestamp = (timestamp: unknown) => {
+    if (!timestamp) return '';
+    
+    // Handle Firebase Timestamp objects
+    if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof (timestamp as any).toDate === 'function') {
+      const date = (timestamp as any).toDate();
+      return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    }
+    
+    // Handle regular Date objects or date strings
+    try {
+      const date = new Date(timestamp as string | number | Date);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    } catch {
+      return '';
+    }
+  };
+
   if (loading) {
     return (
       <div className="w-full flex items-center justify-center py-12">
@@ -249,15 +341,41 @@ export default function AppointmentsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Appointments</h1>
           <p className="text-gray-500 mt-1">Manage and track all patient appointments</p>
+          {/* Debug info */}
+          <div className="mt-2 text-xs text-gray-400">
+            Debug: {appointments.length} appointments loaded
+            {appointments.length > 0 && (
+              <span> | First: {appointments[0].patientName || 'No name'}</span>
+            )}
+          </div>
         </div>
-        <button 
-          onClick={() => setIsDialogOpen(true)}
-          disabled={actionLoading}
-          className="flex items-center gap-2 bg-teal-500 text-white px-6 py-3 rounded-lg hover:bg-teal-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Plus className="w-5 h-5" />
-          New Appointment
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleMigrateTokens}
+            disabled={isMigrating || actionLoading}
+            className="flex items-center gap-2 bg-orange-500 text-white px-4 py-3 rounded-lg hover:bg-orange-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isMigrating ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Migrating...
+              </>
+            ) : (
+              <>
+                <RotateCcw className="w-4 h-4" />
+                Fix Tokens
+              </>
+            )}
+          </button>
+          <button 
+            onClick={() => setIsDialogOpen(true)}
+            disabled={actionLoading}
+            className="flex items-center gap-2 bg-teal-500 text-white px-6 py-3 rounded-lg hover:bg-teal-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-5 h-5" />
+            New Appointment
+          </button>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -303,6 +421,16 @@ export default function AppointmentsPage() {
             const patient = patients.find(p => p.id === appointment.patientId);
             const doctor = doctors.find(d => d.id === appointment.doctorId);
             
+            // Debug logging
+            console.log('=== APPOINTMENT DEBUG ===');
+            console.log('Appointment ID:', appointment.id);
+            console.log('Patient ID:', appointment.patientId);
+            console.log('Appointment patientName:', appointment.patientName);
+            console.log('Appointment patientPhone:', appointment.patientPhone);
+            console.log('Found patient from lookup:', patient);
+            console.log('All patients count:', patients.length);
+            console.log('========================');
+            
             return (
               <div
                 key={appointment.id}
@@ -311,18 +439,18 @@ export default function AppointmentsPage() {
                 {/* Token */}
                 <div className="col-span-1">
                   <span className="text-2xl font-bold text-teal-500">
-                    {appointment.tokenNumber || `#${appointment.id.slice(-3)}`}
+                    {appointment.tokenNumber || 'N/A'}
                   </span>
                 </div>
 
                 {/* Patient */}
                 <div className="col-span-2">
                   <div className="font-semibold text-gray-900">
-                    {patient?.name || 'Loading...'}
+                    {appointment.patientName || patient?.name || 'Unknown Patient'}
                   </div>
                   <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
                     <Phone className="w-3 h-3" />
-                    {patient?.phone || 'N/A'}
+                    {appointment.patientPhone || patient?.phone || 'N/A'}
                   </div>
                 </div>
 
@@ -351,16 +479,53 @@ export default function AppointmentsPage() {
 
                 {/* Status */}
                 <div className="col-span-2">
-                  <span
-                    className={`inline-block px-4 py-1.5 rounded-full text-sm font-semibold ${getStatusColor(appointment.status)}`}
-                  >
-                    {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
-                  </span>
+                  <div className="flex flex-col gap-1">
+                    <span
+                      className={`inline-block px-4 py-1.5 rounded-full text-sm font-semibold ${getStatusColor(appointment.status)}`}
+                    >
+                      {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
+                    </span>
+                    {appointment.acceptanceStatus && (
+                      <span
+                        className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                          appointment.acceptanceStatus === 'accepted' 
+                            ? 'bg-teal-100 text-teal-700' 
+                            : appointment.acceptanceStatus === 'rejected'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-yellow-100 text-yellow-700'
+                        }`}
+                      >
+                        {appointment.acceptanceStatus === 'accepted' ? '✓ Accepted' : 
+                         appointment.acceptanceStatus === 'rejected' ? '✕ Rejected' : 
+                         '⏳ Pending'}
+                      </span>
+                    )}
+                    {appointment.checkedInAt && (
+                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                        <UserCheck className="w-3 h-3" />
+                        Checked in: {formatTimestamp(appointment.checkedInAt)}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Actions */}
-                <div className="col-span-2 flex items-center gap-2">
-                  {appointment.status === 'scheduled' || appointment.status === 'confirmed' ? (
+                <div className="col-span-2 flex items-center gap-2 flex-wrap">
+                  {/* Check-in button - ONLY show for completed appointments */}
+                  {appointment.status === 'completed' && 
+                   !appointment.checkedInAt && (
+                    <button 
+                      onClick={() => handleAppointmentAction(appointment.id, 'check-in')}
+                      disabled={actionLoading}
+                      className="text-teal-600 hover:text-teal-800 font-medium transition-colors disabled:opacity-50"
+                      title="Check In"
+                    >
+                      <UserCheck className="w-5 h-5" />
+                    </button>
+                  )}
+                  
+                  {/* Other action buttons - show for scheduled/confirmed appointments */}
+                  {(appointment.status === 'scheduled' || appointment.status === 'confirmed') ? (
                     <>
                       <button 
                         onClick={() => handleAppointmentAction(appointment.id, 'complete')}
@@ -368,7 +533,7 @@ export default function AppointmentsPage() {
                         className="text-green-600 hover:text-green-800 font-medium transition-colors disabled:opacity-50"
                         title="Mark as Complete"
                       >
-                        <CheckCircle className="w-4 h-4" />
+                        <CheckCircle className="w-5 h-5" />
                       </button>
                       <button 
                         onClick={() => handleAppointmentAction(appointment.id, 'cancel')}
@@ -376,7 +541,7 @@ export default function AppointmentsPage() {
                         className="text-red-600 hover:text-red-800 font-medium transition-colors disabled:opacity-50"
                         title="Cancel"
                       >
-                        <XCircle className="w-4 h-4" />
+                        <XCircle className="w-5 h-5" />
                       </button>
                       <button 
                         onClick={() => handleAppointmentAction(appointment.id, 'no-show')}
@@ -384,12 +549,12 @@ export default function AppointmentsPage() {
                         className="text-gray-600 hover:text-gray-800 font-medium transition-colors disabled:opacity-50"
                         title="Mark as No Show"
                       >
-                        <UserX className="w-4 h-4" />
+                        <UserX className="w-5 h-5" />
                       </button>
                     </>
-                  ) : (
+                  ) : appointment.status === 'completed' || appointment.status === 'cancelled' ? (
                     <span className="text-gray-400 text-sm">No actions</span>
-                  )}
+                  ) : null}
                 </div>
               </div>
             );

@@ -1,26 +1,59 @@
 "use client"
 
 import React, { useState, useRef, useEffect } from 'react';
-import { UserPlus, GripVertical, Clock, X, AlertCircle, Loader2, CheckCircle, RotateCcw } from 'lucide-react';
+import { UserPlus, GripVertical, Clock, X, AlertCircle, Loader2, CheckCircle, UserCheck, Calendar, Phone, XCircle, UserX } from 'lucide-react';
 import { useQueue } from '@/lib/hooks/useQueue';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { usePatients } from '@/lib/hooks/usePatients';
-import { apiUtils } from '@/lib/api';
+import { useAppointments } from '@/lib/hooks/useAppointments';
+import { apiUtils, Appointment as BaseAppointment, Patient as ApiPatient, Doctor } from '@/lib/api';
+
+// Extended Appointment interface for queue management
+interface Appointment extends BaseAppointment {
+  checkedInAt?: string | Date | { toDate(): Date };
+  acceptanceStatus?: 'accepted' | 'rejected' | 'pending';
+  patientName?: string;
+  patientPhone?: string;
+}
 
 // Types
 interface Patient {
   id: string;
   tokenNumber: string;
   name: string;
+  phone?: string;
   category?: string;
   waitingTime: string;
-  status: 'Arrived' | 'Late' | 'Walk-in';
+  status: 'Arrived' | 'Late' | 'Walk-in' | 'Scheduled';
+  appointmentDate?: string;
+  appointmentTime?: string;
+  acceptanceStatus?: string;
+  checkedInAt?: string;
+}
+
+interface AppointmentQueueItem {
+  id: string;
+  appointmentId: string;
+  patientId: string;
+  tokenNumber: string;
+  name: string;
+  phone?: string;
+  status: string;
+  waitingTime: number;
+  appointmentDate: string;
+  appointmentTime: string;
+  acceptanceStatus?: 'accepted' | 'rejected' | 'pending';
+  checkedInAt?: unknown;
 }
 
 interface CurrentPatient {
   tokenNumber: string;
   name: string;
+  phone?: string;
   status: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
+  checkedInAt?: string;
 }
 
 interface DoctorStatus {
@@ -43,24 +76,93 @@ interface QuickAction {
   variant?: 'danger';
 }
 
+// Helper Functions
+const formatTime = (timeString: string) => {
+  if (!timeString) return 'N/A';
+  const [hours, minutes] = timeString.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minutes} ${ampm}`;
+};
+
+const formatDate = (dateString: string) => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  const today = new Date();
+  const isToday = date.toDateString() === today.toDateString();
+  
+  if (isToday) {
+    return 'Today';
+  }
+  
+  return date.toLocaleDateString();
+};
+
+const formatTimestamp = (timestamp: unknown): string => {
+  if (!timestamp) return '';
+  
+  // Handle Firebase Timestamp objects
+  if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof (timestamp as { toDate(): Date }).toDate === 'function') {
+    const date = (timestamp as { toDate(): Date }).toDate();
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  }
+  
+  // Handle regular Date objects or date strings
+  try {
+    const date = new Date(timestamp as string | number | Date);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  } catch {
+    return '';
+  }
+};
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case 'confirmed':
+    case 'scheduled':
+      return 'bg-green-500 text-white';
+    case 'cancelled':
+      return 'bg-red-500 text-white';
+    case 'completed':
+      return 'bg-blue-500 text-white';
+    case 'no_show':
+      return 'bg-gray-500 text-white';
+    case 'rescheduled':
+      return 'bg-orange-500 text-white';
+    default:
+      return 'bg-gray-500 text-white';
+  }
+};
+
 // Button Component
 interface ButtonProps {
   children: React.ReactNode;
   variant?: 'primary' | 'secondary' | 'danger';
   icon?: React.ReactNode;
   onClick?: () => void;
+  disabled?: boolean;
 }
 
-const Button = ({ children, variant = 'primary', icon, onClick }: ButtonProps) => {
+const Button = ({ children, variant = 'primary', icon, onClick, disabled = false }: ButtonProps) => {
   const baseClasses = "px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors";
   const variants: Record<'primary' | 'secondary' | 'danger', string> = {
-    primary: "bg-blue-600 text-white hover:bg-blue-700",
-    secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50",
-    danger: "bg-red-600 text-white hover:bg-red-700"
+    primary: "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed",
+    secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed",
+    danger: "bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
   };
   
   return (
-    <button className={`${baseClasses} ${variants[variant]}`} onClick={onClick}>
+    <button className={`${baseClasses} ${variants[variant]}`} onClick={onClick} disabled={disabled}>
       {icon}
       {children}
     </button>
@@ -71,32 +173,54 @@ const Button = ({ children, variant = 'primary', icon, onClick }: ButtonProps) =
 interface CurrentPatientCardProps {
   patient: CurrentPatient;
   onComplete: () => void;
+  disabled?: boolean;
 }
 
-const CurrentPatientCard = ({ patient, onComplete }: CurrentPatientCardProps) => (
-  <div className="bg-white rounded-lg border border-gray-200 p-6">
-    <div className="flex items-center justify-between mb-4">
-      <h2 className="text-lg font-semibold text-gray-900">Current Patient</h2>
-      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-        {patient.status}
-      </span>
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-3xl font-bold text-gray-900">{patient.tokenNumber}</p>
-        <p className="text-lg text-gray-600 mt-1">{patient.name}</p>
+const CurrentPatientCard = ({ patient, onComplete, disabled }: CurrentPatientCardProps) => {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">Current Patient</h2>
+        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+          {patient.status}
+        </span>
       </div>
-      <Button variant="primary" onClick={onComplete}>
-        Complete
-      </Button>
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <p className="text-3xl font-bold text-gray-900">{patient.tokenNumber}</p>
+          <p className="text-lg text-gray-600 mt-1">{patient.name}</p>
+          <div className="flex items-center gap-4 mt-2 flex-wrap">
+            {patient.phone && (
+              <div className="flex items-center gap-1 text-sm text-gray-500">
+                <Phone className="w-4 h-4" />
+                {patient.phone}
+              </div>
+            )}
+            {patient.appointmentDate && patient.appointmentTime && (
+              <div className="flex items-center gap-1 text-sm text-gray-500">
+                <Calendar className="w-4 h-4" />
+                {formatDate(patient.appointmentDate)} • {formatTime(patient.appointmentTime)}
+              </div>
+            )}
+            {patient.checkedInAt && (
+              <div className="flex items-center gap-1 text-sm text-teal-600">
+                <UserCheck className="w-4 h-4" />
+                Checked in: {String(formatTimestamp(patient.checkedInAt))}
+              </div>
+            )}
+          </div>
+        </div>
+        <Button variant="primary" onClick={onComplete} disabled={disabled}>
+          Complete
+        </Button>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Draggable Queue Item
 interface QueueItemProps {
   patient: Patient;
-  index: number;
   onSkip: () => void;
   isSelected: boolean;
   onDragStart: () => void;
@@ -106,13 +230,13 @@ interface QueueItemProps {
   isDragging: boolean;
 }
 
-const QueueItem = ({ patient, index, onSkip, isSelected, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: QueueItemProps) => {
+const QueueItem = ({ patient, onSkip, isSelected, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: QueueItemProps) => {
   const statusColors: Record<Patient['status'], string> = {
     Arrived: 'bg-green-100 text-green-700',
     Late: 'bg-yellow-100 text-yellow-700',
-    'Walk-in': 'bg-blue-100 text-blue-700'
+    'Walk-in': 'bg-blue-100 text-blue-700',
+    'Scheduled': 'bg-purple-100 text-purple-700'
   };
-  console.log(index);
 
   return (
     <div
@@ -132,27 +256,72 @@ const QueueItem = ({ patient, index, onSkip, isSelected, onDragStart, onDragEnd,
       <GripVertical className="w-5 h-5 text-gray-400 flex-shrink-0" />
       
       <div className="flex items-center justify-between flex-1">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-1">
           <div className="text-center min-w-[60px]">
             <p className="text-2xl font-bold text-gray-900">{patient.tokenNumber}</p>
             <p className="text-xs text-gray-500">Token</p>
           </div>
           
-          <div>
+          <div className="flex-1">
             <p className="font-semibold text-gray-900">{patient.name}</p>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              {patient.phone && (
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  <Phone className="w-3 h-3" />
+                  {patient.phone}
+                </div>
+              )}
+              {patient.appointmentDate && patient.appointmentTime && (
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  <Calendar className="w-3 h-3" />
+                  {formatDate(patient.appointmentDate)} • {formatTime(patient.appointmentTime)}
+                </div>
+              )}
               {patient.category && (
                 <span className="text-xs text-gray-500">{patient.category}</span>
               )}
               <span className="text-xs text-gray-500">• Waiting: {patient.waitingTime}</span>
+              {patient.checkedInAt && (
+                <span className="text-xs text-teal-600">
+                  ✓ Checked in: {String(formatTimestamp(patient.checkedInAt))}
+                </span>
+              )}
             </div>
+            {patient.acceptanceStatus && (
+              <div className="mt-1">
+                <span
+                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    patient.acceptanceStatus === 'accepted' 
+                      ? 'bg-teal-100 text-teal-700' 
+                      : patient.acceptanceStatus === 'rejected'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-yellow-100 text-yellow-700'
+                  }`}
+                >
+                  {patient.acceptanceStatus === 'accepted' ? '✓ Accepted' : 
+                   patient.acceptanceStatus === 'rejected' ? '✕ Rejected' : 
+                   '⏳ Pending'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
           <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[patient.status]}`}>
             {patient.status}
           </span>
+          {patient.status === 'Scheduled' && (
+            <button
+              onClick={() => {
+                // Handle check-in for scheduled appointments
+                console.log('Check-in appointment:', patient.id);
+              }}
+              className="px-3 py-1 text-sm text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+            >
+              Check In
+            </button>
+          )}
           <button
             onClick={onSkip}
             className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -252,7 +421,7 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, buttonRef }: DoctorBre
   useEffect(() => {
     if (isOpen && buttonRef.current && dropdownRef.current) {
       const buttonRect = buttonRef.current.getBoundingClientRect();
-      const dropdownWidth = 320; // Width of dropdown (w-80 = 320px)
+      const dropdownWidth = 320;
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       
@@ -260,16 +429,14 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, buttonRef }: DoctorBre
       let left = buttonRect.left;
       let right: string | number = 'auto';
       
-      // Check if dropdown goes beyond right edge
       if (left + dropdownWidth > viewportWidth) {
-        right = 16; // 1rem padding from right edge
+        right = 16;
         left = viewportWidth - dropdownWidth - 16;
       }
       
-      // Check if dropdown goes beyond bottom edge
-      const dropdownHeight = 280; // Approximate height
+      const dropdownHeight = 280;
       if (top + dropdownHeight > viewportHeight) {
-        top = buttonRect.top - dropdownHeight - 8; // Show above button
+        top = buttonRect.top - dropdownHeight - 8;
       }
       
       setPosition({ top, left, right });
@@ -376,10 +543,264 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, buttonRef }: DoctorBre
   );
 };
 
+// Pending Check-in Card Component
+interface PendingCheckInCardProps {
+  appointment: Appointment;
+  patient: ApiPatient;
+  onCheckIn: () => void;
+  isLoading: boolean;
+}
+
+const PendingCheckInCard = ({ appointment, patient, onCheckIn, isLoading }: PendingCheckInCardProps) => {
+  return (
+    <div className="flex items-center justify-between p-4 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors">
+      <div className="flex items-center gap-4 flex-1">
+        <div className="text-center min-w-[60px]">
+          <p className="text-xl font-bold text-gray-900">{appointment.tokenNumber}</p>
+          <p className="text-xs text-gray-500">Token</p>
+        </div>
+        <div className="flex-1">
+          <p className="font-semibold text-gray-900">{patient?.name || 'Loading...'}</p>
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            {patient?.phone && (
+              <div className="flex items-center gap-1 text-xs text-gray-600">
+                <Phone className="w-3 h-3" />
+                {patient.phone}
+              </div>
+            )}
+            {appointment.appointmentDate && appointment.appointmentTime && (
+              <div className="flex items-center gap-1 text-xs text-gray-600">
+                <Calendar className="w-3 h-3" />
+                {formatDate(appointment.appointmentDate)} • {formatTime(appointment.appointmentTime)}
+              </div>
+            )}
+            <div className="text-xs text-teal-600">
+              ✓ Checked in: {String(formatTimestamp(appointment.checkedInAt))}
+            </div>
+          </div>
+          {appointment.acceptanceStatus && (
+            <div className="mt-1">
+              <span
+                className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                  appointment.acceptanceStatus === 'accepted' 
+                    ? 'bg-teal-100 text-teal-700' 
+                    : appointment.acceptanceStatus === 'rejected'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-yellow-100 text-yellow-700'
+                }`}
+              >
+                {appointment.acceptanceStatus === 'accepted' ? '✓ Accepted' : 
+                 appointment.acceptanceStatus === 'rejected' ? '✕ Rejected' : 
+                 '⏳ Pending'}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={onCheckIn}
+        disabled={isLoading}
+        className="px-4 py-2 bg-teal-600 text-white rounded-lg font-medium hover:bg-teal-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2 flex-shrink-0"
+      >
+        {isLoading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <UserCheck className="w-4 h-4" />
+        )}
+        Add to Queue
+      </button>
+    </div>
+  );
+};
+
+// All Appointments Table Component
+interface AllAppointmentsTableProps {
+  appointments: Appointment[];
+  patients: ApiPatient[];
+  doctors: Doctor[];
+  onAppointmentAction: (appointmentId: string, action: string) => void;
+  actionLoading: boolean;
+}
+
+const AllAppointmentsTable = ({ 
+  appointments, 
+  patients, 
+  doctors, 
+  onAppointmentAction, 
+  actionLoading 
+}: AllAppointmentsTableProps) => {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        All Appointments ({appointments.length})
+      </h2>
+      
+      <div className="overflow-hidden">
+        {/* Table Header */}
+        <div className="grid grid-cols-11 gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
+          <div className="col-span-1 text-sm font-semibold text-gray-600">Token</div>
+          <div className="col-span-2 text-sm font-semibold text-gray-600">Patient</div>
+          <div className="col-span-2 text-sm font-semibold text-gray-600">Doctor</div>
+          <div className="col-span-2 text-sm font-semibold text-gray-600">Date & Time</div>
+          <div className="col-span-2 text-sm font-semibold text-gray-600">Status</div>
+          <div className="col-span-2 text-sm font-semibold text-gray-600">Actions</div>
+        </div>
+
+        {/* Table Body */}
+        {appointments.length > 0 ? (
+          <div className="divide-y divide-gray-100">
+            {appointments.map((appointment) => {
+              const patient = patients.find(p => p.id === appointment.patientId);
+              const doctor = doctors.find(d => d.id === appointment.doctorId);
+              
+              return (
+                <div
+                  key={appointment.id}
+                  className="grid grid-cols-11 gap-4 px-4 py-4 hover:bg-gray-50 transition-colors items-center"
+                >
+                  {/* Token */}
+                  <div className="col-span-1">
+                    <span className="text-xl font-bold text-teal-500">
+                      {appointment.tokenNumber || 'N/A'}
+                    </span>
+                  </div>
+
+                  {/* Patient */}
+                  <div className="col-span-2">
+                    <div className="font-semibold text-gray-900">
+                      {appointment.patientName || patient?.name || 'Unknown Patient'}
+                    </div>
+                    <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
+                      <Phone className="w-3 h-3" />
+                      {appointment.patientPhone || patient?.phone || 'N/A'}
+                    </div>
+                  </div>
+
+                  {/* Doctor */}
+                  <div className="col-span-2">
+                    <span className="text-gray-900 font-medium">
+                      {doctor?.user?.name || 'Loading...'}
+                    </span>
+                  </div>
+
+                  {/* Date & Time */}
+                  <div className="col-span-2">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                      <div>
+                        <div className="font-semibold text-gray-900">
+                          {formatDate(appointment.appointmentDate)}
+                        </div>
+                        <div className="flex items-center gap-1 text-sm text-gray-500">
+                          <Clock className="w-3 h-3" />
+                          {formatTime(appointment.appointmentTime)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status */}
+                  <div className="col-span-2">
+                    <div className="flex flex-col gap-1">
+                      <span
+                        className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}
+                      >
+                        {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
+                      </span>
+                      {appointment.acceptanceStatus && (
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            appointment.acceptanceStatus === 'accepted' 
+                              ? 'bg-teal-100 text-teal-700' 
+                              : appointment.acceptanceStatus === 'rejected'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                          }`}
+                        >
+                          {appointment.acceptanceStatus === 'accepted' ? '✓ Accepted' : 
+                           appointment.acceptanceStatus === 'rejected' ? '✕ Rejected' : 
+                           '⏳ Pending'}
+                        </span>
+                      )}
+                      {appointment.checkedInAt && (
+                        <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                          <UserCheck className="w-3 h-3" />
+                          Checked in: {String(formatTimestamp(appointment.checkedInAt) || 'Unknown time')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="col-span-2 flex items-center gap-2 flex-wrap">
+                    {/* Check-in button - ONLY show for completed appointments */}
+                    {appointment.status === 'completed' && 
+                     !appointment.checkedInAt && (
+                      <button 
+                        onClick={() => onAppointmentAction(appointment.id, 'check-in')}
+                        disabled={actionLoading}
+                        className="text-teal-600 hover:text-teal-800 font-medium transition-colors disabled:opacity-50"
+                        title="Check In"
+                      >
+                        <UserCheck className="w-5 h-5" />
+                      </button>
+                    )}
+                    
+                    {/* Other action buttons - show for scheduled/confirmed appointments */}
+                    {(appointment.status === 'scheduled' || appointment.status === 'confirmed') ? (
+                      <>
+                        <button 
+                          onClick={() => onAppointmentAction(appointment.id, 'complete')}
+                          disabled={actionLoading}
+                          className="text-green-600 hover:text-green-800 font-medium transition-colors disabled:opacity-50"
+                          title="Mark as Complete"
+                        >
+                          <CheckCircle className="w-5 h-5" />
+                        </button>
+                        <button 
+                          onClick={() => onAppointmentAction(appointment.id, 'cancel')}
+                          disabled={actionLoading}
+                          className="text-red-600 hover:text-red-800 font-medium transition-colors disabled:opacity-50"
+                          title="Cancel"
+                        >
+                          <XCircle className="w-5 h-5" />
+                        </button>
+                        <button 
+                          onClick={() => onAppointmentAction(appointment.id, 'no-show')}
+                          disabled={actionLoading}
+                          className="text-gray-600 hover:text-gray-800 font-medium transition-colors disabled:opacity-50"
+                          title="Mark as No Show"
+                        >
+                          <UserX className="w-5 h-5" />
+                        </button>
+                      </>
+                    ) : appointment.status === 'completed' || appointment.status === 'cancelled' ? (
+                      <span className="text-gray-400 text-sm">No actions</span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="px-4 py-12 text-center">
+            <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg font-medium">No appointments found</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // Main Component
 export default function QueueManagementPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [pendingCheckIns, setPendingCheckIns] = useState<Appointment[]>([]);
+  const [showCheckInSection, setShowCheckInSection] = useState(true);
+  const [showAllAppointments, setShowAllAppointments] = useState(false);
+  const [skippedItems, setSkippedItems] = useState<Set<string>>(new Set());
 
   const {
     currentPatient,
@@ -392,13 +813,21 @@ export default function QueueManagementPage() {
     setSelectedDoctorId,
     callNextPatient,
     skipPatient,
-    reinsertPatient,
     completePatient,
-    updateQueuePosition,
+    checkInPatient,
+    getPendingCheckIns,
+    refreshQueue,
   } = useQueue();
 
   const { doctors } = useDoctors();
   const { patients } = usePatients();
+  const { 
+    appointments, 
+    cancelAppointment, 
+    completeAppointment,
+    markNoShow,
+    checkInAppointment 
+  } = useAppointments();
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -411,12 +840,117 @@ export default function QueueManagementPage() {
   // Auto-select first doctor if available
   useEffect(() => {
     if (doctors.length > 0 && !selectedDoctorId) {
+      console.log('Auto-selecting first doctor:', doctors[0]);
       setSelectedDoctorId(doctors[0].id);
     }
   }, [doctors, selectedDoctorId, setSelectedDoctorId]);
 
+  // Filter appointments for selected doctor
+  const doctorAppointments = selectedDoctorId 
+    ? appointments.filter(apt => apt.doctorId === selectedDoctorId)
+    : appointments;
+
+  // Get today's appointments for the selected doctor
+  const today = new Date().toISOString().split('T')[0];
+  const todayAppointments = doctorAppointments.filter(apt => 
+    apt.appointmentDate === today && 
+    (apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'completed')
+  );
+
+  // Create queue items from today's appointments
+  const appointmentQueueItems: AppointmentQueueItem[] = todayAppointments
+    .filter(appointment => !skippedItems.has(`apt-${appointment.id}`))
+    .map((appointment, index) => {
+      const patient = patients.find(p => p.id === appointment.patientId);
+      let waitingTime = 0;
+      
+      if (appointment.checkedInAt) {
+        try {
+          // Handle Firebase Timestamp objects
+          if (typeof appointment.checkedInAt === 'object' && appointment.checkedInAt !== null && 'toDate' in appointment.checkedInAt && typeof (appointment.checkedInAt as { toDate(): Date }).toDate === 'function') {
+            const checkedInDate = (appointment.checkedInAt as { toDate(): Date }).toDate();
+            waitingTime = Math.floor((Date.now() - checkedInDate.getTime()) / (1000 * 60));
+          } else {
+            // Handle regular Date objects or date strings
+            const checkedInDate = new Date(appointment.checkedInAt as string | number | Date);
+            if (!isNaN(checkedInDate.getTime())) {
+              waitingTime = Math.floor((Date.now() - checkedInDate.getTime()) / (1000 * 60));
+            }
+          }
+        } catch {
+          waitingTime = 0;
+        }
+      }
+      
+      return {
+        id: `apt-${appointment.id}`,
+        appointmentId: appointment.id,
+        patientId: appointment.patientId,
+        tokenNumber: appointment.tokenNumber || `#${index + 1}`,
+        name: (appointment as Appointment).patientName || patient?.name || 'Unknown Patient',
+        phone: (appointment as Appointment).patientPhone || patient?.phone,
+        status: appointment.checkedInAt ? 'checked_in' : 'waiting',
+        waitingTime,
+        appointmentDate: appointment.appointmentDate,
+        appointmentTime: appointment.appointmentTime,
+        acceptanceStatus: (appointment as Appointment).acceptanceStatus,
+        checkedInAt: appointment.checkedInAt,
+      };
+    });
+
+  // Sort by appointment time
+  appointmentQueueItems.sort((a, b) => {
+    if (a.appointmentTime && b.appointmentTime) {
+      return a.appointmentTime.localeCompare(b.appointmentTime);
+    }
+    return 0;
+  });
+
+  // Debug: Log data when it changes
+  useEffect(() => {
+    console.log('=== QUEUE DATA UPDATE ===');
+    console.log('Current Patient:', currentPatient);
+    console.log('Waiting Queue Length:', waitingQueue.length);
+    console.log('Waiting Queue:', waitingQueue);
+    console.log('Appointment Queue Items Length:', appointmentQueueItems.length);
+    console.log('Appointment Queue Items:', appointmentQueueItems);
+    console.log('Today Appointments:', todayAppointments.length);
+    console.log('Queue Stats:', queueStats);
+    console.log('Pending Check-ins:', pendingCheckIns.length);
+    console.log('All Appointments:', appointments.length);
+  }, [currentPatient, waitingQueue, queueStats, pendingCheckIns, appointments, appointmentQueueItems, todayAppointments]);
+
+  // Fetch pending check-ins when doctor is selected
+  useEffect(() => {
+    const fetchPendingCheckIns = async () => {
+      if (selectedDoctorId) {
+        const today = new Date().toISOString().split('T')[0];
+        console.log('=== FETCHING PENDING CHECK-INS ===');
+        console.log('Selected Doctor ID:', selectedDoctorId);
+        console.log('Today\'s Date:', today);
+        
+        const pending = await getPendingCheckIns(selectedDoctorId, today);
+        console.log('Pending Check-ins Found:', pending.length);
+        console.log('Pending Check-ins Data:', pending);
+        
+        setPendingCheckIns(pending);
+      }
+    };
+    
+    fetchPendingCheckIns();
+  }, [selectedDoctorId, getPendingCheckIns]);
+
+  // Manual refresh only - removed auto-refresh
+
+  // Reset reordered items and skipped items when doctor changes
+  useEffect(() => {
+    setReorderedQueueItems([]);
+    setSkippedItems(new Set());
+  }, [selectedDoctorId]);
+
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [isBreakDropdownOpen, setIsBreakDropdownOpen] = useState(false);
+  const [reorderedQueueItems, setReorderedQueueItems] = useState<AppointmentQueueItem[]>([]);
   const breakButtonRef = useRef<HTMLDivElement>(null);
 
   const selectedDoctor = doctors.find(d => d.id === selectedDoctorId);
@@ -439,9 +973,33 @@ export default function QueueManagementPage() {
       label: 'Refresh Queue',
       onClick: async () => {
         setActionLoading(true);
-        // Refresh logic would go here
+        await refreshQueue();
+        // Also refresh pending check-ins
+        if (selectedDoctorId) {
+          const today = new Date().toISOString().split('T')[0];
+          const pending = await getPendingCheckIns(selectedDoctorId, today);
+          setPendingCheckIns(pending);
+        }
         setActionLoading(false);
         setSuccessMessage('Queue refreshed');
+      }
+    },
+    {
+      label: showAllAppointments ? 'Hide All Appointments' : 'Show All Appointments',
+      onClick: () => setShowAllAppointments(!showAllAppointments)
+    },
+    {
+      label: 'Reset Queue Order',
+      onClick: () => {
+        setReorderedQueueItems([]);
+        setSuccessMessage('Queue order reset to original');
+      }
+    },
+    {
+      label: `Restore Skipped (${skippedItems.size})`,
+      onClick: () => {
+        setSkippedItems(new Set());
+        setSuccessMessage('Skipped items restored');
       }
     },
     {
@@ -467,13 +1025,39 @@ export default function QueueManagementPage() {
 
   const handleSkip = async (queueItemId: string) => {
     setActionLoading(true);
-    const success = await skipPatient(queueItemId, 'Skipped by assistant');
-    setActionLoading(false);
     
-    if (success) {
-      setSuccessMessage('Patient skipped successfully');
-    } else {
+    try {
+      // For appointment queue items, we'll remove them from the display
+      if (queueItemId.startsWith('apt-')) {
+        // Add to skipped items set
+        setSkippedItems(prev => new Set([...prev, queueItemId]));
+        
+        // Remove from reordered items if it exists there
+        if (reorderedQueueItems.length > 0) {
+          const newReorderedItems = reorderedQueueItems.filter(item => item.id !== queueItemId);
+          setReorderedQueueItems(newReorderedItems);
+        }
+        
+        // Find the skipped item to show in success message
+        const skippedItem = appointmentQueueItems.find(item => item.id === queueItemId);
+        if (skippedItem) {
+          console.log('Skipped appointment:', skippedItem);
+          setSuccessMessage(`Token ${skippedItem.tokenNumber} skipped successfully`);
+        }
+      } else {
+        // For regular queue items, use the original skip logic
+        const success = await skipPatient(queueItemId, 'Skipped by assistant');
+        if (success) {
+          setSuccessMessage('Patient skipped successfully');
+        } else {
+          setSuccessMessage('Failed to skip patient');
+        }
+      }
+    } catch (error) {
+      console.error('Skip error:', error);
       setSuccessMessage('Failed to skip patient');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -490,27 +1074,113 @@ export default function QueueManagementPage() {
   };
 
   const handleDrop = async (dropIndex: number) => {
-    if (draggedIndex === null) return;
-
-    const draggedItem = waitingQueue[draggedIndex];
-    if (!draggedItem) return;
-
-    setActionLoading(true);
-    const success = await updateQueuePosition(draggedItem.id, dropIndex + 1);
-    setActionLoading(false);
-
-    if (success) {
-      setSuccessMessage('Queue position updated successfully');
-    } else {
-      setSuccessMessage('Failed to update queue position');
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      return;
     }
 
+    // Get the current queue items (either reordered or original)
+    const currentItems = reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems;
+    
+    // Create a new array with the item moved
+    const newItems = [...currentItems];
+    const draggedItem = newItems[draggedIndex];
+    
+    // Remove the dragged item from its original position
+    newItems.splice(draggedIndex, 1);
+    
+    // Insert it at the new position
+    newItems.splice(dropIndex, 0, draggedItem);
+    
+    // Update the reordered queue items
+    setReorderedQueueItems(newItems);
+    
+    console.log(`Moved item from position ${draggedIndex} to position ${dropIndex}`);
+    setSuccessMessage('Queue position updated successfully');
     setDraggedIndex(null);
   };
 
   const handleBreakSubmit = (fromTime: string, toTime: string) => {
     console.log('Doctor break set from', fromTime, 'to', toTime);
-    // Add your break logic here
+    setSuccessMessage(`Break scheduled from ${fromTime} to ${toTime}`);
+  };
+
+  const handleCheckIn = async (appointment: Appointment) => {
+    if (!selectedDoctorId) return;
+    
+    setActionLoading(true);
+    const success = await checkInPatient(
+      appointment.id,
+      appointment.patientId,
+      selectedDoctorId,
+      appointment.tokenNumber || ''
+    );
+    setActionLoading(false);
+    
+    if (success) {
+      setSuccessMessage(`Patient ${appointment.tokenNumber} added to queue successfully`);
+      // Refresh pending check-ins
+      const today = new Date().toISOString().split('T')[0];
+      const pending = await getPendingCheckIns(selectedDoctorId, today);
+      setPendingCheckIns(pending);
+    } else {
+      setSuccessMessage('Failed to add patient to queue');
+    }
+  };
+
+  const handleAppointmentAction = async (appointmentId: string, action: string) => {
+    setActionLoading(true);
+    try {
+      console.log('=== APPOINTMENT ACTION ===');
+      console.log('Appointment ID:', appointmentId);
+      console.log('Action:', action);
+      
+      let success = false;
+      
+      switch (action) {
+        case 'cancel':
+          success = await cancelAppointment(appointmentId, 'Cancelled by admin');
+          break;
+        case 'complete':
+          success = await completeAppointment(appointmentId);
+          break;
+        case 'no-show':
+          success = await markNoShow(appointmentId);
+          break;
+        case 'check-in':
+          console.log('Executing check-in...');
+          success = await checkInAppointment(appointmentId);
+          console.log('Check-in result:', success);
+          break;
+        default:
+          success = false;
+      }
+
+      if (success) {
+        const actionMessages: Record<string, string> = {
+          'check-in': 'checked in successfully',
+          'cancel': 'cancelled',
+          'complete': 'completed',
+          'no-show': 'marked as no-show'
+        };
+        setSuccessMessage(`Appointment ${actionMessages[action] || action + 'ed'} successfully`);
+        
+        // Refresh data
+        await refreshQueue();
+        if (selectedDoctorId) {
+          const today = new Date().toISOString().split('T')[0];
+          const pending = await getPendingCheckIns(selectedDoctorId, today);
+          setPendingCheckIns(pending);
+        }
+      } else {
+        setSuccessMessage(`Failed to ${action} appointment`);
+      }
+    } catch (err) {
+      console.error('Appointment action error:', err);
+      setSuccessMessage(apiUtils.handleError(err));
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   if (loading && !currentPatient && waitingQueue.length === 0) {
@@ -550,7 +1220,7 @@ export default function QueueManagementPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Queue Management</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Real-time token board for {selectedDoctor?.user.name || 'Select a doctor'}
+              Real-time token board for {selectedDoctor?.user?.name || 'Select a doctor'}
             </p>
           </div>
           <div className="flex gap-3">
@@ -562,7 +1232,7 @@ export default function QueueManagementPage() {
               <option value="">Select Doctor</option>
               {doctors.map((doctor) => (
                 <option key={doctor.id} value={doctor.id}>
-                  {doctor.user.name} - {doctor.specialty}
+                  {doctor.user?.name || 'Unknown'} - {doctor.specialty}
                 </option>
               ))}
             </select>
@@ -592,15 +1262,68 @@ export default function QueueManagementPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Queue Section */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Checked-in Patients Section */}
+            {showCheckInSection && pendingCheckIns.length > 0 && (
+              <div className="bg-white rounded-lg border border-teal-300 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-teal-600" />
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      Checked-in Patients ({pendingCheckIns.length})
+                    </h2>
+                  </div>
+                  <button
+                    onClick={() => setShowCheckInSection(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-600 mb-4">
+                  Patients are ordered by check-in time
+                </p>
+                <div className="space-y-3">
+                  {pendingCheckIns.map((appointment) => {
+                    const patient = patients.find(p => p.id === appointment.patientId);
+                    return (
+                      <PendingCheckInCard
+                        key={appointment.id}
+                        appointment={appointment}
+                        patient={patient || { id: '', name: 'Unknown', email: '', phone: '', dateOfBirth: '', gender: 'other', isActive: true, createdAt: '', updatedAt: '' }}
+                        onCheckIn={() => handleCheckIn(appointment)}
+                        isLoading={actionLoading}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Show/Hide Check-in Section Button */}
+            {!showCheckInSection && pendingCheckIns.length > 0 && (
+              <button
+                onClick={() => setShowCheckInSection(true)}
+                className="w-full p-4 bg-teal-100 border border-teal-300 rounded-lg text-teal-700 font-medium hover:bg-teal-200 transition-colors flex items-center justify-center gap-2"
+              >
+                <UserCheck className="w-5 h-5" />
+                Show {pendingCheckIns.length} Checked-in Patient{pendingCheckIns.length !== 1 ? 's' : ''}
+              </button>
+            )}
+
             {/* Current Patient */}
             {currentPatient ? (
               <CurrentPatientCard 
                 patient={{
                   tokenNumber: currentPatient.tokenNumber,
                   name: patients.find(p => p.id === currentPatient.patientId)?.name || 'Loading...',
-                  status: currentPatient.status === 'current' ? 'Arrived' : currentPatient.status
+                  phone: patients.find(p => p.id === currentPatient.patientId)?.phone,
+                  status: 'Arrived' as const,
+                  appointmentDate: appointments.find(apt => apt.id === currentPatient.appointmentId)?.appointmentDate,
+                  appointmentTime: appointments.find(apt => apt.id === currentPatient.appointmentId)?.appointmentTime,
+                  checkedInAt: appointments.find(apt => apt.id === currentPatient.appointmentId)?.checkedInAt,
                 }}
                 onComplete={handleComplete}
+                disabled={actionLoading}
               />
             ) : (
               <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
@@ -610,44 +1333,82 @@ export default function QueueManagementPage() {
 
             {/* Waiting Queue */}
             <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Waiting Queue ({waitingQueue.length})
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Waiting Queue ({(reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).length})
+                </h2>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <span className="font-medium">Queue Order:</span>
+                  {(reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).length > 0 && (
+                    <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-semibold">
+                      {(reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).map((item, idx) => (
+                        <span key={item.id}>
+                          {item.tokenNumber || idx + 1}
+                          {idx < (reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).length - 1 && ' → '}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
               <div className="space-y-3">
-                {waitingQueue.length > 0 ? (
-                  waitingQueue.map((queueItem, index) => {
-                    const patient = patients.find(p => p.id === queueItem.patientId);
+                {(reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).length > 0 ? (
+                  (reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).map((queueItem, index) => {
                     return (
-                      <QueueItem
-                        key={queueItem.id}
-                        patient={{
-                          id: queueItem.id,
-                          tokenNumber: queueItem.tokenNumber,
-                          name: patient?.name || 'Loading...',
-                          category: patient?.familyId ? 'Family' : undefined,
-                          waitingTime: queueItem.waitingTime ? `${queueItem.waitingTime} min` : '0 min',
-                          status: queueItem.status === 'waiting' ? 'Arrived' : 
-                                  queueItem.status === 'skipped' ? 'Late' : 
-                                  queueItem.status
-                        }}
-                        index={index + 1}
-                        onSkip={() => handleSkip(queueItem.id)}
-                        isSelected={index === 0}
-                        onDragStart={() => handleDragStart(index)}
-                        onDragEnd={handleDragEnd}
-                        onDragOver={handleDragOver}
-                        onDrop={() => handleDrop(index)}
-                        isDragging={draggedIndex === index}
-                      />
+                      <div key={queueItem.id} className="relative">
+                        {/* Position Badge */}
+                        <div className="absolute -left-3 top-1/2 -translate-y-1/2 z-10">
+                          <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm shadow-lg">
+                            {index + 1}
+                          </div>
+                        </div>
+                        
+                        <QueueItem
+                          patient={{
+                            id: queueItem.id,
+                            tokenNumber: queueItem.tokenNumber,
+                            name: queueItem.name,
+                            phone: queueItem.phone,
+                            category: queueItem.status === 'checked_in' ? 'Checked In' : 'Scheduled',
+                            waitingTime: queueItem.waitingTime ? `${queueItem.waitingTime} min` : '0 min',
+                            status: (queueItem.status === 'checked_in' ? 'Arrived' : 
+                                    queueItem.status === 'waiting' ? 'Scheduled' : 
+                                    'Walk-in') as 'Arrived' | 'Late' | 'Walk-in',
+                            appointmentDate: queueItem.appointmentDate,
+                            appointmentTime: queueItem.appointmentTime,
+                            acceptanceStatus: queueItem.acceptanceStatus,
+                            checkedInAt: queueItem.checkedInAt ? formatTimestamp(queueItem.checkedInAt) : undefined,
+                          }}
+                          onSkip={() => handleSkip(queueItem.id)}
+                          isSelected={index === 0}
+                          onDragStart={() => handleDragStart(index)}
+                          onDragEnd={handleDragEnd}
+                          onDragOver={handleDragOver}
+                          onDrop={() => handleDrop(index)}
+                          isDragging={draggedIndex === index}
+                        />
+                      </div>
                     );
                   })
                 ) : (
                   <div className="text-center py-8 text-gray-500">
-                    No patients in waiting queue
+                    No appointments for today
                   </div>
                 )}
               </div>
             </div>
+
+            {/* All Appointments Table */}
+            {showAllAppointments && (
+              <AllAppointmentsTable
+                appointments={doctorAppointments as Appointment[]}
+                patients={patients}
+                doctors={doctors as Doctor[]}
+                onAppointmentAction={handleAppointmentAction}
+                actionLoading={actionLoading}
+              />
+            )}
           </div>
 
           {/* Sidebar */}
@@ -657,8 +1418,8 @@ export default function QueueManagementPage() {
               status: selectedDoctor?.status === 'active' ? 'Active' : 
                       selectedDoctor?.status === 'break' ? 'Break' : 'Offline',
               avgConsultTime: selectedDoctor?.consultationDuration ? `${selectedDoctor.consultationDuration} min` : 'N/A',
-              patientsServed: queueStats?.averageWaitTime ? Math.round(queueStats.averageWaitTime) : 0,
-              estimatedComplete: selectedDoctor?.estimatedLastPatient || 'N/A'
+              patientsServed: queueStats?.completed || 0,
+              estimatedComplete: 'N/A'
             }} />
 
             {/* Quick Actions */}

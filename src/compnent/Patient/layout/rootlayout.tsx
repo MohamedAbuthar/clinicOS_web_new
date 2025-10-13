@@ -17,7 +17,7 @@ export default function PatientRootLayout({ children }: RootLayoutProps) {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <Header />
+        <Header patient={null} onLogout={() => {}} />
         
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-8">

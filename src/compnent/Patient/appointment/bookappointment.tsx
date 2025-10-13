@@ -217,6 +217,7 @@ export default function BookAppointmentPage() {
       appointmentsToCreate.push({
           patientId: patient.id,
         patientName: patient.name,
+        patientPhone: patient.phone,
         doctorId: selectedDoctor!,
         appointmentDate: dateStr,
         appointmentTime: patientSlot,
@@ -253,6 +254,7 @@ export default function BookAppointmentPage() {
         appointmentsToCreate.push({
           patientId: memberId,
           patientName: member.name,
+          patientPhone: patient.phone, // Use patient's phone for family members
           doctorId: selectedDoctor!,
           appointmentDate: dateStr,
           appointmentTime: memberSlot,
@@ -519,7 +521,7 @@ export default function BookAppointmentPage() {
                   <ul className="list-disc list-inside space-y-1">
                     <li>Choose Morning or Evening session</li>
                     <li>System automatically assigns your time slot</li>
-                    <li>You'll receive a token number (e.g., #1, #2, #3...)</li>
+                    <li>You&apos;ll receive a token number (e.g., #1, #2, #3...)</li>
                     <li>Lower token numbers are assigned earlier time slots</li>
                   </ul>
                 </div>
@@ -719,7 +721,7 @@ export default function BookAppointmentPage() {
             
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> Your token number and exact time slot will be assigned automatically based on the booking order. You'll receive {1 + selectedFamilyMembers.length} sequential token{1 + selectedFamilyMembers.length !== 1 ? 's' : ''}.
+                <strong>Note:</strong> Your token number and exact time slot will be assigned automatically based on the booking order. You&apos;ll receive {1 + selectedFamilyMembers.length} sequential token{1 + selectedFamilyMembers.length !== 1 ? 's' : ''}.
               </p>
             </div>
 

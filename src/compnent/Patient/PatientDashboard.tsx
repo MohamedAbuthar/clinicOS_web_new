@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, User, ChevronRight, Plus } from 'lucide-react';
 import { Appointment, RecentVisit, PatientStatsCard, DashboardSection, AppointmentCard, RecentVisitCard } from '../reusable';
 import { PatientDashboardStats, PatientRecentVisit } from '@/lib/api';
-import { getAppointments, getDoctors } from '@/lib/firebase/firestore';
+import { getAppointments, getAllDoctors } from '@/lib/firebase/firestore';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 import { useRouter } from 'next/navigation';
 
@@ -46,7 +46,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
 }) => {
   const [dashboardStats, setDashboardStats] = useState<PatientDashboardStats | null>(null);
   const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
-  const [recentVisitsData, setRecentVisitsData] = useState<PatientRecentVisit[]>([]);
+  const [recentVisitsData, setRecentVisitsData] = useState<RecentVisit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -66,7 +66,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         setError('');
 
         // Get all appointments for the patient
-        const allAppointments = await getAppointments(patient.id);
+        const allAppointments = await getAppointments(patient.id) as any[];
         
         if (!allAppointments) {
           throw new Error('Failed to load appointments');
@@ -90,23 +90,21 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
           .slice(0, 10);
 
         // Get doctors to enrich appointment data
-        const doctors = await getDoctors();
+        const doctorsResult = await getAllDoctors();
+        const doctors = doctorsResult.success ? doctorsResult.data : [];
         const doctorMap = new Map(doctors?.map(d => [d.id, d]) || []);
 
         // Set upcoming appointments
         setUpcomingAppointments(upcoming);
 
         // Convert completed appointments to recent visits format
-        const visits: PatientRecentVisit[] = completed.map(apt => {
-          const doctor = doctorMap.get(apt.doctorId);
+        const visits: RecentVisit[] = completed.map(apt => {
+          const doctor = doctorMap.get(apt.doctorId) as any;
           return {
             id: apt.id,
-            doctorName: doctor?.user?.name || 'Unknown Doctor',
-            doctorSpecialty: doctor?.specialty || 'General',
-            appointmentDate: apt.appointmentDate,
-            appointmentTime: apt.appointmentTime,
-            diagnosis: apt.notes || 'Checkup completed',
-            status: 'completed' as const
+            doctor: doctor?.user?.name || 'Unknown Doctor',
+            reason: apt.notes || 'Checkup completed',
+            date: apt.appointmentDate
           };
         });
         setRecentVisitsData(visits);
@@ -123,7 +121,7 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         // Add next appointment info if exists
         if (upcoming.length > 0) {
           const nextApt = upcoming[0];
-          const nextDoctor = doctorMap.get(nextApt.doctorId);
+          const nextDoctor = doctorMap.get(nextApt.doctorId) as any;
           stats.nextAppointment = {
             id: nextApt.id,
             doctorName: nextDoctor?.user?.name || 'Unknown Doctor',

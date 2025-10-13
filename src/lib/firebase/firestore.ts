@@ -20,6 +20,7 @@ import {
   QueryConstraint
 } from 'firebase/firestore';
 import { db, auth } from './config';
+import { getNextTokenForSession, getSessionFromTime, getNextTokenForAllAppointments } from '../utils/sessionBookingHelper';
 
 // Collection names
 export const COLLECTIONS = {
@@ -133,9 +134,35 @@ export const getAllPatients = async (searchTerm = '', limitCount = 50) => {
 
 export const createAppointment = async (appointmentData: any) => {
   try {
+    // Generate token number if not provided
+    let tokenNumber = appointmentData.tokenNumber;
+    
+    if (!tokenNumber) {
+      console.log('🔄 No token provided, generating new token...');
+      
+      // Get ALL appointments for the same doctor and date
+      const existingAppointmentsResult = await getDoctorAppointmentsByDate(
+        appointmentData.doctorId, 
+        appointmentData.appointmentDate
+      );
+      
+      const existingAppointments = existingAppointmentsResult.success && existingAppointmentsResult.data 
+        ? existingAppointmentsResult.data 
+        : [];
+      
+      console.log(`📅 Found ${existingAppointments.length} existing appointments for doctor ${appointmentData.doctorId} on ${appointmentData.appointmentDate}`);
+      
+      // Generate next continuous token
+      tokenNumber = getNextTokenForAllAppointments(existingAppointments, appointmentData.appointmentDate);
+      console.log(`🎫 Generated token: ${tokenNumber}`);
+    } else {
+      console.log(`🎫 Using provided token: ${tokenNumber}`);
+    }
+    
     const appointmentsRef = collection(db, COLLECTIONS.APPOINTMENTS);
     const newAppointment = {
       ...appointmentData,
+      tokenNumber,
       status: 'scheduled',
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now()
@@ -150,7 +177,7 @@ export const createAppointment = async (appointmentData: any) => {
       entityType: 'appointment',
       entityId: docRef.id,
       timestamp: Timestamp.now(),
-      details: `Appointment created for patient ${appointmentData.patientId}`
+      details: `Appointment created for patient ${appointmentData.patientId} (Token: ${tokenNumber})`
     });
     
     return {
@@ -329,6 +356,84 @@ export const getDoctorAppointmentsByDate = async (doctorId: string, appointmentD
   }
 };
 
+// Migration function to add tokens to existing appointments
+export const migrateAppointmentTokens = async () => {
+  try {
+    console.log('🔄 Starting token migration for existing appointments...');
+    
+    // Get all appointments
+    const appointmentsRef = collection(db, COLLECTIONS.APPOINTMENTS);
+    const q = query(appointmentsRef, orderBy('createdAt', 'asc'));
+    const querySnapshot = await getDocs(q);
+    
+    const allAppointments = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    console.log(`📋 Found ${allAppointments.length} total appointments`);
+    
+    // Group appointments by doctor and date
+    const appointmentsByDoctorAndDate: { [key: string]: any[] } = {};
+    
+    allAppointments.forEach((apt: any) => {
+      const key = `${apt.doctorId}-${apt.appointmentDate}`;
+      if (!appointmentsByDoctorAndDate[key]) {
+        appointmentsByDoctorAndDate[key] = [];
+      }
+      appointmentsByDoctorAndDate[key].push(apt);
+    });
+    
+    let updatedCount = 0;
+    let skippedCount = 0;
+    
+    // Process each group
+    for (const [key, appointments] of Object.entries(appointmentsByDoctorAndDate)) {
+      const [doctorId, appointmentDate] = key.split('-');
+      
+      // Sort appointments by creation time to maintain order
+      const sortedAppointments = appointments.sort((a, b) => {
+        const aTime = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+        const bTime = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+        return aTime.getTime() - bTime.getTime();
+      });
+      
+      // Update all appointments with continuous numbering (not session-specific)
+      let tokenCounter = 1;
+      for (let i = 0; i < sortedAppointments.length; i++) {
+        const apt = sortedAppointments[i];
+        if (!apt.tokenNumber) {
+          const tokenNumber = `#${tokenCounter}`;
+          await updateDoc(doc(db, COLLECTIONS.APPOINTMENTS, apt.id), {
+            tokenNumber,
+            updatedAt: Timestamp.now()
+          });
+          console.log(`✅ Updated appointment ${apt.id} with token ${tokenNumber}`);
+          updatedCount++;
+          tokenCounter++;
+        } else {
+          console.log(`⏭️ Skipping appointment ${apt.id} (already has token: ${apt.tokenNumber})`);
+          skippedCount++;
+        }
+      }
+    }
+    
+    console.log(`🎉 Migration completed! Updated: ${updatedCount}, Skipped: ${skippedCount}`);
+    
+    return {
+      success: true,
+      updated: updatedCount,
+      skipped: skippedCount
+    };
+  } catch (error: any) {
+    console.error('❌ Token migration error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
 export const cancelAppointment = async (appointmentId: string, reason: string) => {
   try {
     const appointmentRef = doc(db, COLLECTIONS.APPOINTMENTS, appointmentId);
@@ -461,6 +566,9 @@ export const getAllDoctors = async () => {
     };
   }
 };
+
+// Alias for backward compatibility
+export const getDoctors = getAllDoctors;
 
 export const getDoctorById = async (doctorId: string) => {
   try {
