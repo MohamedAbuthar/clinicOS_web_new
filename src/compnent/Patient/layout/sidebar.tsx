@@ -37,7 +37,7 @@ export default function PatientSidebar() {
         <ul className="space-y-1">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.path;
+            const isActive = pathname === item.path || pathname.startsWith(item.path + '/');
             
             return (
               <li key={item.label}>
