@@ -5,12 +5,12 @@ import { Search, Calendar, Plus, Clock, Phone, X, User, Mail, AlertCircle, Loade
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { usePatients } from '@/lib/hooks/usePatients';
-import { apiUtils } from '@/lib/api';
+import { apiUtils, Appointment } from '@/lib/api';
 import { migrateAppointmentTokens } from '@/lib/firebase/firestore';
 
 export default function AppointmentsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
     patientName: '',
@@ -31,15 +31,12 @@ export default function AppointmentsPage() {
     loading, 
     error, 
     createAppointment, 
-    updateAppointment, 
     cancelAppointment, 
-    rescheduleAppointment,
     completeAppointment,
     markNoShow,
     checkInAppointment,
     acceptAppointment,
     rejectAppointment,
-    getAvailableSlots,
     refreshAppointments
   } = useAppointments();
   
@@ -128,9 +125,9 @@ export default function AppointmentsPage() {
       } else {
         setSuccessMessage('Failed to create appointment');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error creating appointment:', err);
-      setSuccessMessage(err.message || 'Failed to create appointment');
+      setSuccessMessage(err instanceof Error ? err.message : 'Failed to create appointment');
     } finally {
       setActionLoading(false);
     }
@@ -162,44 +159,14 @@ export default function AppointmentsPage() {
       } else {
         setSuccessMessage(`Migration failed: ${result.error}`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Migration error:', error);
-      setSuccessMessage(`Migration failed: ${error.message}`);
+      setSuccessMessage(`Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsMigrating(false);
     }
   };
 
-  const testTokenGeneration = async () => {
-    try {
-      console.log('🧪 Testing token generation...');
-      
-      // Get current appointments to see existing tokens
-      const currentAppointments = appointments.filter(apt => 
-        apt.doctorId === formData.doctor && 
-        apt.appointmentDate === formData.date
-      );
-      
-      console.log('Current appointments for this doctor/date:', currentAppointments.map(apt => ({
-        id: apt.id,
-        token: apt.tokenNumber,
-        time: apt.appointmentTime
-      })));
-      
-      // Show next token that would be generated
-      const nextToken = currentAppointments.length > 0 
-        ? `#${Math.max(...currentAppointments.map(apt => {
-            const match = apt.tokenNumber?.match(/#(\d+)/);
-            return match ? parseInt(match[1]) : 0;
-          })) + 1}`
-        : '#1';
-      
-      setSuccessMessage(`Next token would be: ${nextToken} (${currentAppointments.length} existing appointments)`);
-    } catch (error: any) {
-      console.error('Test error:', error);
-      setSuccessMessage(`Test failed: ${error.message}`);
-    }
-  };
 
   const handleAppointmentAction = async (appointmentId: string, action: string) => {
     setActionLoading(true);
@@ -311,14 +278,31 @@ export default function AppointmentsPage() {
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  const formatTimestamp = (timestamp: any) => {
+  const formatTimestamp = (timestamp: unknown) => {
     if (!timestamp) return '';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: true 
-    });
+    
+    // Handle Firebase Timestamp objects
+    if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof (timestamp as any).toDate === 'function') {
+      const date = (timestamp as any).toDate();
+      return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    }
+    
+    // Handle regular Date objects or date strings
+    try {
+      const date = new Date(timestamp as string | number | Date);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    } catch {
+      return '';
+    }
   };
 
   if (loading) {

@@ -2,6 +2,8 @@
 // NOTE: All API functions have been moved to Firebase
 // Import from '@/lib/firebase/firestore' or '@/lib/firebase/auth' instead
 
+import { RecentVisit } from '@/compnent/reusable/RecentVisitCard';
+
 // User Types
 export interface User {
   id: string;
@@ -240,7 +242,7 @@ export interface PatientDashboardStats {
     room?: string;
     token?: string;
   };
-  recentVisits: PatientRecentVisit[];
+  recentVisits: RecentVisit[];
 }
 
 export interface PatientRecentVisit {

@@ -786,7 +786,7 @@ export default function PatientProfileWithEdit() {
               <div className="text-center py-12 bg-gray-50 rounded-lg">
                 <UserPlus className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600 mb-2">No family members added yet</p>
-                <p className="text-gray-500 text-sm">Click "Add Member" to add your first family member</p>
+                <p className="text-gray-500 text-sm">Click &quot;Add Member&quot; to add your first family member</p>
               </div>
             ) : (
               <div className="space-y-4">

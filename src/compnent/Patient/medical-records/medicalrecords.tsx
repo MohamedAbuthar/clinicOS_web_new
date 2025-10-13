@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileText, Download, Eye, Syringe, Calendar, X } from 'lucide-react';
-import { patientMedicalRecordsApi, MedicalReport, Prescription, Vaccination } from '@/lib/api';
+import { getPatientMedicalRecords, getPatientPrescriptions, getPatientVaccinations } from '@/lib/firebase/firestore';
+import { MedicalReport, Prescription, Vaccination, PrescriptionMedication } from '@/lib/api';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 
 // TypeScript Interfaces
@@ -16,20 +17,33 @@ interface Report {
   category: string;
 }
 
-interface Prescription {
-  id: number;
-  doctor: string;
-  date: string;
-  medications: string[];
-  daysRemaining: number;
+interface PrescriptionData {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  prescriptionDate: string;
+  diagnosis: string;
+  doctorName: string;
+  medications: PrescriptionMedication[];
+  notes: string;
+  status: 'active' | 'completed' | 'expired';
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface Vaccination {
-  id: number;
-  name: string;
-  administered: string;
-  nextDue: string;
-  status: string;
+interface VaccinationData {
+  id: string;
+  patientId: string;
+  vaccineName: string;
+  vaccineType: string;
+  vaccinationDate: string;
+  batchNumber?: string;
+  administeredBy?: string;
+  nextDueDate: string;
+  status: 'completed' | 'pending' | 'overdue';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface ReportContent {
@@ -58,8 +72,8 @@ export default function MedicalRecordsPage() {
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [viewDialogData, setViewDialogData] = useState<ViewDialogData | null>(null);
   const [reports, setReports] = useState<MedicalReport[]>([]);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
+  const [prescriptions, setPrescriptions] = useState<PrescriptionData[]>([]);
+  const [vaccinations, setVaccinations] = useState<VaccinationData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -80,24 +94,24 @@ export default function MedicalRecordsPage() {
           
           // Load all medical records in parallel
           const [reportsResponse, prescriptionsResponse, vaccinationsResponse] = await Promise.all([
-            patientMedicalRecordsApi.getMedicalReports(),
-            patientMedicalRecordsApi.getPrescriptions(),
-            patientMedicalRecordsApi.getVaccinations()
+            getPatientMedicalRecords(),
+            getPatientPrescriptions(),
+            getPatientVaccinations()
           ]);
 
           if (reportsResponse.success && reportsResponse.data) {
-            setReports(reportsResponse.data);
+            setReports(reportsResponse.data as unknown as MedicalReport[]);
           }
 
           if (prescriptionsResponse.success && prescriptionsResponse.data) {
-            setPrescriptions(prescriptionsResponse.data);
+            setPrescriptions(prescriptionsResponse.data as unknown as PrescriptionData[]);
           }
 
           if (vaccinationsResponse.success && vaccinationsResponse.data) {
-            setVaccinations(vaccinationsResponse.data);
+            setVaccinations(vaccinationsResponse.data as unknown as VaccinationData[]);
           }
-        } catch (error: any) {
-          setError(error.message || 'Failed to load medical records');
+        } catch (error: unknown) {
+          setError(error instanceof Error ? error.message : 'Failed to load medical records');
         } finally {
           setIsLoading(false);
         }
@@ -135,8 +149,8 @@ export default function MedicalRecordsPage() {
       date: new Date(prescription.prescriptionDate).toLocaleDateString(),
       type: 'prescription',
       content: {
-        medications: prescription.medications.map(med => `${med.medicationName} ${med.dosage} - ${med.instructions}`),
-        instructions: prescription.instructions || 'Take medications as prescribed. Complete the full course.'
+        medications: prescription.medications.map(med => `${med.name} ${med.dosage} - ${med.instructions || ''}`),
+        instructions: prescription.notes || 'Take medications as prescribed. Complete the full course.'
       }
     });
     setShowViewDialog(true);
@@ -245,7 +259,7 @@ export default function MedicalRecordsPage() {
                           <p className="text-gray-500">{new Date(prescription.prescriptionDate).toLocaleDateString()}</p>
                         </div>
                         <span className="bg-teal-600 text-white px-3 py-1 rounded-full text-sm font-medium">
-                          {prescription.daysRemaining || 0} days
+                          {prescription.status}
                         </span>
                       </div>
 
@@ -255,7 +269,7 @@ export default function MedicalRecordsPage() {
                           {prescription.medications.map((med, idx) => (
                             <li key={idx} className="flex items-start gap-2 text-gray-700">
                               <span className="w-1.5 h-1.5 bg-teal-600 rounded-full mt-2"></span>
-                              <span>{med.medicationName} {med.dosage}</span>
+                              <span>{med.name} {med.dosage}</span>
                             </li>
                           ))}
                         </ul>
@@ -297,7 +311,7 @@ export default function MedicalRecordsPage() {
                           </div>
                           <div>
                             <h3 className="text-xl font-bold text-gray-900 mb-2">{vaccination.vaccineName}</h3>
-                            <p className="text-gray-500 text-sm mb-1">Administered: {new Date(vaccination.administeredDate).toLocaleDateString()}</p>
+                            <p className="text-gray-500 text-sm mb-1">Administered: {new Date(vaccination.vaccinationDate).toLocaleDateString()}</p>
                             <p className="text-gray-500 text-sm">Next Due: {vaccination.nextDueDate ? new Date(vaccination.nextDueDate).toLocaleDateString() : 'N/A'}</p>
                           </div>
                         </div>

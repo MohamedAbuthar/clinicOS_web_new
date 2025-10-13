@@ -1,12 +1,20 @@
 "use client"
 
 import React, { useState, useRef, useEffect } from 'react';
-import { UserPlus, GripVertical, Clock, X, AlertCircle, Loader2, CheckCircle, RotateCcw, UserCheck, Calendar, Phone, XCircle, UserX } from 'lucide-react';
+import { UserPlus, GripVertical, Clock, X, AlertCircle, Loader2, CheckCircle, UserCheck, Calendar, Phone, XCircle, UserX } from 'lucide-react';
 import { useQueue } from '@/lib/hooks/useQueue';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { usePatients } from '@/lib/hooks/usePatients';
 import { useAppointments } from '@/lib/hooks/useAppointments';
-import { apiUtils } from '@/lib/api';
+import { apiUtils, Appointment as BaseAppointment, Patient as ApiPatient, Doctor } from '@/lib/api';
+
+// Extended Appointment interface for queue management
+interface Appointment extends BaseAppointment {
+  checkedInAt?: string | Date | { toDate(): Date };
+  acceptanceStatus?: 'accepted' | 'rejected' | 'pending';
+  patientName?: string;
+  patientPhone?: string;
+}
 
 // Types
 interface Patient {
@@ -20,7 +28,22 @@ interface Patient {
   appointmentDate?: string;
   appointmentTime?: string;
   acceptanceStatus?: string;
-  checkedInAt?: any;
+  checkedInAt?: string;
+}
+
+interface AppointmentQueueItem {
+  id: string;
+  appointmentId: string;
+  patientId: string;
+  tokenNumber: string;
+  name: string;
+  phone?: string;
+  status: string;
+  waitingTime: number;
+  appointmentDate: string;
+  appointmentTime: string;
+  acceptanceStatus?: 'accepted' | 'rejected' | 'pending';
+  checkedInAt?: unknown;
 }
 
 interface CurrentPatient {
@@ -30,7 +53,7 @@ interface CurrentPatient {
   status: string;
   appointmentDate?: string;
   appointmentTime?: string;
-  checkedInAt?: any;
+  checkedInAt?: string;
 }
 
 interface DoctorStatus {
@@ -76,14 +99,31 @@ const formatDate = (dateString: string) => {
   return date.toLocaleDateString();
 };
 
-const formatTimestamp = (timestamp: any) => {
+const formatTimestamp = (timestamp: unknown): string => {
   if (!timestamp) return '';
-  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-  return date.toLocaleTimeString('en-US', { 
-    hour: '2-digit', 
-    minute: '2-digit',
-    hour12: true 
-  });
+  
+  // Handle Firebase Timestamp objects
+  if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof (timestamp as { toDate(): Date }).toDate === 'function') {
+    const date = (timestamp as { toDate(): Date }).toDate();
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  }
+  
+  // Handle regular Date objects or date strings
+  try {
+    const date = new Date(timestamp as string | number | Date);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  } catch {
+    return '';
+  }
 };
 
 const getStatusColor = (status: string) => {
@@ -165,7 +205,7 @@ const CurrentPatientCard = ({ patient, onComplete, disabled }: CurrentPatientCar
             {patient.checkedInAt && (
               <div className="flex items-center gap-1 text-sm text-teal-600">
                 <UserCheck className="w-4 h-4" />
-                Checked in: {formatTimestamp(patient.checkedInAt)}
+                Checked in: {String(formatTimestamp(patient.checkedInAt))}
               </div>
             )}
           </div>
@@ -181,7 +221,6 @@ const CurrentPatientCard = ({ patient, onComplete, disabled }: CurrentPatientCar
 // Draggable Queue Item
 interface QueueItemProps {
   patient: Patient;
-  index: number;
   onSkip: () => void;
   isSelected: boolean;
   onDragStart: () => void;
@@ -191,7 +230,7 @@ interface QueueItemProps {
   isDragging: boolean;
 }
 
-const QueueItem = ({ patient, index, onSkip, isSelected, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: QueueItemProps) => {
+const QueueItem = ({ patient, onSkip, isSelected, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: QueueItemProps) => {
   const statusColors: Record<Patient['status'], string> = {
     Arrived: 'bg-green-100 text-green-700',
     Late: 'bg-yellow-100 text-yellow-700',
@@ -244,7 +283,7 @@ const QueueItem = ({ patient, index, onSkip, isSelected, onDragStart, onDragEnd,
               <span className="text-xs text-gray-500">• Waiting: {patient.waitingTime}</span>
               {patient.checkedInAt && (
                 <span className="text-xs text-teal-600">
-                  ✓ Checked in: {formatTimestamp(patient.checkedInAt)}
+                  ✓ Checked in: {String(formatTimestamp(patient.checkedInAt))}
                 </span>
               )}
             </div>
@@ -506,8 +545,8 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, buttonRef }: DoctorBre
 
 // Pending Check-in Card Component
 interface PendingCheckInCardProps {
-  appointment: any;
-  patient: any;
+  appointment: Appointment;
+  patient: ApiPatient;
   onCheckIn: () => void;
   isLoading: boolean;
 }
@@ -536,7 +575,7 @@ const PendingCheckInCard = ({ appointment, patient, onCheckIn, isLoading }: Pend
               </div>
             )}
             <div className="text-xs text-teal-600">
-              ✓ Checked in: {formatTimestamp(appointment.checkedInAt)}
+              ✓ Checked in: {String(formatTimestamp(appointment.checkedInAt))}
             </div>
           </div>
           {appointment.acceptanceStatus && (
@@ -576,9 +615,9 @@ const PendingCheckInCard = ({ appointment, patient, onCheckIn, isLoading }: Pend
 
 // All Appointments Table Component
 interface AllAppointmentsTableProps {
-  appointments: any[];
-  patients: any[];
-  doctors: any[];
+  appointments: Appointment[];
+  patients: ApiPatient[];
+  doctors: Doctor[];
   onAppointmentAction: (appointmentId: string, action: string) => void;
   actionLoading: boolean;
 }
@@ -686,7 +725,7 @@ const AllAppointmentsTable = ({
                       {appointment.checkedInAt && (
                         <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                           <UserCheck className="w-3 h-3" />
-                          Checked in: {formatTimestamp(appointment.checkedInAt)}
+                          Checked in: {String(formatTimestamp(appointment.checkedInAt) || 'Unknown time')}
                         </div>
                       )}
                     </div>
@@ -758,7 +797,7 @@ const AllAppointmentsTable = ({
 export default function QueueManagementPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [pendingCheckIns, setPendingCheckIns] = useState<any[]>([]);
+  const [pendingCheckIns, setPendingCheckIns] = useState<Appointment[]>([]);
   const [showCheckInSection, setShowCheckInSection] = useState(true);
   const [showAllAppointments, setShowAllAppointments] = useState(false);
   const [skippedItems, setSkippedItems] = useState<Set<string>>(new Set());
@@ -774,9 +813,7 @@ export default function QueueManagementPage() {
     setSelectedDoctorId,
     callNextPatient,
     skipPatient,
-    reinsertPatient,
     completePatient,
-    updateQueuePosition,
     checkInPatient,
     getPendingCheckIns,
     refreshQueue,
@@ -821,23 +858,42 @@ export default function QueueManagementPage() {
   );
 
   // Create queue items from today's appointments
-  const appointmentQueueItems = todayAppointments
+  const appointmentQueueItems: AppointmentQueueItem[] = todayAppointments
     .filter(appointment => !skippedItems.has(`apt-${appointment.id}`))
     .map((appointment, index) => {
       const patient = patients.find(p => p.id === appointment.patientId);
+      let waitingTime = 0;
+      
+      if (appointment.checkedInAt) {
+        try {
+          // Handle Firebase Timestamp objects
+          if (typeof appointment.checkedInAt === 'object' && appointment.checkedInAt !== null && 'toDate' in appointment.checkedInAt && typeof (appointment.checkedInAt as { toDate(): Date }).toDate === 'function') {
+            const checkedInDate = (appointment.checkedInAt as { toDate(): Date }).toDate();
+            waitingTime = Math.floor((Date.now() - checkedInDate.getTime()) / (1000 * 60));
+          } else {
+            // Handle regular Date objects or date strings
+            const checkedInDate = new Date(appointment.checkedInAt as string | number | Date);
+            if (!isNaN(checkedInDate.getTime())) {
+              waitingTime = Math.floor((Date.now() - checkedInDate.getTime()) / (1000 * 60));
+            }
+          }
+        } catch {
+          waitingTime = 0;
+        }
+      }
+      
       return {
         id: `apt-${appointment.id}`,
         appointmentId: appointment.id,
         patientId: appointment.patientId,
         tokenNumber: appointment.tokenNumber || `#${index + 1}`,
-        name: appointment.patientName || patient?.name || 'Unknown Patient',
-        phone: appointment.patientPhone || patient?.phone,
+        name: (appointment as Appointment).patientName || patient?.name || 'Unknown Patient',
+        phone: (appointment as Appointment).patientPhone || patient?.phone,
         status: appointment.checkedInAt ? 'checked_in' : 'waiting',
-        waitingTime: appointment.checkedInAt ? 
-          Math.floor((Date.now() - (appointment.checkedInAt.toDate ? appointment.checkedInAt.toDate().getTime() : new Date(appointment.checkedInAt).getTime())) / (1000 * 60)) : 0,
+        waitingTime,
         appointmentDate: appointment.appointmentDate,
         appointmentTime: appointment.appointmentTime,
-        acceptanceStatus: appointment.acceptanceStatus,
+        acceptanceStatus: (appointment as Appointment).acceptanceStatus,
         checkedInAt: appointment.checkedInAt,
       };
     });
@@ -894,7 +950,7 @@ export default function QueueManagementPage() {
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [isBreakDropdownOpen, setIsBreakDropdownOpen] = useState(false);
-  const [reorderedQueueItems, setReorderedQueueItems] = useState<any[]>([]);
+  const [reorderedQueueItems, setReorderedQueueItems] = useState<AppointmentQueueItem[]>([]);
   const breakButtonRef = useRef<HTMLDivElement>(null);
 
   const selectedDoctor = doctors.find(d => d.id === selectedDoctorId);
@@ -1049,7 +1105,7 @@ export default function QueueManagementPage() {
     setSuccessMessage(`Break scheduled from ${fromTime} to ${toTime}`);
   };
 
-  const handleCheckIn = async (appointment: any) => {
+  const handleCheckIn = async (appointment: Appointment) => {
     if (!selectedDoctorId) return;
     
     setActionLoading(true);
@@ -1057,7 +1113,7 @@ export default function QueueManagementPage() {
       appointment.id,
       appointment.patientId,
       selectedDoctorId,
-      appointment.tokenNumber
+      appointment.tokenNumber || ''
     );
     setActionLoading(false);
     
@@ -1233,7 +1289,7 @@ export default function QueueManagementPage() {
                       <PendingCheckInCard
                         key={appointment.id}
                         appointment={appointment}
-                        patient={patient}
+                        patient={patient || { id: '', name: 'Unknown', email: '', phone: '', dateOfBirth: '', gender: 'other', isActive: true, createdAt: '', updatedAt: '' }}
                         onCheckIn={() => handleCheckIn(appointment)}
                         isLoading={actionLoading}
                       />
@@ -1322,9 +1378,8 @@ export default function QueueManagementPage() {
                             appointmentDate: queueItem.appointmentDate,
                             appointmentTime: queueItem.appointmentTime,
                             acceptanceStatus: queueItem.acceptanceStatus,
-                            checkedInAt: queueItem.checkedInAt,
+                            checkedInAt: queueItem.checkedInAt ? formatTimestamp(queueItem.checkedInAt) : undefined,
                           }}
-                          index={index + 1}
                           onSkip={() => handleSkip(queueItem.id)}
                           isSelected={index === 0}
                           onDragStart={() => handleDragStart(index)}
@@ -1347,9 +1402,9 @@ export default function QueueManagementPage() {
             {/* All Appointments Table */}
             {showAllAppointments && (
               <AllAppointmentsTable
-                appointments={doctorAppointments}
+                appointments={doctorAppointments as Appointment[]}
                 patients={patients}
-                doctors={doctors}
+                doctors={doctors as Doctor[]}
                 onAppointmentAction={handleAppointmentAction}
                 actionLoading={actionLoading}
               />

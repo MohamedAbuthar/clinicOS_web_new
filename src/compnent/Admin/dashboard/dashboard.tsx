@@ -11,18 +11,18 @@ import {
 import QueueDetailsDialog from './QueueDetailsDialog';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useDoctors } from '@/lib/hooks/useDoctors';
-import { Doctor as ApiDoctor } from '@/lib/api';
+import { Doctor } from '@/lib/api';
 
 export default function DashboardPage() {
   const [isQueueDialogOpen, setIsQueueDialogOpen] = useState(false);
-  const [selectedDoctor, setSelectedDoctor] = useState<ApiDoctor | null>(null);
+  const [selectedDoctor, setSelectedDoctor] = useState<any | null>(null);
   const [dashboardData, setDashboardData] = useState({
     appointmentsToday: 0,
     patientsWaiting: 0,
     doctorsActive: 0,
     noShows: 0,
   });
-  const [doctors, setDoctors] = useState<ApiDoctor[]>([]);
+  const [doctors, setDoctors] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -80,15 +80,14 @@ export default function DashboardPage() {
       });
 
       // Transform doctors data for display
-      const transformedDoctors: ApiDoctor[] = doctorsData.map(doctor => ({
+      const transformedDoctors = doctorsData.map(doctor => ({
         id: doctor.id,
-        name: doctor.user.name,
+        name: doctor.user?.name || '',
         specialty: doctor.specialty,
-        currentToken: doctor.currentToken || null,
-        queueLength: doctor.queueLength,
-        estimatedLastPatient: doctor.estimatedLastPatient || null,
-        status: doctor.status === 'active' ? 'Active' : 
-                doctor.status === 'break' ? 'Break' : 'Offline'
+        currentToken: null,
+        queueLength: 0,
+        estimatedLastPatient: null,
+        status: doctor.status === 'active' ? 'Active' : 'Break'
       }));
 
       setDoctors(transformedDoctors);
@@ -113,7 +112,7 @@ export default function DashboardPage() {
     }
   }, [appointments, doctorsData, appointmentsLoading, doctorsLoading]);
 
-  const handleViewQueue = (doctor: ApiDoctor) => {
+  const handleViewQueue = (doctor: any) => {
     setSelectedDoctor(doctor);
     setIsQueueDialogOpen(true);
   };

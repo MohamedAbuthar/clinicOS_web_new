@@ -10,7 +10,6 @@ export default function PatientSidebar() {
     { icon: LayoutGrid, label: 'Home', path: '/Patient/dashboard' },
     { icon: Calendar, label: 'MyAppointments', path: '/Patient/myappoinment' },
     { icon: Activity, label: 'BookAppointments', path: '/Patient/book-appointment' },
-    // { icon: Stethoscope, label: 'Medical Records', path: '/Patient/medicalrecords' },
     { icon: UserPlus, label: 'Profile', path: '/Patient/profile' },
   ];
 
