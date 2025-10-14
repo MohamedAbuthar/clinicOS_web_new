@@ -998,9 +998,9 @@ export default function QueueManagementPage() {
       return;
     }
 
-    // Skip if we made a manual change recently (within last 6 seconds)
+    // Skip if we made a manual change recently (within last 10 seconds)
     const timeSinceLastChange = Date.now() - lastManualChangeTime.current;
-    if (timeSinceLastChange < 6000) {
+    if (timeSinceLastChange < 10000) {
       console.log(`⏸️ Skipping queue order loading - manual change was ${timeSinceLastChange}ms ago`);
       return;
     }
@@ -1015,17 +1015,13 @@ export default function QueueManagementPage() {
       console.log('Has Queue Order:', hasQueueOrder);
       
       if (hasQueueOrder) {
-        // Load queue order from database
-        // The appointmentQueueItems are already sorted by queueOrder in the useMemo
-        // Only update if the order has actually changed
-        const currentIds = reorderedQueueItems.map(item => item.id).join(',');
-        const newIds = appointmentQueueItems.map(item => item.id).join(',');
-        
-        if (currentIds !== newIds || reorderedQueueItems.length === 0) {
+        // Load queue order from database only if we don't have reordered items
+        // This prevents overriding manual drag-and-drop changes
+        if (reorderedQueueItems.length === 0) {
           setReorderedQueueItems([...appointmentQueueItems]);
           console.log('✅ Loaded saved queue order from database');
         } else {
-          console.log('Queue order unchanged, skipping update');
+          console.log('⏸️ Skipping queue order loading - reordered items already exist');
         }
       } else {
         // No saved queue order, clear reordered items to use default order
@@ -1042,7 +1038,7 @@ export default function QueueManagementPage() {
       }
     }
     console.log('========================');
-  }, [appointmentQueueItems, selectedDoctorId, isManualReorder, reorderedQueueItems]);
+  }, [appointmentQueueItems, selectedDoctorId, isManualReorder]);
 
   // Reset skipped items, reordered queue, and manual reorder flag when doctor changes
   useEffect(() => {
@@ -1220,6 +1216,9 @@ export default function QueueManagementPage() {
 
     // Set manual reorder flag to prevent database loading from overriding changes
     setIsManualReorder(true);
+    
+    // Track when we made this manual change
+    lastManualChangeTime.current = Date.now();
 
     // Get the current queue items (either reordered or original)
     const currentItems = reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems;
@@ -1265,9 +1264,6 @@ export default function QueueManagementPage() {
     // Update state with the new order including updated queueOrder values
     setReorderedQueueItems(updatedItems);
     
-    // Track when we made this manual change
-    lastManualChangeTime.current = Date.now();
-    
     try {
       const updates = updatedItems.map((item, index) => {
         // Extract the actual appointment ID from the queue item ID
@@ -1287,14 +1283,14 @@ export default function QueueManagementPage() {
       console.log('✅ Queue order saved to database');
       setSuccessMessage('Queue order saved successfully');
       
-      // Keep the manual reorder flag active for 5 seconds to prevent race conditions
+      // Keep the manual reorder flag active for 15 seconds to prevent race conditions
       // This gives Firebase time to propagate the changes through real-time listeners
-      // After 5 seconds, the database should have the updated queueOrder values
+      // After 15 seconds, the database should have the updated queueOrder values
       // and the useEffect can safely reload from the database
       setTimeout(() => {
         setIsManualReorder(false);
         console.log('Manual reorder flag reset - database should now have correct order');
-      }, 5000);
+      }, 15000);
     } catch (error) {
       console.error('❌ Error saving queue order:', error);
       setSuccessMessage('Failed to save queue order');
@@ -1669,21 +1665,21 @@ export default function QueueManagementPage() {
               </div>
             </div>
 
-            {/* All Appointments Table */}
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  All Appointments ({doctorAppointments.length})
-                </h2>
-                <button
-                  onClick={() => setShowAllAppointments(!showAllAppointments)}
-                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium"
-                >
-                  {showAllAppointments ? 'Hide Details' : 'Show Details'}
-                </button>
-              </div>
+            {/* All Appointments Table - Only show when showAllAppointments is true */}
+            {showAllAppointments && (
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    All Appointments ({doctorAppointments.length})
+                  </h2>
+                  <button
+                    onClick={() => setShowAllAppointments(false)}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium"
+                  >
+                    Hide All Appointments
+                  </button>
+                </div>
               
-              {showAllAppointments ? (
                 <AllAppointmentsTable
                   appointments={doctorAppointments as Appointment[]}
                   patients={patients}
@@ -1691,65 +1687,8 @@ export default function QueueManagementPage() {
                   onAppointmentAction={handleAppointmentAction}
                   actionLoading={actionLoading}
                 />
-              ) : (
-                <div className="space-y-3">
-                  {doctorAppointments.length > 0 ? (
-                    doctorAppointments.map((appointment) => {
-                      const patient = patients.find(p => p.id === appointment.patientId);
-                      return (
-                        <div key={appointment.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                          <div className="flex items-center gap-4">
-                            <div className="text-center min-w-[60px]">
-                              <p className="text-xl font-bold text-teal-500">
-                                {appointment.tokenNumber || 'N/A'}
-                              </p>
-                              <p className="text-xs text-gray-500">Token</p>
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-semibold text-gray-900">
-                                {appointment.patientName || patient?.name || 'Unknown Patient'}
-                              </p>
-                              <div className="flex items-center gap-3 mt-1 flex-wrap">
-                                {patient?.phone && (
-                                  <div className="flex items-center gap-1 text-xs text-gray-500">
-                                    <Phone className="w-3 h-3" />
-                                    {patient.phone}
-                                  </div>
-                                )}
-                                {appointment.appointmentDate && appointment.appointmentTime && (
-                                  <div className="flex items-center gap-1 text-xs text-gray-500">
-                                    <Calendar className="w-3 h-3" />
-                                    {formatDate(appointment.appointmentDate)} • {formatTime(appointment.appointmentTime)}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}
-                            >
-                              {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
-                            </span>
-                            {appointment.checkedInAt && (
-                              <span className="text-xs text-teal-600 flex items-center gap-1">
-                                <UserCheck className="w-3 h-3" />
-                                Checked In
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                      <p className="text-lg font-medium">No appointments found</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Sidebar */}
