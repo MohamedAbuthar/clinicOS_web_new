@@ -1042,7 +1042,7 @@ export default function QueueManagementPage() {
       }
     }
     console.log('========================');
-  }, [appointmentQueueItems, selectedDoctorId, isManualReorder]);
+  }, [appointmentQueueItems, selectedDoctorId, isManualReorder, reorderedQueueItems]);
 
   // Reset skipped items, reordered queue, and manual reorder flag when doctor changes
   useEffect(() => {
@@ -1495,7 +1495,7 @@ export default function QueueManagementPage() {
 
         {/* Appointment Summary */}
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Today's Appointments Summary</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Today&apos;s Appointments Summary</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-4 bg-blue-50 rounded-lg">
               <div className="text-2xl font-bold text-blue-600">{todayAppointments.length}</div>

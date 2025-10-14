@@ -83,7 +83,7 @@ export const useRecentActivity = (limit: number = 20): UseRecentActivityReturn =
 
   useEffect(() => {
     fetchRecentActivity();
-  }, [limit]);
+  }, [limit, fetchRecentActivity]);
 
   const refetch = () => {
     fetchRecentActivity();

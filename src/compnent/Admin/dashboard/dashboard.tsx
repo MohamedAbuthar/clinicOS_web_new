@@ -66,7 +66,7 @@ export default function DashboardPage() {
         apt.status === 'scheduled' || apt.status === 'confirmed'
       ).length;
       const doctorsActive = doctorsData.filter(doctor => 
-        doctor.status === 'active'
+        doctor.status === 'In'
       ).length;
       const noShows = todayAppointments.filter(apt => 
         apt.status === 'no_show'
@@ -87,7 +87,7 @@ export default function DashboardPage() {
         currentToken: null,
         queueLength: 0,
         estimatedLastPatient: null,
-        status: doctor.status === 'active' ? 'Active' : 'Break'
+        status: doctor.status === 'In' ? 'Active' : 'Break'
       }));
 
       setDoctors(transformedDoctors);
