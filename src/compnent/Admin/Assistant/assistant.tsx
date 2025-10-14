@@ -234,30 +234,48 @@ const AssistantsPage = () => {
   const handleEditSubmit = async () => {
     if (!selectedAssistant) return;
     
+    // Clear any previous errors
+    setError(null);
     setActionLoading(true);
     
-    // Convert assigned doctors string to array
-    const assignedDoctorsArray = formData.assignedDoctors
-      .split(',')
-      .map(doctor => doctor.trim())
-      .filter(doctor => doctor.length > 0);
-    
-    console.log('Assigned doctors for edit:', assignedDoctorsArray);
-    
-    const success = await updateAssistant(selectedAssistant.id, {
-      assignedDoctors: assignedDoctorsArray,
-      isActive: formData.status === 'active',
-      user: {
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
+    try {
+      // Convert assigned doctors string to array
+      const assignedDoctorsArray = formData.assignedDoctors
+        .split(',')
+        .map(doctor => doctor.trim())
+        .filter(doctor => doctor.length > 0);
+      
+      console.log('Updating assistant:', selectedAssistant.id, {
+        assignedDoctors: assignedDoctorsArray,
+        isActive: formData.status === 'active',
+        user: {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+        }
+      });
+      
+      const success = await updateAssistant(selectedAssistant.id, {
+        assignedDoctors: assignedDoctorsArray,
+        isActive: formData.status === 'active',
+        user: {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+        }
+      });
+      
+      if (success) {
+        setSuccessMessage('Assistant updated successfully');
+        closeDialogs();
+      } else {
+        setError('Failed to update assistant. Please try again.');
       }
-    });
-    setActionLoading(false);
-    
-    if (success) {
-      setSuccessMessage('Assistant updated successfully');
-      closeDialogs();
+    } catch (err: any) {
+      console.error('Error updating assistant:', err);
+      setError(err.message || 'Failed to update assistant. Please check your permissions and try again.');
+    } finally {
+      setActionLoading(false);
     }
   };
 

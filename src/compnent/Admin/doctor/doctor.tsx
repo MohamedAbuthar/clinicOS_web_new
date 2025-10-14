@@ -90,15 +90,82 @@ export default function DoctorDashboard() {
     doctors,
     loading,
     error,
+    setError,
     createDoctor,
     updateDoctor,
     updateDoctorStatus,
     deleteDoctor,
+    testFirestorePermissions,
   } = useDoctors();
 
   const { appointments } = useAppointments();
   
   const { assistants, loading: assistantsLoading } = useAssistants();
+
+  // Make test function available globally for debugging
+  React.useEffect(() => {
+    (window as any).testFirestorePermissions = testFirestorePermissions;
+    (window as any).testDoctorEdit = async (doctorId: string) => {
+      console.log('Testing doctor edit for ID:', doctorId);
+      const testData = {
+        name: 'Test Doctor',
+        email: 'test@example.com',
+        phone: '+1234567890',
+        specialty: 'General Medicine',
+        consultationDuration: 20,
+        schedule: 'Mon-Fri, 9:00 AM - 5:00 PM',
+        startTime: '09:00',
+        endTime: '17:00',
+        availableSlots: ['09:00', '09:20', '09:40'],
+        assignedAssistants: []
+      };
+      return await updateDoctor(doctorId, testData);
+    };
+    (window as any).testDoctorEditOnly = async (doctorId: string) => {
+      console.log('Testing doctor edit (doctor fields only) for ID:', doctorId);
+      const testData = {
+        specialty: 'General Medicine',
+        consultationDuration: 20,
+        schedule: 'Mon-Fri, 9:00 AM - 5:00 PM',
+        startTime: '09:00',
+        endTime: '17:00',
+        availableSlots: ['09:00', '09:20', '09:40'],
+        assignedAssistants: []
+      };
+      return await updateDoctor(doctorId, testData);
+    };
+    (window as any).checkUserRole = async () => {
+      try {
+        const { getAuth } = await import('firebase/auth');
+        const { getDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase/config');
+        const auth = getAuth();
+        const currentUser = auth.currentUser;
+        
+        if (!currentUser) {
+          console.log('No user logged in');
+          return null;
+        }
+        
+        console.log('Current user:', currentUser.uid, currentUser.email);
+        
+        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          console.log('User role:', userData.role);
+          console.log('User data:', userData);
+          return userData;
+        } else {
+          console.log('User document not found');
+          return null;
+        }
+      } catch (error) {
+        console.error('Error checking user role:', error);
+        return null;
+      }
+    };
+    console.log('Test functions available: window.testFirestorePermissions(), window.testDoctorEdit(doctorId), window.testDoctorEditOnly(doctorId), and window.checkUserRole()');
+  }, [testFirestorePermissions, updateDoctor]);
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -151,8 +218,37 @@ export default function DoctorDashboard() {
 
     const completed = todayAppointments.filter(apt => apt.status === 'completed').length;
     const waiting = todayAppointments.filter(apt => 
-      apt.status === 'scheduled' || apt.status === 'confirmed'
+      apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'approved'
     ).length;
+
+    // Create queue from today's appointments
+    const queue: Patient[] = todayAppointments
+      .filter(apt => apt.status !== 'completed' && apt.status !== 'cancelled')
+      .sort((a, b) => {
+        // Sort by queueOrder if available, otherwise by appointment time
+        const aOrder = a.queueOrder ?? null;
+        const bOrder = b.queueOrder ?? null;
+        
+        if (aOrder !== null && bOrder !== null) {
+          return aOrder - bOrder;
+        }
+        if (aOrder !== null) return -1;
+        if (bOrder !== null) return 1;
+        return new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime();
+      })
+      .map((apt, idx) => ({
+        id: parseInt(apt.id) || idx + 1,
+        token: apt.tokenNumber || `T${idx + 1}`,
+        name: apt.patientName || 'Unknown Patient',
+        age: 0, // Age not available in appointment data
+        type: apt.checkedInAt ? 'Checked In' : 'Scheduled',
+        status: apt.checkedInAt ? 'waiting' : apt.status,
+        time: apt.appointmentTime ? new Date(apt.appointmentTime).toLocaleTimeString('en-US', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: true 
+        }) : 'N/A'
+      }));
 
     return {
       id: doctor.id, // Keep as string (UUID)
@@ -160,10 +256,10 @@ export default function DoctorDashboard() {
       specialty: doctor.specialty,
       initials: doctor.user?.name ? doctor.user.name.split(' ').map(n => n[0]).join('').toUpperCase() : '...',
       bgColor: index % 2 === 0 ? 'bg-teal-600' : 'bg-teal-700',
-      status: doctor.status === 'active' ? 'In' : 
-              doctor.status === 'break' ? 'Break' : 'Out',
-      statusColor: doctor.status === 'active' ? 'bg-emerald-500' : 
-                   doctor.status === 'break' ? 'bg-amber-500' : 'bg-gray-400',
+      status: doctor.status === 'In' ? 'In' : 
+              doctor.status === 'Break' ? 'Break' : 'Out',
+      statusColor: doctor.status === 'In' ? 'bg-emerald-500' : 
+                   doctor.status === 'Break' ? 'bg-amber-500' : 'bg-gray-400',
       stats: { 
         total: todayAppointments.length, 
         done: completed, 
@@ -176,7 +272,7 @@ export default function DoctorDashboard() {
       email: doctor.user?.email || 'N/A',
       schedule: 'Mon-Fri, 9:00 AM - 5:00 PM', // This would come from schedule API
       room: 'Room 101', // This would come from doctor profile
-      queue: [] // This would come from queue API
+      queue: queue // Populate with actual appointments
     };
   });
 
@@ -319,6 +415,7 @@ export default function DoctorDashboard() {
         endTime: newDoctor.endTime,
         availableSlots: slots.map(slot => slot.time), // Store available slots
         assignedAssistants: newDoctor.assistants, // Include selected assistants
+        status: newDoctor.status, // Include the initial status
       } as any);
 
       if (success) {
@@ -337,20 +434,45 @@ export default function DoctorDashboard() {
   const handleEditDoctorSubmit = async () => {
     if (!selectedDoctor) return;
 
+    // Clear any previous errors
+    setError(null);
     setActionLoading(true);
+    
     try {
+      console.log('Starting doctor edit for ID:', selectedDoctor.id);
+      
       // Get form values from the edit dialog
       const form = document.querySelector('#edit-doctor-form') as HTMLFormElement;
       if (!form) {
-        setSuccessMessage('Form not found');
+        setError('Form not found. Please try again.');
         setActionLoading(false);
         return;
       }
 
       const formData = new FormData(form);
+      const name = formData.get('name') as string;
+      const email = formData.get('email') as string;
+      const phone = formData.get('phone') as string;
+      const specialty = formData.get('specialty') as string;
       const startTime = formData.get('startTime') as string;
       const endTime = formData.get('endTime') as string;
-      const slotDuration = parseInt(formData.get('consultationDuration') as string);
+      const room = formData.get('room') as string;
+      const consultationDurationStr = formData.get('consultationDuration') as string;
+      const newStatus = formData.get('status') as string;
+
+      // Validate form data
+      if (!name || !email || !phone || !specialty || !startTime || !endTime || !consultationDurationStr) {
+        setError('Please fill in all required fields.');
+        setActionLoading(false);
+        return;
+      }
+
+      const slotDuration = parseInt(consultationDurationStr);
+      if (isNaN(slotDuration) || slotDuration <= 0) {
+        setError('Invalid slot duration. Please select a valid duration.');
+        setActionLoading(false);
+        return;
+      }
 
       // Generate schedule string
       const scheduleString = formatScheduleDisplay(startTime, endTime);
@@ -363,20 +485,24 @@ export default function DoctorDashboard() {
       });
 
       const updates = {
-        name: formData.get('name') as string,
-        email: formData.get('email') as string,
-        phone: formData.get('phone') as string,
-        specialty: formData.get('specialty') as string,
+        // User fields (will be updated in users collection)
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        // Doctor fields (will be updated in doctors collection)
+        specialty: specialty.trim(),
         consultationDuration: slotDuration,
         schedule: scheduleString,
-        startTime,
-        endTime,
+        startTime: startTime.trim(),
+        endTime: endTime.trim(),
+        room: room?.trim() || 'Room 101',
         availableSlots: slots.map(slot => slot.time),
         assignedAssistants: editAssistants, // Include selected assistants
       };
 
-      // Handle status change separately
-      const newStatus = formData.get('status') as string;
+      console.log('Doctor update data:', updates);
+
+      // Handle status change separately if status has changed
       if (newStatus && newStatus !== selectedDoctor.status) {
         const statusMap: { [key: string]: 'active' | 'break' | 'offline' } = {
           'In': 'active',
@@ -384,24 +510,26 @@ export default function DoctorDashboard() {
           'Out': 'offline'
         };
         
+        console.log('Updating doctor status:', newStatus, 'to', statusMap[newStatus]);
         const statusSuccess = await updateDoctorStatus(selectedDoctor.id, statusMap[newStatus]);
         if (!statusSuccess) {
-          setSuccessMessage('Failed to update doctor status');
-          setActionLoading(false);
-          return;
+          console.error('Status update failed, but continuing with profile update');
+          // Don't return here, continue with the main update
         }
       }
 
+      console.log('Calling updateDoctor with:', selectedDoctor.id, updates);
       const success = await updateDoctor(selectedDoctor.id, updates as any);
 
       if (success) {
         setSuccessMessage(`Doctor updated successfully with ${slots.length} time slots!`);
         closeDialogs();
       } else {
-        setSuccessMessage('Failed to update doctor');
+        setError('Failed to update doctor. Please check your permissions and try again.');
       }
-    } catch (err) {
-      setSuccessMessage(apiUtils.handleError(err));
+    } catch (err: any) {
+      console.error('Error updating doctor:', err);
+      setError(err.message || 'Failed to update doctor. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -929,29 +1057,58 @@ export default function DoctorDashboard() {
             <div className="overflow-y-auto max-h-96">
               {selectedDoctor.queue.length > 0 ? (
                 <div className="divide-y divide-gray-200">
-                  {selectedDoctor.queue.map((patient: Patient) => (
+                  {selectedDoctor.queue.map((patient: Patient, index: number) => (
                     <div key={patient.id} className="p-4 hover:bg-gray-50 transition-colors">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4 flex-1">
+                          {/* Position Badge */}
+                          <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                            {index + 1}
+                          </div>
+                          {/* Token Badge */}
                           <div className="bg-teal-100 text-teal-700 font-bold px-3 py-2 rounded-lg text-sm">
                             {patient.token}
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <h4 className="font-semibold text-gray-900">{patient.name}</h4>
-                              <span className="text-sm text-gray-500">({patient.age} yrs)</span>
+                              {patient.age > 0 && (
+                                <span className="text-sm text-gray-500">({patient.age} yrs)</span>
+                              )}
                             </div>
-                            <p className="text-sm text-gray-500 mt-0.5">{patient.type}</p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                patient.type === 'Checked In' 
+                                  ? 'bg-green-100 text-green-700' 
+                                  : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {patient.type}
+                              </span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                patient.status === 'waiting' 
+                                  ? 'bg-amber-100 text-amber-700' 
+                                  : patient.status === 'confirmed' || patient.status === 'approved'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-gray-100 text-gray-700'
+                              }`}>
+                                {patient.status.charAt(0).toUpperCase() + patient.status.slice(1).replace('_', ' ')}
+                              </span>
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
                             <div className="text-sm font-medium text-gray-900">{patient.time}</div>
-                            <div className="text-xs text-amber-600 capitalize mt-0.5">{patient.status}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">Appointment Time</div>
                           </div>
-                          <button className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
-                            Call
-                          </button>
+                          <div className="flex gap-2">
+                            <button className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors">
+                              Call
+                            </button>
+                            <button className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors">
+                              Check In
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -960,7 +1117,8 @@ export default function DoctorDashboard() {
               ) : (
                 <div className="p-12 text-center text-gray-500">
                   <Users size={48} className="mx-auto mb-3 text-gray-300" />
-                  <p>No patients in queue</p>
+                  <p className="text-lg font-medium">No patients in queue</p>
+                  <p className="text-sm mt-1">All appointments for today are completed or no appointments scheduled</p>
                 </div>
               )}
             </div>
@@ -1090,7 +1248,9 @@ export default function DoctorDashboard() {
                   </label>
                   <select 
                     name="consultationDuration"
-                    defaultValue={selectedDoctor.slotDuration.includes('15') ? '15' : '10'}
+                    defaultValue={selectedDoctor.slotDuration.includes('20') ? '20' : 
+                                  selectedDoctor.slotDuration.includes('15') ? '15' : 
+                                  selectedDoctor.slotDuration.includes('30') ? '30' : '10'}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   >
                     <option value="10">10 minutes</option>

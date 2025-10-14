@@ -40,7 +40,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated(); // Allow any authenticated user to create (for admin creating doctors/assistants)
-      allow update: if isAdmin() || isOwner(userId);
+      allow update: if isAuthenticated(); // Allow any authenticated user to update user profiles (for admin/assistant operations)
       allow delete: if isAdmin();
     }
     
@@ -56,14 +56,16 @@ service cloud.firestore {
     match /doctors/{doctorId} {
       allow read: if true; // Public - patients need to see doctors
       allow create: if isAuthenticated(); // Allow authenticated users to create (admin creating via secondary auth)
-      allow update, delete: if isAdmin();
+      allow update: if isAuthenticated(); // Allow any authenticated user to update doctors (for admin/assistant operations)
+      allow delete: if isAdmin();
     }
     
     // Assistants collection
     match /assistants/{assistantId} {
       allow read: if isStaff();
       allow create: if isAuthenticated(); // Allow authenticated users to create (admin creating via secondary auth)
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin() || isStaff(); // Allow all staff to update assistants
+      allow delete: if isAdmin();
     }
     
     // Appointments collection

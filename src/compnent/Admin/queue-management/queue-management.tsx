@@ -1493,6 +1493,35 @@ export default function QueueManagementPage() {
           buttonRef={breakButtonRef}
         />
 
+        {/* Appointment Summary */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Today's Appointments Summary</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{todayAppointments.length}</div>
+              <div className="text-sm text-blue-700">Total Appointments</div>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">
+                {todayAppointments.filter(apt => apt.checkedInAt).length}
+              </div>
+              <div className="text-sm text-green-700">Checked In</div>
+            </div>
+            <div className="text-center p-4 bg-yellow-50 rounded-lg">
+              <div className="text-2xl font-bold text-yellow-600">
+                {todayAppointments.filter(apt => !apt.checkedInAt && (apt.status === 'scheduled' || apt.status === 'confirmed')).length}
+              </div>
+              <div className="text-sm text-yellow-700">Waiting to Check In</div>
+            </div>
+            <div className="text-center p-4 bg-purple-50 rounded-lg">
+              <div className="text-2xl font-bold text-purple-600">
+                {todayAppointments.filter(apt => apt.status === 'completed').length}
+              </div>
+              <div className="text-sm text-purple-700">Completed</div>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Queue Section */}
           <div className="lg:col-span-2 space-y-6">
@@ -1641,23 +1670,94 @@ export default function QueueManagementPage() {
             </div>
 
             {/* All Appointments Table */}
-            {showAllAppointments && (
-              <AllAppointmentsTable
-                appointments={doctorAppointments as Appointment[]}
-                patients={patients}
-                doctors={doctors as Doctor[]}
-                onAppointmentAction={handleAppointmentAction}
-                actionLoading={actionLoading}
-              />
-            )}
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  All Appointments ({doctorAppointments.length})
+                </h2>
+                <button
+                  onClick={() => setShowAllAppointments(!showAllAppointments)}
+                  className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium"
+                >
+                  {showAllAppointments ? 'Hide Details' : 'Show Details'}
+                </button>
+              </div>
+              
+              {showAllAppointments ? (
+                <AllAppointmentsTable
+                  appointments={doctorAppointments as Appointment[]}
+                  patients={patients}
+                  doctors={doctors as unknown as Doctor[]}
+                  onAppointmentAction={handleAppointmentAction}
+                  actionLoading={actionLoading}
+                />
+              ) : (
+                <div className="space-y-3">
+                  {doctorAppointments.length > 0 ? (
+                    doctorAppointments.map((appointment) => {
+                      const patient = patients.find(p => p.id === appointment.patientId);
+                      return (
+                        <div key={appointment.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="text-center min-w-[60px]">
+                              <p className="text-xl font-bold text-teal-500">
+                                {appointment.tokenNumber || 'N/A'}
+                              </p>
+                              <p className="text-xs text-gray-500">Token</p>
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-semibold text-gray-900">
+                                {appointment.patientName || patient?.name || 'Unknown Patient'}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                {patient?.phone && (
+                                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                                    <Phone className="w-3 h-3" />
+                                    {patient.phone}
+                                  </div>
+                                )}
+                                {appointment.appointmentDate && appointment.appointmentTime && (
+                                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                                    <Calendar className="w-3 h-3" />
+                                    {formatDate(appointment.appointmentDate)} • {formatTime(appointment.appointmentTime)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(appointment.status)}`}
+                            >
+                              {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
+                            </span>
+                            {appointment.checkedInAt && (
+                              <span className="text-xs text-teal-600 flex items-center gap-1">
+                                <UserCheck className="w-3 h-3" />
+                                Checked In
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                      <p className="text-lg font-medium">No appointments found</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Doctor Status */}
             <DoctorStatusCard doctorStatus={{
-              status: selectedDoctor?.status === 'active' ? 'Active' : 
-                      selectedDoctor?.status === 'break' ? 'Break' : 'Offline',
+              status: selectedDoctor?.status === 'In' ? 'Active' : 
+                      selectedDoctor?.status === 'Break' ? 'Break' : 'Offline',
               avgConsultTime: selectedDoctor?.consultationDuration ? `${selectedDoctor.consultationDuration} min` : 'N/A',
               patientsServed: queueStats?.completed || 0,
               estimatedComplete: 'N/A'
