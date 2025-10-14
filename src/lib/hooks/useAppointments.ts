@@ -24,6 +24,7 @@ export interface Appointment {
   tokenNumber?: string;
   checkedInAt?: any;
   acceptanceStatus?: 'pending' | 'accepted' | 'rejected';
+  queueOrder?: number;
   acceptedAt?: any;
   rejectedAt?: any;
   createdAt: any;
