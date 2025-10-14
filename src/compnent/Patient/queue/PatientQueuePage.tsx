@@ -414,7 +414,7 @@ export default function PatientQueuePage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-semibold text-gray-900">
-                  Today's Queue ({appointmentQueueItems.length})
+                  Today&apos;s Queue ({appointmentQueueItems.length})
                 </h2>
                 {isAutoRefreshing && (
                   <div className="flex items-center gap-1 text-xs text-teal-600">
@@ -550,7 +550,7 @@ export default function PatientQueuePage() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold text-gray-900">
-                Today's Queue ({appointmentQueueItems.length})
+                Today&apos;s Queue ({appointmentQueueItems.length})
               </h2>
               {isAutoRefreshing && (
                 <div className="flex items-center gap-1 text-xs text-teal-600">
