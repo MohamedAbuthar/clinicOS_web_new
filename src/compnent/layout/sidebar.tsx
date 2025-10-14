@@ -1,10 +1,12 @@
 import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { LayoutGrid, Calendar, Activity, Stethoscope, UserPlus, ClipboardList, BarChart3, Settings, LogOut } from 'lucide-react';
+import { useAuth } from '@/lib/contexts/AuthContext';
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, logout } = useAuth();
 
   const menuItems = [
     { icon: LayoutGrid, label: 'Dashboard', path: '/Admin/dashboard' },
@@ -22,10 +24,8 @@ export default function Sidebar() {
   };
 
   const handleLogout = () => {
-    // Add your logout logic here
-    // For example: clearing tokens, redirecting to login, etc.
-    console.log('Logout clicked');
-    router.push('/login');
+    logout();
+    router.push('/auth-login');
   };
 
   return (
@@ -73,11 +73,17 @@ export default function Sidebar() {
       <div className="px-4 py-4 border-t border-gray-200">
         <div className="flex items-center gap-3 bg-teal-50 rounded-2xl p-3.5">
           <div className="w-11 h-11 bg-teal-500 rounded-full flex items-center justify-center">
-            <span className="text-white font-bold text-base">AD</span>
+            <span className="text-white font-bold text-base">
+              {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+            </span>
           </div>
           <div className="flex-1">
-            <h3 className="text-gray-900 font-semibold text-sm">Admin User</h3>
-            <p className="text-gray-500 text-xs">Administrator</p>
+            <h3 className="text-gray-900 font-semibold text-sm">
+              {user?.name || 'User'}
+            </h3>
+            <p className="text-gray-500 text-xs capitalize">
+              {user?.role || 'User'}
+            </p>
           </div>
           <button
             onClick={handleLogout}

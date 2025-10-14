@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutGrid, Calendar, Activity, Stethoscope, UserPlus } from 'lucide-react';
+import { LayoutGrid, Calendar, Activity, Stethoscope, UserPlus, Users } from 'lucide-react';
 
 export default function PatientSidebar() {
   const pathname = usePathname();
@@ -10,6 +10,7 @@ export default function PatientSidebar() {
     { icon: LayoutGrid, label: 'Home', path: '/Patient/dashboard' },
     { icon: Calendar, label: 'MyAppointments', path: '/Patient/myappoinment' },
     { icon: Activity, label: 'BookAppointments', path: '/Patient/book-appointment' },
+    { icon: Users, label: 'Queue', path: '/Patient/queue' },
     { icon: UserPlus, label: 'Profile', path: '/Patient/profile' },
   ];
 
@@ -27,7 +28,7 @@ export default function PatientSidebar() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">ClinicOS</h1>
-            <p className="text-gray-500 text-xs">Admin Portal</p>
+            <p className="text-gray-500 text-xs">Patient Portal</p>
           </div>
         </div>
       </div>
@@ -62,11 +63,11 @@ export default function PatientSidebar() {
       <div className="px-4 py-4 border-t border-gray-200">
         <div className="flex items-center gap-3 bg-teal-50 rounded-2xl p-3.5">
           <div className="w-11 h-11 bg-teal-500 rounded-full flex items-center justify-center">
-            <span className="text-white font-bold text-base">AD</span>
+            <span className="text-white font-bold text-base">P</span>
           </div>
           <div>
-            <h3 className="text-gray-900 font-semibold text-sm">Admin User</h3>
-            <p className="text-gray-500 text-xs">Administrator</p>
+            <h3 className="text-gray-900 font-semibold text-sm">Patient User</h3>
+            <p className="text-gray-500 text-xs">Patient</p>
           </div>
         </div>
       </div>

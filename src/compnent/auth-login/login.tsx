@@ -14,6 +14,7 @@ const Auth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [role, setRole] = useState<'admin' | 'doctor' | 'assistant'>('admin');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -37,7 +38,7 @@ const Auth = () => {
             id: user.uid,
             name: fullName,
             email: email,
-            role: 'admin',
+            role: role,
             phone: phone,
             avatar: '',
             isActive: true,
@@ -55,6 +56,7 @@ const Auth = () => {
           setEmail('');
           setPassword('');
           setPhone('');
+          setRole('admin');
         } else {
           setError('Failed to create account');
         }
@@ -122,7 +124,7 @@ const Auth = () => {
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome</h1>
           <p className="text-gray-500">
-            Sign in to your account or create a new one
+            Sign in to your staff account or create a new one
           </p>
         </div>
 
@@ -210,6 +212,29 @@ const Auth = () => {
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
                 required
               />
+            </div>
+          )}
+
+          {/* Role Field - Only for Sign Up */}
+          {activeTab === 'signup' && (
+            <div className="mb-4">
+              <label 
+                htmlFor="role" 
+                className="block text-sm font-semibold text-gray-900 mb-2"
+              >
+                Role
+              </label>
+              <select
+                id="role"
+                value={role}
+                onChange={(e) => setRole(e.target.value as 'admin' | 'doctor' | 'assistant')}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
+                required
+              >
+                <option value="admin">Administrator</option>
+                <option value="doctor">Doctor</option>
+                <option value="assistant">Assistant</option>
+              </select>
             </div>
           )}
 

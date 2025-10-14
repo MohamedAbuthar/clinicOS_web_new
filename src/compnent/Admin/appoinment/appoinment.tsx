@@ -25,6 +25,8 @@ export default function AppointmentsPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [showDateFilter, setShowDateFilter] = useState(false);
 
   const { 
     appointments, 
@@ -43,6 +45,11 @@ export default function AppointmentsPage() {
   const { doctors } = useDoctors();
   const { patients, createPatient } = usePatients();
 
+  // Filter appointments by selected date
+  const filteredAppointments = appointments.filter(appointment => 
+    appointment.appointmentDate === selectedDate
+  );
+
   // Debug: Log doctors and appointments when they change
   useEffect(() => {
     console.log('Appointments page - doctors:', doctors);
@@ -57,6 +64,26 @@ export default function AppointmentsPage() {
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
+
+  // Close date filter when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showDateFilter) {
+        const target = event.target as Element;
+        if (!target.closest('.date-filter-container')) {
+          setShowDateFilter(false);
+        }
+      }
+    };
+
+    if (showDateFilter) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDateFilter]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -245,6 +272,8 @@ export default function AppointmentsPage() {
       case 'confirmed':
       case 'scheduled':
         return 'bg-green-500 text-white';
+      case 'approved':
+        return 'bg-emerald-500 text-white';
       case 'cancelled':
         return 'bg-red-500 text-white';
       case 'completed':
@@ -343,9 +372,9 @@ export default function AppointmentsPage() {
           <p className="text-gray-500 mt-1">Manage and track all patient appointments</p>
           {/* Debug info */}
           <div className="mt-2 text-xs text-gray-400">
-            Debug: {appointments.length} appointments loaded
-            {appointments.length > 0 && (
-              <span> | First: {appointments[0].patientName || 'No name'}</span>
+            Debug: {filteredAppointments.length} appointments for {selectedDate === new Date().toISOString().split('T')[0] ? 'today' : selectedDate}
+            {filteredAppointments.length > 0 && (
+              <span> | First: {filteredAppointments[0].patientName || 'No name'}</span>
             )}
           </div>
         </div>
@@ -391,10 +420,39 @@ export default function AppointmentsPage() {
         </div>
 
         {/* Filter Buttons */}
-        <button className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white">
-          <Calendar className="w-4 h-4" />
-          <span className="font-medium text-gray-700">Filter by Date</span>
-        </button>
+        <div className="relative date-filter-container">
+          <button 
+            onClick={() => setShowDateFilter(!showDateFilter)}
+            className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white"
+          >
+            <Calendar className="w-4 h-4" />
+            <span className="font-medium text-gray-700">Filter by Date</span>
+          </button>
+          
+          {/* Date Filter Dropdown */}
+          {showDateFilter && (
+            <div className="absolute top-full right-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-10">
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-gray-700">Select Date:</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+                <button
+                  onClick={() => {
+                    setSelectedDate(new Date().toISOString().split('T')[0]);
+                    setShowDateFilter(false);
+                  }}
+                  className="px-3 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors text-sm"
+                >
+                  Today
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <button className="px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white font-medium text-gray-700">
           Filter by Doctor
         </button>
@@ -416,8 +474,8 @@ export default function AppointmentsPage() {
         </div>
 
         {/* Table Body */}
-        {appointments.length > 0 ? (
-          appointments.map((appointment) => {
+        {filteredAppointments.length > 0 ? (
+          filteredAppointments.map((appointment) => {
             const patient = patients.find(p => p.id === appointment.patientId);
             const doctor = doctors.find(d => d.id === appointment.doctorId);
             
@@ -485,7 +543,7 @@ export default function AppointmentsPage() {
                     >
                       {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
                     </span>
-                    {appointment.acceptanceStatus && (
+                    {appointment.acceptanceStatus && appointment.status !== 'approved' && (
                       <span
                         className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
                           appointment.acceptanceStatus === 'accepted' 
@@ -511,9 +569,8 @@ export default function AppointmentsPage() {
 
                 {/* Actions */}
                 <div className="col-span-2 flex items-center gap-2 flex-wrap">
-                  {/* Check-in button - ONLY show for completed appointments */}
-                  {appointment.status === 'completed' && 
-                   !appointment.checkedInAt && (
+                  {/* Check-in button - show for all appointments that are not already checked in */}
+                  {!appointment.checkedInAt && (
                     <button 
                       onClick={() => handleAppointmentAction(appointment.id, 'check-in')}
                       disabled={actionLoading}
@@ -524,37 +581,10 @@ export default function AppointmentsPage() {
                     </button>
                   )}
                   
-                  {/* Other action buttons - show for scheduled/confirmed appointments */}
-                  {(appointment.status === 'scheduled' || appointment.status === 'confirmed') ? (
-                    <>
-                      <button 
-                        onClick={() => handleAppointmentAction(appointment.id, 'complete')}
-                        disabled={actionLoading}
-                        className="text-green-600 hover:text-green-800 font-medium transition-colors disabled:opacity-50"
-                        title="Mark as Complete"
-                      >
-                        <CheckCircle className="w-5 h-5" />
-                      </button>
-                      <button 
-                        onClick={() => handleAppointmentAction(appointment.id, 'cancel')}
-                        disabled={actionLoading}
-                        className="text-red-600 hover:text-red-800 font-medium transition-colors disabled:opacity-50"
-                        title="Cancel"
-                      >
-                        <XCircle className="w-5 h-5" />
-                      </button>
-                      <button 
-                        onClick={() => handleAppointmentAction(appointment.id, 'no-show')}
-                        disabled={actionLoading}
-                        className="text-gray-600 hover:text-gray-800 font-medium transition-colors disabled:opacity-50"
-                        title="Mark as No Show"
-                      >
-                        <UserX className="w-5 h-5" />
-                      </button>
-                    </>
-                  ) : appointment.status === 'completed' || appointment.status === 'cancelled' ? (
-                    <span className="text-gray-400 text-sm">No actions</span>
-                  ) : null}
+                  {/* Show "Already Checked In" for appointments that are already checked in */}
+                  {appointment.checkedInAt && (
+                    <span className="text-gray-400 text-sm">Already Checked In</span>
+                  )}
                 </div>
               </div>
             );
@@ -564,7 +594,10 @@ export default function AppointmentsPage() {
             <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 text-lg font-medium">No appointments found</p>
             <p className="text-gray-400 text-sm mt-2">
-              {loading ? 'Loading appointments...' : 'Create your first appointment to get started'}
+              {loading ? 'Loading appointments...' : 
+               selectedDate === new Date().toISOString().split('T')[0] ? 
+               'No appointments for today. Create your first appointment to get started.' :
+               `No appointments found for ${selectedDate}. Try selecting a different date.`}
             </p>
           </div>
         )}

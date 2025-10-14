@@ -215,6 +215,8 @@ export const useAssistants = (): UseAssistantsReturn => {
     setError(null);
     
     try {
+      console.log('Starting assistant update for ID:', id, 'with data:', data);
+      
       // Get the assistant document to find userId
       const assistantDoc = await getDoc(doc(db, 'assistants', id));
       if (!assistantDoc.exists()) {
@@ -223,6 +225,8 @@ export const useAssistants = (): UseAssistantsReturn => {
       
       const assistantData = assistantDoc.data();
       const userId = assistantData.userId;
+      
+      console.log('Found assistant data:', assistantData, 'userId:', userId);
       
       // Separate user fields from assistant fields
       const userFields: any = {};
@@ -239,27 +243,52 @@ export const useAssistants = (): UseAssistantsReturn => {
       if (data.assignedDoctors !== undefined) assistantFields.assignedDoctors = data.assignedDoctors;
       if (data.isActive !== undefined) assistantFields.isActive = data.isActive;
       
+      console.log('User fields to update:', userFields);
+      console.log('Assistant fields to update:', assistantFields);
+      
       // Update user document if there are user field changes
       if (Object.keys(userFields).length > 0 && userId) {
+        console.log('Updating user document:', userId, userFields);
         await updateDoc(doc(db, 'users', userId), {
           ...userFields,
           updatedAt: Timestamp.now()
         });
+        console.log('User document updated successfully');
       }
       
       // Update assistant document if there are assistant field changes
       if (Object.keys(assistantFields).length > 0) {
+        console.log('Updating assistant document:', id, assistantFields);
         await updateDoc(doc(db, 'assistants', id), {
           ...assistantFields,
           updatedAt: Timestamp.now()
         });
+        console.log('Assistant document updated successfully');
       }
       
+      console.log('Refreshing assistants list...');
       await fetchAssistants(pagination.page);
+      console.log('Assistant update completed successfully');
       return true;
     } catch (err: any) {
-      setError(err.message);
       console.error('Error updating assistant:', err);
+      console.error('Error details:', {
+        code: err.code,
+        message: err.message,
+        stack: err.stack
+      });
+      
+      // Provide more specific error messages
+      let errorMessage = err.message;
+      if (err.code === 'permission-denied') {
+        errorMessage = 'Permission denied. You do not have sufficient permissions to update this assistant.';
+      } else if (err.code === 'not-found') {
+        errorMessage = 'Assistant not found. Please refresh the page and try again.';
+      } else if (err.code === 'unavailable') {
+        errorMessage = 'Service temporarily unavailable. Please try again later.';
+      }
+      
+      setError(errorMessage);
       return false;
     } finally {
       setLoading(false);

@@ -18,12 +18,13 @@ export interface Appointment {
   appointmentDate: string;
   appointmentTime: string;
   duration?: number;
-  status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed' | 'no_show' | 'rescheduled';
+  status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed' | 'no_show' | 'rescheduled' | 'approved';
   source: 'web' | 'assistant' | 'walk_in' | 'phone';
   notes?: string;
   tokenNumber?: string;
   checkedInAt?: any;
   acceptanceStatus?: 'pending' | 'accepted' | 'rejected';
+  queueOrder?: number;
   acceptedAt?: any;
   rejectedAt?: any;
   createdAt: any;
@@ -207,6 +208,7 @@ export const useAppointments = (patientId?: string, doctorId?: string): UseAppoi
     setLoading(true);
     try {
       await updateDoc(doc(db, 'appointments', id), {
+        status: 'approved',
         acceptanceStatus: 'accepted',
         acceptedAt: Timestamp.now(),
         updatedAt: Timestamp.now()

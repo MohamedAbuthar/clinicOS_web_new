@@ -1,10 +1,10 @@
-import PatientRootLayout from "@/compnent/Patient/layout/rootlayout";
+import PatientLayout from "@/compnent/Patient/layout/PatientLayout";
 import PatientProfileWithEdit from "@/compnent/Patient/patient-Profile/profile-with-edit";
 
 export default function Profile() {
   return(
-  <PatientRootLayout>
+  <PatientLayout>
     <PatientProfileWithEdit />
-  </PatientRootLayout>
+  </PatientLayout>
   )         
 }
