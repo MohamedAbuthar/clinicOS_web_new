@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { UserPlus, GripVertical, Clock, X, AlertCircle, Loader2, CheckCircle, UserCheck, Calendar, Phone, XCircle, UserX } from 'lucide-react';
 import { useQueue } from '@/lib/hooks/useQueue';
 import { useDoctors } from '@/lib/hooks/useDoctors';
@@ -222,6 +222,7 @@ const CurrentPatientCard = ({ patient, onComplete, disabled }: CurrentPatientCar
 interface QueueItemProps {
   patient: Patient;
   onSkip: () => void;
+  onComplete?: (appointmentId: string) => void;
   isSelected: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -230,7 +231,7 @@ interface QueueItemProps {
   isDragging: boolean;
 }
 
-const QueueItem = ({ patient, onSkip, isSelected, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: QueueItemProps) => {
+const QueueItem = ({ patient, onSkip, onComplete, isSelected, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: QueueItemProps) => {
   const statusColors: Record<Patient['status'], string> = {
     Arrived: 'bg-green-100 text-green-700',
     Late: 'bg-yellow-100 text-yellow-700',
@@ -311,15 +312,18 @@ const QueueItem = ({ patient, onSkip, isSelected, onDragStart, onDragEnd, onDrag
           <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[patient.status]}`}>
             {patient.status}
           </span>
-          {patient.status === 'Scheduled' && (
+          {patient.status === 'Scheduled' && onComplete && (
             <button
               onClick={() => {
-                // Handle check-in for scheduled appointments
-                console.log('Check-in appointment:', patient.id);
+                // Handle completion for scheduled appointments
+                console.log('Complete appointment:', patient.id);
+                // Extract appointment ID from patient.id (format: apt-{appointmentId})
+                const appointmentId = patient.id.replace('apt-', '');
+                onComplete(appointmentId);
               }}
-              className="px-3 py-1 text-sm text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+              className="px-3 py-1 text-sm text-green-600 hover:bg-green-50 rounded-lg transition-colors"
             >
-              Check In
+              Completed
             </button>
           )}
           <button
@@ -801,6 +805,7 @@ export default function QueueManagementPage() {
   const [showCheckInSection, setShowCheckInSection] = useState(true);
   const [showAllAppointments, setShowAllAppointments] = useState(false);
   const [skippedItems, setSkippedItems] = useState<Set<string>>(new Set());
+  const [currentTime, setCurrentTime] = useState(Date.now());
 
   const {
     currentPatient,
@@ -837,6 +842,15 @@ export default function QueueManagementPage() {
     }
   }, [successMessage]);
 
+  // Update current time every 30 seconds for real-time waiting time calculation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 30000); // Update every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Auto-select first doctor if available
   useEffect(() => {
     if (doctors.length > 0 && !selectedDoctorId) {
@@ -854,13 +868,14 @@ export default function QueueManagementPage() {
   const today = new Date().toISOString().split('T')[0];
   const todayAppointments = doctorAppointments.filter(apt => 
     apt.appointmentDate === today && 
-    (apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'completed')
+    (apt.status === 'scheduled' || apt.status === 'confirmed')
   );
 
   // Create queue items from today's appointments
-  const appointmentQueueItems: AppointmentQueueItem[] = todayAppointments
-    .filter(appointment => !skippedItems.has(`apt-${appointment.id}`))
-    .map((appointment, index) => {
+  const appointmentQueueItems: AppointmentQueueItem[] = useMemo(() => {
+    return todayAppointments
+      .filter(appointment => !skippedItems.has(`apt-${appointment.id}`))
+      .map((appointment, index) => {
       const patient = patients.find(p => p.id === appointment.patientId);
       let waitingTime = 0;
       
@@ -869,12 +884,12 @@ export default function QueueManagementPage() {
           // Handle Firebase Timestamp objects
           if (typeof appointment.checkedInAt === 'object' && appointment.checkedInAt !== null && 'toDate' in appointment.checkedInAt && typeof (appointment.checkedInAt as { toDate(): Date }).toDate === 'function') {
             const checkedInDate = (appointment.checkedInAt as { toDate(): Date }).toDate();
-            waitingTime = Math.floor((Date.now() - checkedInDate.getTime()) / (1000 * 60));
+            waitingTime = Math.floor((currentTime - checkedInDate.getTime()) / (1000 * 60));
           } else {
             // Handle regular Date objects or date strings
             const checkedInDate = new Date(appointment.checkedInAt as string | number | Date);
             if (!isNaN(checkedInDate.getTime())) {
-              waitingTime = Math.floor((Date.now() - checkedInDate.getTime()) / (1000 * 60));
+              waitingTime = Math.floor((currentTime - checkedInDate.getTime()) / (1000 * 60));
             }
           }
         } catch {
@@ -897,6 +912,7 @@ export default function QueueManagementPage() {
         checkedInAt: appointment.checkedInAt,
       };
     });
+  }, [todayAppointments, skippedItems, patients, currentTime]);
 
   // Sort by appointment time
   appointmentQueueItems.sort((a, b) => {
@@ -1183,6 +1199,35 @@ export default function QueueManagementPage() {
     }
   };
 
+  const handleCompleteAppointment = async (appointmentId: string) => {
+    setActionLoading(true);
+    try {
+      console.log('=== COMPLETING APPOINTMENT ===');
+      console.log('Appointment ID:', appointmentId);
+      
+      const success = await completeAppointment(appointmentId);
+      
+      if (success) {
+        setSuccessMessage('Appointment completed successfully and removed from queue');
+        
+        // Refresh data to update the queue
+        await refreshQueue();
+        if (selectedDoctorId) {
+          const today = new Date().toISOString().split('T')[0];
+          const pending = await getPendingCheckIns(selectedDoctorId, today);
+          setPendingCheckIns(pending);
+        }
+      } else {
+        setSuccessMessage('Failed to complete appointment');
+      }
+    } catch (err) {
+      console.error('Complete appointment error:', err);
+      setSuccessMessage('Failed to complete appointment');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading && !currentPatient && waitingQueue.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
@@ -1381,6 +1426,7 @@ export default function QueueManagementPage() {
                             checkedInAt: queueItem.checkedInAt ? formatTimestamp(queueItem.checkedInAt) : undefined,
                           }}
                           onSkip={() => handleSkip(queueItem.id)}
+                          onComplete={handleCompleteAppointment}
                           isSelected={index === 0}
                           onDragStart={() => handleDragStart(index)}
                           onDragEnd={handleDragEnd}
