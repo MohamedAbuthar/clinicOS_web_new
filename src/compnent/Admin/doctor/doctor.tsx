@@ -49,6 +49,7 @@ interface NewDoctorForm {
   specialty: string;
   phone: string;
   email: string;
+  password: string;
   schedule: string;
   startTime: string;
   endTime: string;
@@ -71,6 +72,7 @@ export default function DoctorDashboard() {
     specialty: '',
     phone: '',
     email: '',
+    password: '',
     schedule: '',
     startTime: '09:00',
     endTime: '17:00',
@@ -231,6 +233,7 @@ export default function DoctorDashboard() {
       specialty: '',
       phone: '',
       email: '',
+      password: '',
       schedule: '',
       startTime: '09:00',
       endTime: '17:00',
@@ -281,7 +284,7 @@ export default function DoctorDashboard() {
   };
 
   const handleAddDoctorSubmit = async () => {
-    if (!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email) {
+    if (!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email || !newDoctor.password) {
       setSuccessMessage('Please fill in all required fields');
       return;
     }
@@ -307,6 +310,7 @@ export default function DoctorDashboard() {
         name: newDoctor.name,
         email: newDoctor.email,
         phone: newDoctor.phone,
+        password: newDoctor.password,
         specialty: newDoctor.specialty,
         licenseNumber: 'LIC' + Date.now(), // Generate a temporary license number
         consultationDuration: parseInt(newDoctor.slotDuration),
@@ -675,6 +679,24 @@ export default function DoctorDashboard() {
                   </div>
                 </div>
 
+                {/* Password */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <User size={16} className="inline mr-1" />
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={newDoctor.password}
+                    onChange={(e) => handleAddDoctorChange('password', e.target.value)}
+                    placeholder="Enter password for doctor login"
+                    className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    This password will be used for doctor to login to the admin portal
+                  </p>
+                </div>
+
                 {/* Schedule Times */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -849,7 +871,7 @@ export default function DoctorDashboard() {
               </button>
               <button 
                 onClick={handleAddDoctorSubmit}
-                disabled={!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email || actionLoading}
+                disabled={!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email || !newDoctor.password || actionLoading}
                 className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 {actionLoading ? (

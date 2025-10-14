@@ -30,6 +30,13 @@ export const useRecentActivity = (limit: number = 20): UseRecentActivityReturn =
       setLoading(true);
       setError(null);
       
+      // If limit is 0 or negative, don't fetch any data
+      if (limit <= 0) {
+        setAuditLogs([]);
+        setLoading(false);
+        return;
+      }
+      
       const q = query(
         collection(db, 'auditLogs'),
         orderBy('timestamp', 'desc'),

@@ -16,6 +16,7 @@ interface AssistantForm {
   name: string;
   email: string;
   phone: string;
+  password: string;
   role: string;
   assignedDoctors: string; // Changed to string for form input
   status: 'active' | 'inactive';
@@ -103,6 +104,7 @@ const AssistantsPage = () => {
     name: '',
     email: '',
     phone: '',
+    password: '',
     role: 'assistant',
     assignedDoctors: '',
     status: 'active'
@@ -142,6 +144,7 @@ const AssistantsPage = () => {
       name: assistant.user.name,
       email: assistant.user.email,
       phone: assistant.user.phone || '',
+      password: '', // Password not shown in edit mode for security
       role: 'assistant', // Default role
       assignedDoctors: assistant.assignedDoctors.join(','), // Convert array to string with comma separator
       status: assistant.isActive ? 'active' : 'inactive'
@@ -216,6 +219,7 @@ const AssistantsPage = () => {
       name: formData.name,
       email: formData.email,
       phone: formData.phone,
+      password: formData.password,
       role: formData.role,
       assignedDoctors: assignedDoctorsArray,
     });
@@ -266,6 +270,7 @@ const AssistantsPage = () => {
       name: '',
       email: '',
       phone: '',
+      password: '',
       role: 'assistant',
       assignedDoctors: '',
       status: 'active'
@@ -457,6 +462,24 @@ const AssistantsPage = () => {
                   </div>
                 </div>
 
+                {/* Password */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <User className="inline w-4 h-4 mr-1" />
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => handleFormChange('password', e.target.value)}
+                    placeholder="Enter password for assistant login"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    This password will be used for assistant to login to the admin portal
+                  </p>
+                </div>
+
                 {/* Role */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -580,7 +603,7 @@ const AssistantsPage = () => {
               </button>
               <button
                 onClick={handleAddSubmit}
-                disabled={!formData.name || !formData.email || !formData.phone}
+                disabled={!formData.name || !formData.email || !formData.phone || !formData.password}
                 className="flex items-center gap-2 px-5 py-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 <Plus className="w-4 h-4" />
