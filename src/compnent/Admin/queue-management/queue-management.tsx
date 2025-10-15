@@ -425,10 +425,13 @@ interface DoctorBreakDropdownProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (fromTime: string, toTime: string) => void;
+  onEndBreak: () => void;
+  isOnBreak: boolean;
+  breakEndTime: string;
   buttonRef: React.RefObject<HTMLDivElement | null>;
 }
 
-const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, buttonRef }: DoctorBreakDropdownProps) => {
+const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, onEndBreak, isOnBreak, breakEndTime, buttonRef }: DoctorBreakDropdownProps) => {
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -499,7 +502,9 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, buttonRef }: DoctorBre
       className="bg-white rounded-lg shadow-xl border border-gray-200 p-5 w-80"
     >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">Set Break Time</h3>
+        <h3 className="text-lg font-semibold text-gray-900">
+          {isOnBreak ? 'Break Status' : 'Set Break Time'}
+        </h3>
         <button
           onClick={onClose}
           className="p-1 hover:bg-gray-100 rounded transition-colors"
@@ -508,53 +513,85 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, buttonRef }: DoctorBre
         </button>
       </div>
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            From
-          </label>
-          <div className="relative">
-            <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="time"
-              value={fromTime}
-              onChange={(e) => setFromTime(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+      {isOnBreak ? (
+        <div className="space-y-4">
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="w-5 h-5 text-yellow-600" />
+              <span className="font-medium text-yellow-800">Currently on Break</span>
+            </div>
+            <p className="text-sm text-yellow-700">
+              Break ends at: <span className="font-semibold">{breakEndTime}</span>
+            </p>
+          </div>
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+            >
+              Close
+            </button>
+            <button
+              onClick={() => {
+                onEndBreak();
+                onClose();
+              }}
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+            >
+              End Break Now
+            </button>
           </div>
         </div>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              From
+            </label>
+            <div className="relative">
+              <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="time"
+                value={fromTime}
+                onChange={(e) => setFromTime(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            To
-          </label>
-          <div className="relative">
-            <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="time"
-              value={toTime}
-              onChange={(e) => setToTime(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              To
+            </label>
+            <div className="relative">
+              <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="time"
+                value={toTime}
+                onChange={(e) => setToTime(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!fromTime || !toTime}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              Confirm Break
+            </button>
           </div>
         </div>
-
-        <div className="flex gap-3 pt-2">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!fromTime || !toTime}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            Confirm Break
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -823,6 +860,15 @@ export default function QueueManagementPage() {
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [isBreakDropdownOpen, setIsBreakDropdownOpen] = useState(false);
   const [reorderedQueueItems, setReorderedQueueItems] = useState<AppointmentQueueItem[]>([]);
+  const [doctorBreakStatus, setDoctorBreakStatus] = useState<{
+    isOnBreak: boolean;
+    breakStartTime: string;
+    breakEndTime: string;
+  }>({
+    isOnBreak: false,
+    breakStartTime: '',
+    breakEndTime: ''
+  });
   const breakButtonRef = useRef<HTMLDivElement>(null);
   const lastManualChangeTime = useRef<number>(0);
 
@@ -869,6 +915,34 @@ export default function QueueManagementPage() {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Check break status and auto-return from break
+  useEffect(() => {
+    const checkBreakStatus = () => {
+      if (doctorBreakStatus.isOnBreak && doctorBreakStatus.breakEndTime) {
+        const now = new Date();
+        const currentTimeStr = now.toTimeString().slice(0, 5); // HH:MM format
+        
+        if (currentTimeStr >= doctorBreakStatus.breakEndTime) {
+          // Break time is over, return to active
+          setDoctorBreakStatus({
+            isOnBreak: false,
+            breakStartTime: '',
+            breakEndTime: ''
+          });
+          setSuccessMessage('Break time ended - Doctor is now active');
+        }
+      }
+    };
+
+    // Check every minute
+    const interval = setInterval(checkBreakStatus, 60000);
+    
+    // Also check immediately
+    checkBreakStatus();
+
+    return () => clearInterval(interval);
+  }, [doctorBreakStatus]);
 
   // Auto-select first doctor if available
   useEffect(() => {
@@ -1301,9 +1375,71 @@ export default function QueueManagementPage() {
     setDraggedItemId(null);
   };
 
-  const handleBreakSubmit = (fromTime: string, toTime: string) => {
+  const handleBreakSubmit = async (fromTime: string, toTime: string) => {
     console.log('Doctor break set from', fromTime, 'to', toTime);
-    setSuccessMessage(`Break scheduled from ${fromTime} to ${toTime}`);
+    
+    // Check if break time is valid (end time should be after start time)
+    if (fromTime >= toTime) {
+      setSuccessMessage('End time must be after start time');
+      return;
+    }
+
+    // Check if break is starting now or in the future
+    const now = new Date();
+    const currentTimeStr = now.toTimeString().slice(0, 5); // HH:MM format
+    
+    if (fromTime <= currentTimeStr && toTime > currentTimeStr) {
+      // Break is starting now
+      setDoctorBreakStatus({
+        isOnBreak: true,
+        breakStartTime: fromTime,
+        breakEndTime: toTime
+      });
+      setSuccessMessage(`Doctor is now on break until ${toTime}`);
+    } else if (fromTime > currentTimeStr) {
+      // Break is scheduled for later
+      setSuccessMessage(`Break scheduled from ${fromTime} to ${toTime}`);
+    } else {
+      // Break time has already passed
+      setSuccessMessage('Break time has already passed');
+    }
+
+    // Update doctor status in database if needed
+    if (selectedDoctorId) {
+      try {
+        await updateDoc(doc(db, 'doctors', selectedDoctorId), {
+          status: fromTime <= currentTimeStr && toTime > currentTimeStr ? 'Break' : 'In',
+          breakStartTime: fromTime,
+          breakEndTime: toTime
+        });
+        console.log('Doctor break status updated in database');
+      } catch (error) {
+        console.error('Error updating doctor break status:', error);
+      }
+    }
+  };
+
+  const handleEndBreak = async () => {
+    setDoctorBreakStatus({
+      isOnBreak: false,
+      breakStartTime: '',
+      breakEndTime: ''
+    });
+    setSuccessMessage('Break ended - Doctor is now active');
+
+    // Update doctor status in database
+    if (selectedDoctorId) {
+      try {
+        await updateDoc(doc(db, 'doctors', selectedDoctorId), {
+          status: 'In',
+          breakStartTime: null,
+          breakEndTime: null
+        });
+        console.log('Doctor break ended in database');
+      } catch (error) {
+        console.error('Error ending doctor break:', error);
+      }
+    }
   };
 
   const handleCheckIn = async (appointment: Appointment) => {
@@ -1466,16 +1602,15 @@ export default function QueueManagementPage() {
                 </option>
               ))}
             </select>
-            <Button variant="secondary" icon={<UserPlus className="w-4 h-4" />}>
-              Add Walk-in
-            </Button>
             <div ref={breakButtonRef}>
               <Button 
-                variant="primary"
+                variant={doctorBreakStatus.isOnBreak ? "secondary" : "primary"}
                 onClick={() => setIsBreakDropdownOpen(!isBreakDropdownOpen)}
                 disabled={actionLoading}
               >
-                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Mark Doctor Break'}
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 
+                 doctorBreakStatus.isOnBreak ? `On Break (Until ${doctorBreakStatus.breakEndTime})` : 
+                 'Mark Doctor Break'}
               </Button>
             </div>
           </div>
@@ -1486,6 +1621,9 @@ export default function QueueManagementPage() {
           isOpen={isBreakDropdownOpen}
           onClose={() => setIsBreakDropdownOpen(false)}
           onSubmit={handleBreakSubmit}
+          onEndBreak={handleEndBreak}
+          isOnBreak={doctorBreakStatus.isOnBreak}
+          breakEndTime={doctorBreakStatus.breakEndTime}
           buttonRef={breakButtonRef}
         />
 
@@ -1695,11 +1833,12 @@ export default function QueueManagementPage() {
           <div className="space-y-6">
             {/* Doctor Status */}
             <DoctorStatusCard doctorStatus={{
-              status: selectedDoctor?.status === 'In' ? 'Active' : 
+              status: doctorBreakStatus.isOnBreak ? 'On Break' : 
+                      selectedDoctor?.status === 'In' ? 'Active' : 
                       selectedDoctor?.status === 'Break' ? 'Break' : 'Offline',
               avgConsultTime: selectedDoctor?.consultationDuration ? `${selectedDoctor.consultationDuration} min` : 'N/A',
               patientsServed: queueStats?.completed || 0,
-              estimatedComplete: 'N/A'
+              estimatedComplete: doctorBreakStatus.isOnBreak ? `Until ${doctorBreakStatus.breakEndTime}` : 'N/A'
             }} />
 
             {/* Quick Actions */}

@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw, Users, UserPlus, CheckCircle, Shield, User } from 'lucide-react';
+import { AlertCircle, RefreshCw, Shield, User } from 'lucide-react';
 import { useRecentActivity } from '@/lib/hooks/useRecentActivity';
-import { createAllTestUsers, testUsers } from '@/lib/utils/createTestUsers';
 import { useAuth } from '@/lib/contexts/AuthContext';
 
 export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [isCreatingUsers, setIsCreatingUsers] = useState(false);
   
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   
   // Only fetch audit logs for admin users
   const { auditLogs, loading, error: apiError, refetch } = useRecentActivity(isAdmin ? 20 : 0);
+  
+  // Track if we've manually refreshed
+  const [hasManuallyRefreshed, setHasManuallyRefreshed] = useState(false);
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -32,22 +33,10 @@ export default function SettingsPage() {
 
   const handleRefresh = () => {
     setError(null);
+    setHasManuallyRefreshed(true);
     refetch();
   };
 
-  const handleCreateTestUsers = async () => {
-    setIsCreatingUsers(true);
-    setError(null);
-    
-    try {
-      await createAllTestUsers();
-      setSuccessMessage('Test users created successfully! Check the console for credentials.');
-    } catch (err: any) {
-      setError(err.message || 'Failed to create test users');
-    } finally {
-      setIsCreatingUsers(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -86,64 +75,6 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        {/* User Management Section - Admin Only */}
-        {isAdmin && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Users className="w-6 h-6 text-teal-600" />
-              <h2 className="text-xl font-bold text-gray-900">User Management</h2>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Create Test Users */}
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <UserPlus className="w-5 h-5 text-blue-600" />
-                  <h3 className="font-semibold text-gray-900">Create Test Users</h3>
-                </div>
-                <p className="text-sm text-gray-600 mb-4">
-                  Create sample doctors and assistants for testing the system.
-                </p>
-                <button
-                  onClick={handleCreateTestUsers}
-                  disabled={isCreatingUsers}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isCreatingUsers ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Creating Users...
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-4 h-4" />
-                      Create Test Users
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Test User Credentials */}
-              <div className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                  <h3 className="font-semibold text-gray-900">Test User Credentials</h3>
-                </div>
-                <p className="text-sm text-gray-600 mb-4">
-                  Use these credentials to test different user roles:
-                </p>
-                <div className="space-y-2 text-xs">
-                  {testUsers.map((user, index) => (
-                    <div key={index} className="flex justify-between items-center bg-gray-50 p-2 rounded">
-                      <span className="font-medium capitalize">{user.role}:</span>
-                      <span className="text-gray-600">{user.email}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* User Profile Section - For All Staff */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
@@ -194,7 +125,7 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
-              {loading ? (
+              {loading && !hasManuallyRefreshed ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="flex items-center gap-2 text-gray-500">
                     <RefreshCw size={20} className="animate-spin" />
@@ -212,15 +143,25 @@ export default function SettingsPage() {
                   </div>
                 </div>
               ) : (
-                auditLogs.map((log) => (
-                  <div key={log.id} className="flex items-start justify-between p-4 border-b border-gray-200 last:border-0">
-                    <div>
-                      <h3 className="font-medium text-gray-900">{log.action}</h3>
-                      <p className="text-sm text-gray-500 mt-1">by {log.user}</p>
+                <>
+                  {auditLogs.map((log) => (
+                    <div key={log.id} className="flex items-start justify-between p-4 border-b border-gray-200 last:border-0">
+                      <div>
+                        <h3 className="font-medium text-gray-900">{log.action}</h3>
+                        <p className="text-sm text-gray-500 mt-1">by {log.user}</p>
+                      </div>
+                      <span className="text-sm text-gray-500">{log.timestamp}</span>
                     </div>
-                    <span className="text-sm text-gray-500">{log.timestamp}</span>
-                  </div>
-                ))
+                  ))}
+                  {loading && hasManuallyRefreshed && (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <RefreshCw size={16} className="animate-spin" />
+                        <span className="text-sm">Refreshing...</span>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
