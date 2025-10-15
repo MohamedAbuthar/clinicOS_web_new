@@ -24,16 +24,23 @@ export async function POST(req: NextRequest) {
 		const smtpUser = process.env.SMTP_EMAIL
 		const smtpPass = process.env.SMTP_APP_PASSWORD
 
-		console.log('SMTP Config:', { 
-			smtpUser: smtpUser ? 'configured' : 'missing', 
-			smtpPass: smtpPass ? 'configured' : 'missing' 
+		console.log('Environment check:', {
+			NODE_ENV: process.env.NODE_ENV,
+			VERCEL: process.env.VERCEL,
+			SMTP_EMAIL: smtpUser ? 'configured' : 'missing',
+			SMTP_APP_PASSWORD: smtpPass ? 'configured' : 'missing',
+			allEnvKeys: Object.keys(process.env).filter(key => key.includes('SMTP'))
 		})
 
 		if (!smtpUser || !smtpPass) {
-			console.error('SMTP credentials missing:', { smtpUser: !!smtpUser, smtpPass: !!smtpPass })
+			console.error('SMTP credentials missing:', { 
+				smtpUser: !!smtpUser, 
+				smtpPass: !!smtpPass,
+				envKeys: Object.keys(process.env).filter(key => key.includes('SMTP'))
+			})
 			return NextResponse.json({
 				success: false,
-				message: 'SMTP credentials not configured. Add SMTP_EMAIL and SMTP_APP_PASSWORD to .env.'
+				message: 'SMTP credentials not configured. Please check your environment variables.'
 			}, { status: 500 })
 		}
 
@@ -41,8 +48,19 @@ export async function POST(req: NextRequest) {
 			host: 'smtp.gmail.com',
 			port: 465,
 			secure: true,
-			auth: { user: smtpUser, pass: smtpPass },
+			auth: { 
+				user: smtpUser, 
+				pass: smtpPass 
+			},
+			tls: {
+				rejectUnauthorized: false
+			}
 		})
+
+		// Verify transporter configuration
+		console.log('Verifying SMTP connection...')
+		await transporter.verify()
+		console.log('SMTP connection verified successfully')
 
 		const html = `
 			<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">

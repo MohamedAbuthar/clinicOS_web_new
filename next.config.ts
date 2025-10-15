@@ -8,8 +8,8 @@ config({ path: '.env.local' });
 const nextConfig: NextConfig = {
   /* config options here */
   
-  // Enable static export for Firebase hosting
-  output: 'export',
+  // Remove static export for Vercel deployment (Vercel supports serverless functions)
+  // output: 'export', // Commented out for Vercel
   
   // Disable image optimization for static export
   images: {
