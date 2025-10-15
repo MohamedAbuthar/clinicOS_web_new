@@ -266,14 +266,9 @@ export function canBookSession(
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const selectedDateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   
-  console.log(`🔍 canBookSession Debug for ${session}:`);
-  console.log('  Selected date:', date.toDateString());
-  console.log('  Today:', today.toDateString());
-  console.log('  Session config:', config[session]);
   
   // Can't book past dates
   if (selectedDateStart < todayStart) {
-    console.log('  ❌ Past date - cannot book');
     return {
       canBook: false,
       reason: 'Cannot book appointments for past dates'
@@ -286,25 +281,19 @@ export function canBookSession(
     const now = new Date();
     const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     
-    console.log('  Current time:', currentTime);
-    console.log('  Session start:', sessionTimes.startTime);
-    console.log('  Session end:', sessionTimes.endTime);
     
     // Check if session has already ended
     if (sessionTimes.endTime <= currentTime) {
-      console.log('  ❌ Session has ended');
       return {
         canBook: false,
         reason: 'This session has already ended'
       };
     }
     
-    console.log('  ✅ Session is available');
     // Allow booking if session hasn't ended yet (even if it's in progress)
     // The system will assign available time slots within the session
   }
   
-  console.log('  ✅ Can book session');
   return { canBook: true };
 }
 
@@ -320,43 +309,32 @@ export function getAvailableSessionsForDate(
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const selectedDateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   
-  console.log('🔍 getAvailableSessionsForDate Debug:');
-  console.log('  Selected date:', date.toDateString());
-  console.log('  Today:', today.toDateString());
-  console.log('  Selected date start:', selectedDateStart.getTime());
-  console.log('  Today start:', todayStart.getTime());
   
   // If booking for future dates, show both sessions
   if (selectedDateStart.getTime() > todayStart.getTime()) {
-    console.log('  ✅ Future date - showing both sessions');
     return ['morning', 'evening'];
   }
   
   // If booking for today, check which sessions can actually be booked
   if (selectedDateStart.getTime() === todayStart.getTime()) {
-    console.log('  📅 Today - checking session availability');
     const availableSessions: SessionType[] = [];
     
     // Check morning session
     const morningCheck = canBookSession(date, 'morning', config);
-    console.log('  Morning session check:', morningCheck);
     if (morningCheck.canBook) {
       availableSessions.push('morning');
     }
     
     // Check evening session
     const eveningCheck = canBookSession(date, 'evening', config);
-    console.log('  Evening session check:', eveningCheck);
     if (eveningCheck.canBook) {
       availableSessions.push('evening');
     }
     
-    console.log('  Available sessions:', availableSessions);
     return availableSessions;
   }
   
   // Past dates - no sessions available
-  console.log('  ❌ Past date - no sessions available');
   return [];
 }
 
