@@ -710,7 +710,7 @@ export default function PatientProfileWithEdit() {
               <div className="text-center py-12 bg-gray-50 rounded-lg">
                 <UserPlus className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600 mb-2">No family members added yet</p>
-                <p className="text-gray-500 text-sm mb-4">Click "Add Member" to add your first family member</p>
+                <p className="text-gray-500 text-sm mb-4">Click &quot;Add Member&quot; to add your first family member</p>
                 <button
                   onClick={handleAddMemberClick}
                   className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg transition-colors font-medium"
