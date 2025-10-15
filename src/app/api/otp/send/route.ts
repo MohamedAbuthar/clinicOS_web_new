@@ -11,6 +11,8 @@ export async function POST(req: NextRequest) {
 	try {
 		const { email, otp } = await req.json()
 
+		console.log('OTP Send Request:', { email, otp: otp ? '***' : 'missing' })
+
 		if (!email || !otp) {
 			return NextResponse.json({ success: false, message: 'Email and OTP are required' }, { status: 400 })
 		}
@@ -22,10 +24,16 @@ export async function POST(req: NextRequest) {
 		const smtpUser = process.env.SMTP_EMAIL
 		const smtpPass = process.env.SMTP_APP_PASSWORD
 
+		console.log('SMTP Config:', { 
+			smtpUser: smtpUser ? 'configured' : 'missing', 
+			smtpPass: smtpPass ? 'configured' : 'missing' 
+		})
+
 		if (!smtpUser || !smtpPass) {
+			console.error('SMTP credentials missing:', { smtpUser: !!smtpUser, smtpPass: !!smtpPass })
 			return NextResponse.json({
 				success: false,
-				message: 'SMTP credentials not configured. Add SMTP_EMAIL and SMTP_APP_PASSWORD to .env.local.'
+				message: 'SMTP credentials not configured. Add SMTP_EMAIL and SMTP_APP_PASSWORD to .env.'
 			}, { status: 500 })
 		}
 
@@ -59,9 +67,17 @@ export async function POST(req: NextRequest) {
 			text: `Your ClinicOS OTP is: ${otp} (valid for 10 minutes)`,
 		})
 
+		console.log('OTP email sent successfully to:', email)
 		return NextResponse.json({ success: true, message: 'OTP email sent via SMTP' })
 	} catch (err) {
 		console.error('SMTP send error:', err)
-		return NextResponse.json({ success: false, message: 'Failed to send OTP email' }, { status: 500 })
+		console.error('Error details:', {
+			message: err instanceof Error ? err.message : 'Unknown error',
+			stack: err instanceof Error ? err.stack : undefined
+		})
+		return NextResponse.json({ 
+			success: false, 
+			message: `Failed to send OTP email: ${err instanceof Error ? err.message : 'Unknown error'}` 
+		}, { status: 500 })
 	}
 }
