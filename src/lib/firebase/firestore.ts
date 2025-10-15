@@ -79,9 +79,16 @@ export const getPatientProfile = async (patientId?: string) => {
 
 export const updatePatientProfile = async (patientId: string, updates: any) => {
   try {
+    // Filter out undefined, null, and empty string values
+    const cleanUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([_, value]) => 
+        value !== undefined && value !== null && value !== ''
+      )
+    );
+
     const patientRef = doc(db, COLLECTIONS.PATIENTS, patientId);
     await updateDoc(patientRef, {
-      ...updates,
+      ...cleanUpdates,
       updatedAt: Timestamp.now()
     });
     
@@ -814,9 +821,16 @@ export const addFamilyMember = async (familyId: string, memberData: any) => {
     console.log('   FamilyId:', familyId);
     console.log('   Member data:', { name: memberData.name, dateOfBirth: memberData.dateOfBirth, gender: memberData.gender });
     
+    // Filter out undefined, null, and empty string values
+    const cleanMemberData = Object.fromEntries(
+      Object.entries(memberData).filter(([_, value]) => 
+        value !== undefined && value !== null && value !== ''
+      )
+    );
+    
     const patientsRef = collection(db, COLLECTIONS.PATIENTS);
     const newMember = {
-      ...memberData,
+      ...cleanMemberData,
       familyId,
       isActive: true,
       createdAt: Timestamp.now(),

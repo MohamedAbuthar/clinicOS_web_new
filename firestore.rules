@@ -36,6 +36,7 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
+    
     // Users collection (Admin, Doctor, Assistant profiles)
     match /users/{userId} {
       allow read: if isAuthenticated();
@@ -46,10 +47,10 @@ service cloud.firestore {
     
     // Patients collection
     match /patients/{patientId} {
-      allow read: if isStaff() || isOwner(patientId);
+      allow read: if isStaff() || isOwner(patientId) || isPatient();
       allow create: if true; // Anyone can register as patient
-      allow update: if isStaff() || isOwner(patientId);
-      allow delete: if isAdmin();
+      allow update: if isStaff() || isOwner(patientId) || isPatient();
+      allow delete: if isAdmin() || isPatient();
     }
     
     // Doctors collection

@@ -43,13 +43,16 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
         // Filter out the current patient from family members list
         const members = (result.data as PatientProfile[]).filter(m => m.id !== patient.id);
         setFamilyMembers(members);
-        console.log(`Loaded ${members.length} family members`);
+        console.log(`✅ Loaded ${members.length} family members`);
       } else {
         console.log('No family members found or error:', result.error);
         setFamilyMembers([]);
+        if (result.error) {
+          setError(result.error);
+        }
       }
     } catch (err: any) {
-      console.error('Error fetching family members:', err);
+      console.error('❌ Error fetching family members:', err);
       setError(err.message || 'Failed to load family members');
       setFamilyMembers([]);
     } finally {
@@ -83,12 +86,13 @@ export function useFamilyMembers(): UseFamilyMembersReturn {
       
       if (result.success) {
         console.log('Family member added successfully');
+        // Refresh the family members list
         await refreshMembers();
       } else {
         throw new Error(result.error || 'Failed to add family member');
       }
     } catch (err: any) {
-      console.error('Error adding family member:', err);
+      console.error('❌ Error adding family member:', err);
       const errorMessage = err.message || 'Failed to add family member';
       setError(errorMessage);
       throw new Error(errorMessage);

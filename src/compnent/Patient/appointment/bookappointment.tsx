@@ -15,7 +15,8 @@ import {
   getSessionCapacity,
   formatSessionText,
   getSessionTimeRange,
-  canBookSession 
+  canBookSession,
+  getAvailableSessionsForDate
 } from '@/lib/utils/sessionBookingHelper';
 
 interface FamilyMember {
@@ -494,8 +495,18 @@ export default function BookAppointmentPage() {
               <Calendar
                 mode="single"
                 selected={selectedDate}
-                onSelect={setSelectedDate}
-                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                onSelect={(date) => {
+                  if (date) {
+                    setSelectedDate(date);
+                    setSelectedSession(null); // Reset session when date changes
+                  }
+                }}
+                disabled={(date) => {
+                  const today = new Date();
+                  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                  const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                  return dateStart < todayStart;
+                }}
                 className="rounded-md border"
               />
             </div>
@@ -535,10 +546,24 @@ export default function BookAppointmentPage() {
                 <p className="text-gray-500">Loading session information...</p>
               </div>
             ) : sessionCapacity ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <SessionCard session="morning" />
-                <SessionCard session="evening" />
-              </div>
+              (() => {
+                const availableSessions = getAvailableSessionsForDate(selectedDate);
+                if (availableSessions.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-gray-500">
+                      <p className="text-lg font-medium mb-2">No sessions available for this date</p>
+                      <p className="text-sm">Please select a different date</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className={`grid gap-6 ${availableSessions.length === 1 ? 'grid-cols-1 max-w-md mx-auto' : 'grid-cols-1 md:grid-cols-2'}`}>
+                    {availableSessions.map(session => (
+                      <SessionCard key={session} session={session} />
+                    ))}
+                  </div>
+                );
+              })()
             ) : (
               <div className="text-center py-8 text-gray-500">
                 No session information available
