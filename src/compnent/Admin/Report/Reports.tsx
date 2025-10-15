@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Clock, Users, TrendingUp, Download, ChevronDown, Check, AlertCircle, Loader2 } from 'lucide-react';
 import ReportStatCard, { ReportStatCardProps } from './ReportStatCard';
 import AppointmentTrendsChart, { AppointmentData } from './AppointmentTrendsChart';
@@ -20,6 +20,7 @@ const ReportsPage: React.FC = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { appointments, loading: appointmentsLoading } = useAppointments();
   const { doctors, loading: doctorsLoading } = useDoctors();
@@ -37,14 +38,70 @@ const ReportsPage: React.FC = () => {
     setLoading(appointmentsLoading || doctorsLoading);
   }, [appointmentsLoading, doctorsLoading]);
 
+  // Click outside handler for dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
+
+  // Date filtering functions
+  const getDateRange = (range: TimeRange) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (range) {
+      case 'today':
+        return {
+          start: today,
+          end: new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1)
+        };
+      case 'thisWeek':
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay()); // Sunday
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+        return { start: startOfWeek, end: endOfWeek };
+      case 'thisMonth':
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        endOfMonth.setHours(23, 59, 59, 999);
+        return { start: startOfMonth, end: endOfMonth };
+      default:
+        return { start: today, end: today };
+    }
+  };
+
+  const filterAppointmentsByDateRange = (appointments: any[], range: TimeRange) => {
+    const { start, end } = getDateRange(range);
+    return appointments.filter(appointment => {
+      const appointmentDate = new Date(appointment.appointmentDate);
+      return appointmentDate >= start && appointmentDate <= end;
+    });
+  };
+
   const getTimeRangeLabel = () => {
     return timeRangeOptions.find(opt => opt.value === timeRange)?.label || 'This Week';
   };
 
-  // Calculate stats from real data
-  const totalAppointments = appointments.length;
-  const completedAppointments = appointments.filter(apt => apt.status === 'completed').length;
-  const noShowAppointments = appointments.filter(apt => apt.status === 'no_show').length;
+  // Filter appointments based on selected time range
+  const filteredAppointments = filterAppointmentsByDateRange(appointments, timeRange);
+
+  // Calculate stats from filtered data
+  const totalAppointments = filteredAppointments.length;
+  const completedAppointments = filteredAppointments.filter(apt => apt.status === 'completed').length;
+  const noShowAppointments = filteredAppointments.filter(apt => apt.status === 'no_show').length;
   const noShowRate = totalAppointments > 0 ? ((noShowAppointments / totalAppointments) * 100).toFixed(1) : '0.0';
 
   // Stats data
@@ -83,15 +140,57 @@ const ReportsPage: React.FC = () => {
     },
   ];
 
-  // Appointment trends data
-  const appointmentData: AppointmentData[] = [
-    { day: 'Mon', total: 45, completed: 42, cancelled: 3 },
-    { day: 'Tue', total: 52, completed: 48, cancelled: 4 },
-    { day: 'Wed', total: 48, completed: 45, cancelled: 3 },
-    { day: 'Thu', total: 55, completed: 50, cancelled: 5 },
-    { day: 'Fri', total: 60, completed: 55, cancelled: 5 },
-    { day: 'Sat', total: 35, completed: 33, cancelled: 2 },
-  ];
+  // Generate appointment trends data based on time range
+  const generateAppointmentData = (): AppointmentData[] => {
+    const { start, end } = getDateRange(timeRange);
+    const data: AppointmentData[] = [];
+    
+    if (timeRange === 'today') {
+      // For today, show hourly data
+      for (let hour = 9; hour <= 17; hour++) {
+        const hourStart = new Date(start);
+        hourStart.setHours(hour, 0, 0, 0);
+        const hourEnd = new Date(start);
+        hourEnd.setHours(hour + 1, 0, 0, 0);
+        
+        const hourAppointments = filteredAppointments.filter(apt => {
+          const aptTime = new Date(`${apt.appointmentDate} ${apt.appointmentTime}`);
+          return aptTime >= hourStart && aptTime < hourEnd;
+        });
+        
+        data.push({
+          day: `${hour}:00`,
+          total: hourAppointments.length,
+          completed: hourAppointments.filter(apt => apt.status === 'completed').length,
+          cancelled: hourAppointments.filter(apt => apt.status === 'cancelled').length,
+        });
+      }
+    } else {
+      // For week/month, show daily data
+      const current = new Date(start);
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      
+      while (current <= end) {
+        const dayAppointments = filteredAppointments.filter(apt => {
+          const aptDate = new Date(apt.appointmentDate);
+          return aptDate.toDateString() === current.toDateString();
+        });
+        
+        data.push({
+          day: days[current.getDay()],
+          total: dayAppointments.length,
+          completed: dayAppointments.filter(apt => apt.status === 'completed').length,
+          cancelled: dayAppointments.filter(apt => apt.status === 'cancelled').length,
+        });
+        
+        current.setDate(current.getDate() + 1);
+      }
+    }
+    
+    return data;
+  };
+
+  const appointmentData = generateAppointmentData();
 
   // Wait time data
   const waitTimeData: WaitTimeData[] = [
@@ -105,11 +204,11 @@ const ReportsPage: React.FC = () => {
     { hour: '5PM', avgWait: 8 },
   ];
 
-  // Doctor performance data from real data
+  // Doctor performance data from filtered data
   const doctorPerformance: DoctorPerformanceCardProps[] = doctors
     .filter(doctor => doctor.user) // Filter out doctors without user data
     .map(doctor => {
-      const doctorAppointments = appointments.filter(apt => apt.doctorId === doctor.id);
+      const doctorAppointments = filteredAppointments.filter(apt => apt.doctorId === doctor.id);
       const completedAppointments = doctorAppointments.filter(apt => apt.status === 'completed');
       
       return {
@@ -163,7 +262,7 @@ const ReportsPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-3">
               {/* Time Range Dropdown */}
-              <div className="relative">
+              <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
                   className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-2 text-sm hover:bg-gray-50 transition-colors min-w-[150px] justify-between"

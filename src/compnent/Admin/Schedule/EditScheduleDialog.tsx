@@ -108,31 +108,29 @@ const EditScheduleDialog: React.FC<EditScheduleDialogProps> = ({
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                  <input
-                    type="time"
-                    value={formData.timeRange?.split(' - ')[0] || ''}
-                    onChange={(e) => {
-                      const endTime = formData.timeRange?.split(' - ')[1] || '';
-                      setFormData({ ...formData, timeRange: `${e.target.value} - ${endTime}` });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                    required
-                  />
-                    <Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    <input
+                      type="time"
+                      value={formData.timeRange?.split(' - ')[0] || ''}
+                      onChange={(e) => {
+                        const endTime = formData.timeRange?.split(' - ')[1] || '';
+                        setFormData({ ...formData, timeRange: `${e.target.value} - ${endTime}` });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      required
+                    />
                   </div>
                   <span className="flex items-center text-gray-500">to</span>
                   <div className="relative flex-1">
-                  <input
-                    type="time"
-                    value={formData.timeRange?.split(' - ')[1] || ''}
-                    onChange={(e) => {
-                      const startTime = formData.timeRange?.split(' - ')[0] || '';
-                      setFormData({ ...formData, timeRange: `${startTime} - ${e.target.value}` });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                    required
-                  />
-                    <Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    <input
+                      type="time"
+                      value={formData.timeRange?.split(' - ')[1] || ''}
+                      onChange={(e) => {
+                        const startTime = formData.timeRange?.split(' - ')[0] || '';
+                        setFormData({ ...formData, timeRange: `${startTime} - ${e.target.value}` });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      required
+                    />
                   </div>
                 </div>
               </div>

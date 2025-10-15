@@ -27,6 +27,8 @@ export default function AppointmentsPage() {
   const [isMigrating, setIsMigrating] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [showDateFilter, setShowDateFilter] = useState(false);
+  const [selectedDoctor, setSelectedDoctor] = useState<string>('');
+  const [showDoctorFilter, setShowDoctorFilter] = useState(false);
 
   const { 
     appointments, 
@@ -45,10 +47,12 @@ export default function AppointmentsPage() {
   const { doctors } = useDoctors();
   const { patients, createPatient } = usePatients();
 
-  // Filter appointments by selected date
-  const filteredAppointments = appointments.filter(appointment => 
-    appointment.appointmentDate === selectedDate
-  );
+  // Filter appointments by selected date and doctor
+  const filteredAppointments = appointments.filter(appointment => {
+    const matchesDate = appointment.appointmentDate === selectedDate;
+    const matchesDoctor = !selectedDoctor || appointment.doctorId === selectedDoctor;
+    return matchesDate && matchesDoctor;
+  });
 
   // Debug: Log doctors and appointments when they change
   useEffect(() => {
@@ -74,16 +78,22 @@ export default function AppointmentsPage() {
           setShowDateFilter(false);
         }
       }
+      if (showDoctorFilter) {
+        const target = event.target as Element;
+        if (!target.closest('.doctor-filter-container')) {
+          setShowDoctorFilter(false);
+        }
+      }
     };
 
-    if (showDateFilter) {
+    if (showDateFilter || showDoctorFilter) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showDateFilter]);
+  }, [showDateFilter, showDoctorFilter]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -373,6 +383,9 @@ export default function AppointmentsPage() {
           {/* Debug info */}
           <div className="mt-2 text-xs text-gray-400">
             Debug: {filteredAppointments.length} appointments for {selectedDate === new Date().toISOString().split('T')[0] ? 'today' : selectedDate}
+            {selectedDoctor && (
+              <span> | Doctor: {doctors.find(d => d.id === selectedDoctor)?.user?.name || 'Unknown'}</span>
+            )}
             {filteredAppointments.length > 0 && (
               <span> | First: {filteredAppointments[0].patientName || 'No name'}</span>
             )}
@@ -453,12 +466,55 @@ export default function AppointmentsPage() {
             </div>
           )}
         </div>
-        <button className="px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white font-medium text-gray-700">
-          Filter by Doctor
-        </button>
-        <button className="px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white font-medium text-gray-700">
-          Filter by Status
-        </button>
+        {/* Doctor Filter */}
+        <div className="relative doctor-filter-container">
+          <button 
+            onClick={() => setShowDoctorFilter(!showDoctorFilter)}
+            className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white"
+          >
+            <User className="w-4 h-4" />
+            <span className="font-medium text-gray-700">
+              {selectedDoctor ? doctors.find(d => d.id === selectedDoctor)?.user?.name || 'Filter by Doctor' : 'Filter by Doctor'}
+            </span>
+          </button>
+          
+          {/* Doctor Filter Dropdown */}
+          {showDoctorFilter && (
+            <div className="absolute top-full right-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-10 min-w-[200px]">
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    setSelectedDoctor('');
+                    setShowDoctorFilter(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    !selectedDoctor 
+                      ? 'bg-teal-100 text-teal-700 font-medium' 
+                      : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  All Doctors
+                </button>
+                {doctors.map((doctor) => (
+                  <button
+                    key={doctor.id}
+                    onClick={() => {
+                      setSelectedDoctor(doctor.id);
+                      setShowDoctorFilter(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      selectedDoctor === doctor.id 
+                        ? 'bg-teal-100 text-teal-700 font-medium' 
+                        : 'hover:bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Appointments Table */}
@@ -595,8 +651,10 @@ export default function AppointmentsPage() {
             <p className="text-gray-500 text-lg font-medium">No appointments found</p>
             <p className="text-gray-400 text-sm mt-2">
               {loading ? 'Loading appointments...' : 
-               selectedDate === new Date().toISOString().split('T')[0] ? 
+               selectedDate === new Date().toISOString().split('T')[0] && !selectedDoctor ? 
                'No appointments for today. Create your first appointment to get started.' :
+               selectedDoctor ? 
+               `No appointments found for ${doctors.find(d => d.id === selectedDoctor)?.user?.name || 'selected doctor'} on ${selectedDate}. Try selecting a different doctor or date.` :
                `No appointments found for ${selectedDate}. Try selecting a different date.`}
             </p>
           </div>

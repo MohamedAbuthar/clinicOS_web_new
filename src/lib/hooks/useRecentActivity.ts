@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, query, orderBy, limit as firestoreLimit, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
 
@@ -24,8 +24,9 @@ export const useRecentActivity = (limit: number = 20): UseRecentActivityReturn =
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasFetched, setHasFetched] = useState(false);
 
-  const fetchRecentActivity = async () => {
+  const fetchRecentActivity = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -34,6 +35,7 @@ export const useRecentActivity = (limit: number = 20): UseRecentActivityReturn =
       if (limit <= 0) {
         setAuditLogs([]);
         setLoading(false);
+        setHasFetched(true);
         return;
       }
       
@@ -73,21 +75,27 @@ export const useRecentActivity = (limit: number = 20): UseRecentActivityReturn =
       });
       
       setAuditLogs(logs);
+      setHasFetched(true);
     } catch (err) {
       console.error('Error fetching recent activity:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      setHasFetched(true);
     } finally {
       setLoading(false);
     }
-  };
+  }, [limit]);
 
   useEffect(() => {
-    fetchRecentActivity();
-  }, [limit, fetchRecentActivity]);
+    // Only fetch if we haven't fetched yet or if limit changed
+    if (!hasFetched) {
+      fetchRecentActivity();
+    }
+  }, [limit, fetchRecentActivity, hasFetched]);
 
-  const refetch = () => {
+  const refetch = useCallback(() => {
+    setHasFetched(false);
     fetchRecentActivity();
-  };
+  }, [fetchRecentActivity]);
 
   return {
     auditLogs,
