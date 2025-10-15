@@ -263,11 +263,17 @@ export function canBookSession(
   reason?: string;
 } {
   const today = new Date();
-  const dateStr = date.toISOString().split('T')[0];
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const selectedDateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  console.log(`🔍 canBookSession Debug for ${session}:`);
+  console.log('  Selected date:', date.toDateString());
+  console.log('  Today:', today.toDateString());
+  console.log('  Session config:', config[session]);
   
   // Can't book past dates
-  if (dateStr < todayStr) {
+  if (selectedDateStart < todayStart) {
+    console.log('  ❌ Past date - cannot book');
     return {
       canBook: false,
       reason: 'Cannot book appointments for past dates'
@@ -275,24 +281,82 @@ export function canBookSession(
   }
   
   // If booking for today, check if session time has passed
-  if (dateStr === todayStr) {
+  if (selectedDateStart.getTime() === todayStart.getTime()) {
     const sessionTimes = config[session];
     const now = new Date();
     const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     
-    // Add 2-hour buffer
-    const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-    const minBookingTime = `${twoHoursLater.getHours().toString().padStart(2, '0')}:${twoHoursLater.getMinutes().toString().padStart(2, '0')}`;
+    console.log('  Current time:', currentTime);
+    console.log('  Session start:', sessionTimes.startTime);
+    console.log('  Session end:', sessionTimes.endTime);
     
-    // Check if session end time is before minimum booking time
-    if (sessionTimes.endTime < minBookingTime) {
+    // Check if session has already ended
+    if (sessionTimes.endTime <= currentTime) {
+      console.log('  ❌ Session has ended');
       return {
         canBook: false,
-        reason: 'This session is too soon (requires 2-hour advance booking)'
+        reason: 'This session has already ended'
       };
     }
+    
+    console.log('  ✅ Session is available');
+    // Allow booking if session hasn't ended yet (even if it's in progress)
+    // The system will assign available time slots within the session
   }
   
+  console.log('  ✅ Can book session');
   return { canBook: true };
+}
+
+/**
+ * Get available sessions based on current time
+ * Only shows sessions that can actually be booked (considering 2-hour advance booking rule)
+ */
+export function getAvailableSessionsForDate(
+  date: Date,
+  config: SessionConfig = DEFAULT_SESSION_CONFIG
+): SessionType[] {
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const selectedDateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  console.log('🔍 getAvailableSessionsForDate Debug:');
+  console.log('  Selected date:', date.toDateString());
+  console.log('  Today:', today.toDateString());
+  console.log('  Selected date start:', selectedDateStart.getTime());
+  console.log('  Today start:', todayStart.getTime());
+  
+  // If booking for future dates, show both sessions
+  if (selectedDateStart.getTime() > todayStart.getTime()) {
+    console.log('  ✅ Future date - showing both sessions');
+    return ['morning', 'evening'];
+  }
+  
+  // If booking for today, check which sessions can actually be booked
+  if (selectedDateStart.getTime() === todayStart.getTime()) {
+    console.log('  📅 Today - checking session availability');
+    const availableSessions: SessionType[] = [];
+    
+    // Check morning session
+    const morningCheck = canBookSession(date, 'morning', config);
+    console.log('  Morning session check:', morningCheck);
+    if (morningCheck.canBook) {
+      availableSessions.push('morning');
+    }
+    
+    // Check evening session
+    const eveningCheck = canBookSession(date, 'evening', config);
+    console.log('  Evening session check:', eveningCheck);
+    if (eveningCheck.canBook) {
+      availableSessions.push('evening');
+    }
+    
+    console.log('  Available sessions:', availableSessions);
+    return availableSessions;
+  }
+  
+  // Past dates - no sessions available
+  console.log('  ❌ Past date - no sessions available');
+  return [];
 }
 
