@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import { config } from 'dotenv';
+
+// Load .env file first, then .env.local (if it exists)
+config({ path: '.env' });
+config({ path: '.env.local' });
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -17,7 +22,7 @@ const nextConfig: NextConfig = {
   // Optional: Configure trailing slashes
   trailingSlash: true,
   
-  // Environment variables
+  // Environment variables - .env takes priority over .env.local
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api',
   },
