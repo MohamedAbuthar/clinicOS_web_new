@@ -134,7 +134,7 @@ const MainDashboard = () => {
             ) : (
               // Display doctors
               doctors.map((doctor) => (
-                <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 h-full">
+                <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 h-full flex flex-col">
                   <div className="h-72 bg-blue-100 flex items-center justify-center">
                     <div className="w-36 h-36 bg-blue-200 rounded-full flex items-center justify-center">
                       <svg className="w-20 h-20 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
@@ -142,12 +142,12 @@ const MainDashboard = () => {
               </svg>
             </div>
                   </div>
-                  <div className="p-8">
+                  <div className="p-8 flex flex-col flex-grow">
                     <h3 className="text-2xl font-bold text-gray-800 mb-3">
                       {doctor.user?.name ? `Dr. ${doctor.user.name}` : 'Dr. Name Not Available'}
             </h3>
                     <p className="text-blue-600 font-medium mb-4 text-lg">{doctor.specialty || 'General Medicine'}</p>
-                    <p className="text-gray-600 text-base leading-relaxed mb-6">
+                    <p className="text-gray-600 text-base leading-relaxed mb-6 flex-grow">
                       {doctor.user?.name ? 
                         `Dr. ${doctor.user.name} specializes in ${doctor.specialty || 'general medicine'} with ${doctor.consultationDuration || 30} minute consultations.` :
                         'Experienced healthcare professional dedicated to providing quality patient care.'
@@ -168,8 +168,11 @@ const MainDashboard = () => {
                         </span>
                       )}
                     </div>
-                    <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 px-4 rounded-lg font-medium transition-colors text-base">
-                      View Details
+                    <button 
+                      onClick={handleBookAppointment}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors text-base"
+                    >
+                      Book Appointment
                     </button>
                   </div>
                 </div>
