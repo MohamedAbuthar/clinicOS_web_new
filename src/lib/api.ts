@@ -80,16 +80,23 @@ export interface Patient {
 export interface Appointment {
   id: string;
   patientId: string;
+  patientName?: string; // Store patient name directly in appointment
+  patientPhone?: string; // Store patient phone directly in appointment
   doctorId: string;
   appointmentDate: string;
   appointmentTime: string;
   duration: number;
-  status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed' | 'no_show' | 'rescheduled';
+  status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed' | 'no_show' | 'rescheduled' | 'approved';
   source: 'web' | 'assistant' | 'walk_in' | 'phone';
   notes?: string;
   tokenNumber?: string;
-  createdAt: string;
-  updatedAt: string;
+  checkedInAt?: any;
+  acceptanceStatus?: 'pending' | 'accepted' | 'rejected';
+  queueOrder?: number;
+  acceptedAt?: any;
+  rejectedAt?: any;
+  createdAt: any;
+  updatedAt: any;
 }
 
 export interface AppointmentWithDetails extends Appointment {
