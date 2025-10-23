@@ -27,6 +27,13 @@ interface FamilyMember {
   relationship?: string;
 }
 
+// Helper function to format date as YYYY-MM-DD without timezone issues
+const formatDateForAPI = (date: Date): string => {
+  return date.getFullYear() + '-' + 
+    String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+    String(date.getDate()).padStart(2, '0');
+};
+
 export default function BookAppointmentPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading, patient, logout } = usePatientAuth();
@@ -109,7 +116,7 @@ export default function BookAppointmentPage() {
           }
 
           // Get existing appointments for this doctor and date
-          const dateStr = selectedDate.toISOString().split('T')[0];
+          const dateStr = formatDateForAPI(selectedDate);
           const result = await getDoctorAppointmentsByDate(selectedDoctor, dateStr);
           const existingAppointments = result.success && result.data ? result.data : [];
 
@@ -190,7 +197,7 @@ export default function BookAppointmentPage() {
         setIsBooking(true);
         setError('');
         
-      const dateStr = selectedDate.toISOString().split('T')[0];
+      const dateStr = formatDateForAPI(selectedDate);
       
       // Get existing appointments for token generation
       const result = await getDoctorAppointmentsByDate(selectedDoctor!, dateStr);

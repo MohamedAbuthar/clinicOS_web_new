@@ -36,7 +36,7 @@ export default function SettingsPage() {
       
       return auditLogs.filter(log => 
         log.userId === currentUser.id || 
-        assignedDoctorIds.includes(log.userId) ||
+        (log.userId && assignedDoctorIds.includes(log.userId)) ||
         log.action?.includes('assistant') ||
         log.action?.includes(currentUser.name || '')
       );

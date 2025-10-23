@@ -17,7 +17,7 @@ export interface Appointment {
   doctorId: string;
   appointmentDate: string;
   appointmentTime: string;
-  duration?: number;
+  duration: number;
   status: 'scheduled' | 'confirmed' | 'cancelled' | 'completed' | 'no_show' | 'rescheduled' | 'approved';
   source: 'web' | 'assistant' | 'walk_in' | 'phone';
   notes?: string;
