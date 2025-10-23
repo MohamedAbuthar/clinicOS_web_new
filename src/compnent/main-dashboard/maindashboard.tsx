@@ -34,9 +34,9 @@ const MainDashboard = () => {
         <div className="w-full px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-between">
           {/* Logo - Left Corner */}
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center">
               <svg 
-                className="w-5 h-5 text-blue-600" 
+                className="w-5 h-5 text-teal-600" 
                 viewBox="0 0 24 24" 
                 fill="none" 
                 xmlns="http://www.w3.org/2000/svg"
@@ -56,7 +56,7 @@ const MainDashboard = () => {
           {/* Login Button - Right Corner */}
           <button 
             onClick={handleLogin}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+            className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
           >
             Login
           </button>
@@ -64,12 +64,12 @@ const MainDashboard = () => {
       </header>
 
       {/* Hero Section */}
-      <main className="bg-gradient-to-b from-blue-50 to-blue-100 py-20">
+      <main className="bg-gradient-to-b from-teal-50 to-teal-100 py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           {/* Heart Icon */}
           <div className="flex justify-center mb-8">
             <svg 
-              className="w-16 h-16 text-blue-600" 
+              className="w-16 h-16 text-teal-600" 
               viewBox="0 0 24 24" 
               fill="none" 
               xmlns="http://www.w3.org/2000/svg"
@@ -97,7 +97,7 @@ const MainDashboard = () => {
           {/* Book Appointment Button */}
           <button 
             onClick={handleBookAppointment}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-lg text-lg font-medium transition-colors shadow-lg"
+            className="bg-teal-500 hover:bg-teal-700 text-white px-8 py-4 rounded-lg text-lg font-medium transition-colors shadow-lg"
           >
             Book Appointment Now
           </button>
@@ -158,9 +158,9 @@ const MainDashboard = () => {
               // Display filtered doctors
               filteredDoctors.map((doctor) => (
                 <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 h-full flex flex-col">
-                  <div className="h-72 bg-blue-100 flex items-center justify-center">
-                    <div className="w-36 h-36 bg-blue-200 rounded-full flex items-center justify-center">
-                      <svg className="w-20 h-20 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+                  <div className="h-72 bg-teal-100 flex items-center justify-center">
+                    <div className="w-36 h-36 bg-teal-200 rounded-full flex items-center justify-center">
+                      <svg className="w-20 h-20 text-teal-600" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
               </svg>
             </div>
@@ -193,7 +193,7 @@ const MainDashboard = () => {
                     </div>
                     <button 
                       onClick={handleBookAppointment}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors text-base"
+                      className="w-full bg-teal-600 hover:bg-teal-700 text-white py-3 px-4 rounded-lg font-medium transition-colors text-base"
                     >
                       Book Appointment
                     </button>
