@@ -5,10 +5,13 @@ import { Search, Calendar, Plus, Clock, Phone, X, User, Mail, AlertCircle, Loade
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { usePatients } from '@/lib/hooks/usePatients';
+import { useAuth } from '@/lib/contexts/AuthContext';
+import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils, Appointment } from '@/lib/api';
 import { migrateAppointmentTokens } from '@/lib/firebase/firestore';
 
 export default function AppointmentsPage() {
+  const { user: currentUser, isAuthenticated } = useAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -29,6 +32,7 @@ export default function AppointmentsPage() {
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<string>('');
   const [showDoctorFilter, setShowDoctorFilter] = useState(false);
+  const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
 
   const { 
     appointments, 
@@ -46,9 +50,62 @@ export default function AppointmentsPage() {
   
   const { doctors } = useDoctors();
   const { patients, createPatient } = usePatients();
+  const { assistants } = useAssistants();
 
-  // Filter appointments by selected date and doctor
-  const filteredAppointments = appointments.filter(appointment => {
+  // Filter doctors based on user role
+  const getFilteredDoctors = () => {
+    if (!isAuthenticated || !currentUser) return doctors;
+    
+    if (currentUser.role === 'doctor') {
+      // Doctor sees only themselves
+      return doctors.filter(doctor => doctor.userId === currentUser.id);
+    } else if (currentUser.role === 'assistant') {
+      // Assistant sees only their assigned doctors
+      const assistant = assistants.find(a => a.userId === currentUser.id);
+      if (assistant && assistant.assignedDoctors) {
+        return doctors.filter(doctor => assistant.assignedDoctors.includes(doctor.id));
+      }
+      return []; // No assigned doctors
+    }
+    
+    // Admin sees all doctors
+    return doctors;
+  };
+
+  // Apply role-based filtering to appointments
+  useEffect(() => {
+    let roleFilteredAppointments = [...appointments];
+
+    if (isAuthenticated && currentUser) {
+      if (currentUser.role === 'doctor') {
+        // Doctor sees only their own appointments
+        roleFilteredAppointments = appointments.filter(apt => apt.doctorId === currentUser.id);
+      } else if (currentUser.role === 'assistant') {
+        // Assistant sees appointments for their assigned doctors
+        const assistant = assistants.find(a => a.userId === currentUser.id);
+        if (assistant && assistant.assignedDoctors) {
+          roleFilteredAppointments = appointments.filter(apt => 
+            assistant.assignedDoctors.includes(apt.doctorId)
+          );
+        } else {
+          roleFilteredAppointments = []; // No assigned doctors
+        }
+      }
+      // Admin sees all appointments (no filtering)
+    }
+
+    // Apply date and doctor filters
+    const finalFiltered = roleFilteredAppointments.filter(appointment => {
+      const matchesDate = appointment.appointmentDate === selectedDate;
+      const matchesDoctor = !selectedDoctor || appointment.doctorId === selectedDoctor;
+      return matchesDate && matchesDoctor;
+    });
+
+    setFilteredAppointments(finalFiltered);
+  }, [appointments, currentUser, isAuthenticated, assistants, selectedDate, selectedDoctor]);
+
+  // Filter appointments by selected date and doctor (legacy - now handled in useEffect above)
+  const legacyFilteredAppointments = appointments.filter(appointment => {
     const matchesDate = appointment.appointmentDate === selectedDate;
     const matchesDoctor = !selectedDoctor || appointment.doctorId === selectedDoctor;
     return matchesDate && matchesDoctor;
@@ -378,8 +435,30 @@ export default function AppointmentsPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Appointments</h1>
-          <p className="text-gray-500 mt-1">Manage and track all patient appointments</p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {currentUser?.role === 'doctor' 
+              ? 'Your Appointments' 
+              : currentUser?.role === 'assistant'
+              ? 'Assigned Doctors Appointments'
+              : 'Appointments'
+            }
+          </h1>
+          <p className="text-gray-500 mt-1">
+            {currentUser?.role === 'doctor' 
+              ? 'Manage and track your patient appointments' 
+              : currentUser?.role === 'assistant'
+              ? 'Manage appointments for your assigned doctors'
+              : 'Manage and track all patient appointments'
+            }
+          </p>
+          {/* User context indicator */}
+          {currentUser && (
+            <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+              {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+              {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+              {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+            </div>
+          )}
           {/* Debug info */}
           <div className="mt-2 text-xs text-gray-400">
             Debug: {filteredAppointments.length} appointments for {selectedDate === new Date().toISOString().split('T')[0] ? 'today' : selectedDate}
@@ -495,7 +574,7 @@ export default function AppointmentsPage() {
                 >
                   All Doctors
                 </button>
-                {doctors.map((doctor) => (
+                {getFilteredDoctors().map((doctor) => (
                   <button
                     key={doctor.id}
                     onClick={() => {
@@ -756,7 +835,7 @@ export default function AppointmentsPage() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   >
                     <option value="">Choose a doctor</option>
-                    {doctors.map((doctor) => (
+                    {getFilteredDoctors().map((doctor) => (
                       <option key={doctor.id} value={doctor.id}>
                         {doctor.user?.name || 'Unknown'} - {doctor.specialty}
                       </option>

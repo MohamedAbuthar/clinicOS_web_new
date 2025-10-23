@@ -8,7 +8,8 @@ export default function Sidebar() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
-  const menuItems = [
+  // Base menu items
+  const baseMenuItems = [
     { icon: LayoutGrid, label: 'Dashboard', path: '/Admin/dashboard' },
     { icon: Calendar, label: 'Appointments', path: '/Admin/appoinment' },
     { icon: Activity, label: 'Queues', path: '/Admin/queue-management' },
@@ -18,6 +19,22 @@ export default function Sidebar() {
     { icon: BarChart3, label: 'Reports', path: '/Admin/reports' },
     { icon: Settings, label: 'Settings', path: '/Admin/settings' },
   ];
+
+  // Filter menu items based on user role
+  const menuItems = baseMenuItems.filter(item => {
+    // Hide Assistants menu for assistants (they only see their own profile)
+    if (item.label === 'Assistants' && user?.role === 'assistant') {
+      return false;
+    }
+    
+    // Hide Doctors menu for doctors (they only see their own profile)
+    if (item.label === 'Doctors' && user?.role === 'doctor') {
+      return false;
+    }
+    
+    // Show all items for admin
+    return true;
+  });
 
   const handleNavigation = (path: string) => {
     router.push(path);

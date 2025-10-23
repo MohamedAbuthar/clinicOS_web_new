@@ -6,6 +6,8 @@ import { useQueue } from '@/lib/hooks/useQueue';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { usePatients } from '@/lib/hooks/usePatients';
 import { useAppointments } from '@/lib/hooks/useAppointments';
+import { useAuth } from '@/lib/contexts/AuthContext';
+import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils, Appointment as BaseAppointment, Patient as ApiPatient, Doctor } from '@/lib/api';
 import { db } from '@/lib/firebase/config';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -848,6 +850,7 @@ const AllAppointmentsTable = ({
 
 // Main Component
 export default function QueueManagementPage() {
+  const { user: currentUser, isAuthenticated } = useAuth();
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [pendingCheckIns, setPendingCheckIns] = useState<Appointment[]>([]);
@@ -891,6 +894,7 @@ export default function QueueManagementPage() {
 
   const { doctors } = useDoctors();
   const { patients } = usePatients();
+  const { assistants } = useAssistants();
   const { 
     appointments, 
     cancelAppointment, 
@@ -898,6 +902,26 @@ export default function QueueManagementPage() {
     markNoShow,
     checkInAppointment 
   } = useAppointments();
+
+  // Filter doctors based on user role
+  const getFilteredDoctors = () => {
+    if (!isAuthenticated || !currentUser) return doctors;
+    
+    if (currentUser.role === 'doctor') {
+      // Doctor sees only themselves
+      return doctors.filter(doctor => doctor.userId === currentUser.id);
+    } else if (currentUser.role === 'assistant') {
+      // Assistant sees only their assigned doctors
+      const assistant = assistants.find(a => a.userId === currentUser.id);
+      if (assistant && assistant.assignedDoctors) {
+        return doctors.filter(doctor => assistant.assignedDoctors.includes(doctor.id));
+      }
+      return []; // No assigned doctors
+    }
+    
+    // Admin sees all doctors
+    return doctors;
+  };
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -1584,10 +1608,30 @@ export default function QueueManagementPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Queue Management</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {currentUser?.role === 'doctor' 
+                ? 'Your Queue Management' 
+                : currentUser?.role === 'assistant'
+                ? 'Assigned Doctors Queue Management'
+                : 'Queue Management'
+              }
+            </h1>
             <p className="text-sm text-gray-500 mt-1">
-              Real-time token board for {selectedDoctor?.user?.name || 'Select a doctor'}
+              {currentUser?.role === 'doctor' 
+                ? `Real-time token board for ${selectedDoctor?.user?.name || 'your patients'}`
+                : currentUser?.role === 'assistant'
+                ? `Real-time token board for ${selectedDoctor?.user?.name || 'assigned doctors'}`
+                : `Real-time token board for ${selectedDoctor?.user?.name || 'Select a doctor'}`
+              }
             </p>
+            {/* User context indicator */}
+            {currentUser && (
+              <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+                {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+                {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+                {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+              </div>
+            )}
           </div>
           <div className="flex gap-3">
             <select
@@ -1596,7 +1640,7 @@ export default function QueueManagementPage() {
               className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
             >
               <option value="">Select Doctor</option>
-              {doctors.map((doctor) => (
+              {getFilteredDoctors().map((doctor) => (
                 <option key={doctor.id} value={doctor.id}>
                   {doctor.user?.name || 'Unknown'} - {doctor.specialty}
                 </option>

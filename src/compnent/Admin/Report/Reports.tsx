@@ -9,12 +9,15 @@ import DoctorPerformanceCard, { DoctorPerformanceCardProps } from './DoctorPerfo
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { useQueue } from '@/lib/hooks/useQueue';
+import { useAuth } from '@/lib/contexts/AuthContext';
+import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils } from '@/lib/api';
 
 type TabType = 'appointments' | 'queue' | 'doctor';
 type TimeRange = 'today' | 'thisWeek' | 'thisMonth' | 'custom';
 
 const ReportsPage: React.FC = () => {
+  const { user: currentUser, isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('appointments');
   const [timeRange, setTimeRange] = useState<TimeRange>('thisWeek');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -24,7 +27,47 @@ const ReportsPage: React.FC = () => {
 
   const { appointments, loading: appointmentsLoading } = useAppointments();
   const { doctors, loading: doctorsLoading } = useDoctors();
+  const { assistants } = useAssistants();
   const { queueStats } = useQueue();
+
+  // Filter data based on user role
+  const getFilteredAppointments = () => {
+    if (!isAuthenticated || !currentUser) return appointments;
+    
+    if (currentUser.role === 'doctor') {
+      // Doctor sees only their own appointments
+      return appointments.filter(apt => apt.doctorId === currentUser.id);
+    } else if (currentUser.role === 'assistant') {
+      // Assistant sees appointments for their assigned doctors
+      const assistant = assistants.find(a => a.userId === currentUser.id);
+      if (assistant && assistant.assignedDoctors) {
+        return appointments.filter(apt => assistant.assignedDoctors.includes(apt.doctorId));
+      }
+      return []; // No assigned doctors
+    }
+    
+    // Admin sees all appointments
+    return appointments;
+  };
+
+  const getFilteredDoctors = () => {
+    if (!isAuthenticated || !currentUser) return doctors;
+    
+    if (currentUser.role === 'doctor') {
+      // Doctor sees only themselves
+      return doctors.filter(doctor => doctor.userId === currentUser.id);
+    } else if (currentUser.role === 'assistant') {
+      // Assistant sees only their assigned doctors
+      const assistant = assistants.find(a => a.userId === currentUser.id);
+      if (assistant && assistant.assignedDoctors) {
+        return doctors.filter(doctor => assistant.assignedDoctors.includes(doctor.id));
+      }
+      return []; // No assigned doctors
+    }
+    
+    // Admin sees all doctors
+    return doctors;
+  };
 
   const timeRangeOptions = [
     { value: 'today', label: 'Today' },
@@ -95,8 +138,8 @@ const ReportsPage: React.FC = () => {
     return timeRangeOptions.find(opt => opt.value === timeRange)?.label || 'This Week';
   };
 
-  // Filter appointments based on selected time range
-  const filteredAppointments = filterAppointmentsByDateRange(appointments, timeRange);
+  // Filter appointments based on selected time range and user role
+  const filteredAppointments = filterAppointmentsByDateRange(getFilteredAppointments(), timeRange);
 
   // Calculate stats from filtered data
   const totalAppointments = filteredAppointments.length;
@@ -205,7 +248,7 @@ const ReportsPage: React.FC = () => {
   ];
 
   // Doctor performance data from filtered data
-  const doctorPerformance: DoctorPerformanceCardProps[] = doctors
+  const doctorPerformance: DoctorPerformanceCardProps[] = getFilteredDoctors()
     .filter(doctor => doctor.user) // Filter out doctors without user data
     .map(doctor => {
       const doctorAppointments = filteredAppointments.filter(apt => apt.doctorId === doctor.id);
@@ -255,10 +298,30 @@ const ReportsPage: React.FC = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {currentUser?.role === 'doctor' 
+                  ? 'Your Reports' 
+                  : currentUser?.role === 'assistant'
+                  ? 'Assigned Doctors Reports'
+                  : 'Reports'
+                }
+              </h1>
               <p className="text-sm text-gray-600 mt-1">
-                Analytics and insights for clinic operations
+                {currentUser?.role === 'doctor' 
+                  ? 'Analytics and insights for your practice' 
+                  : currentUser?.role === 'assistant'
+                  ? 'Analytics and insights for your assigned doctors'
+                  : 'Analytics and insights for clinic operations'
+                }
               </p>
+              {/* User context indicator */}
+              {currentUser && (
+                <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+                  {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+                  {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+                  {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3">
               {/* Time Range Dropdown */}
