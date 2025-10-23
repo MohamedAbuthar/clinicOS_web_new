@@ -12,9 +12,12 @@ import EditScheduleDialog from './EditScheduleDialog';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { useSchedule } from '@/lib/hooks/useSchedule';
 import { useScheduleOverrides } from '@/lib/hooks/useScheduleOverrides';
+import { useAuth } from '@/lib/contexts/AuthContext';
+import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils } from '@/lib/api';
 
 const SchedulePage: React.FC = () => {
+  const { user: currentUser, isAuthenticated } = useAuth();
   const [selectedDoctor, setSelectedDoctor] = useState('');
   const [isAddOverrideOpen, setIsAddOverrideOpen] = useState(false);
   const [isEditOverrideOpen, setIsEditOverrideOpen] = useState(false);
@@ -25,6 +28,7 @@ const SchedulePage: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
 
   const { doctors, loading, error } = useDoctors();
+  const { assistants } = useAssistants();
   const { 
     schedules, 
     loading: scheduleLoading, 
@@ -35,6 +39,26 @@ const SchedulePage: React.FC = () => {
     updateSchedule, 
     deleteSchedule 
   } = useSchedule();
+
+  // Filter doctors based on user role
+  const getFilteredDoctors = () => {
+    if (!isAuthenticated || !currentUser) return doctors;
+    
+    if (currentUser.role === 'doctor') {
+      // Doctor sees only themselves
+      return doctors.filter(doctor => doctor.userId === currentUser.id);
+    } else if (currentUser.role === 'assistant') {
+      // Assistant sees only their assigned doctors
+      const assistant = assistants.find(a => a.userId === currentUser.id);
+      if (assistant && assistant.assignedDoctors) {
+        return doctors.filter(doctor => assistant.assignedDoctors.includes(doctor.id));
+      }
+      return []; // No assigned doctors
+    }
+    
+    // Admin sees all doctors
+    return doctors;
+  };
 
   const {
     overrides,
@@ -70,8 +94,8 @@ const SchedulePage: React.FC = () => {
     }
   }, [selectedDoctor, fetchSchedules, fetchOverrides]);
 
-  // Get doctor names for display
-  const doctorNames = doctors.map(doctor => ({
+  // Get doctor names for display (filtered by role)
+  const doctorNames = getFilteredDoctors().map(doctor => ({
     id: doctor.id,
     name: doctor.user?.name || 'Unknown Doctor'
   }));
@@ -377,10 +401,30 @@ const SchedulePage: React.FC = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Schedule</h1>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {currentUser?.role === 'doctor' 
+                  ? 'Your Schedule' 
+                  : currentUser?.role === 'assistant'
+                  ? 'Assigned Doctors Schedule'
+                  : 'Schedule'
+                }
+              </h1>
               <p className="text-sm text-gray-600 mt-1">
-                Manage doctor schedules and slot durations
+                {currentUser?.role === 'doctor' 
+                  ? 'Manage your schedule and slot durations' 
+                  : currentUser?.role === 'assistant'
+                  ? 'Manage schedules for your assigned doctors'
+                  : 'Manage doctor schedules and slot durations'
+                }
               </p>
+              {/* User context indicator */}
+              {currentUser && (
+                <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+                  {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+                  {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+                  {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+                </div>
+              )}
             </div>
             <button
               onClick={handleAddOverride}

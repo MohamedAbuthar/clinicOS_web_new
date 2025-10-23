@@ -1,10 +1,11 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Clock, Users, Eye, Edit, UserPlus, X, Phone, Mail, Calendar, MapPin, Save, User, AlertCircle, Loader2, Trash2, ChevronDown } from 'lucide-react';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useAssistants } from '@/lib/hooks/useAssistants';
+import { useAuth } from '@/lib/contexts/AuthContext';
 import { apiUtils, Doctor as ApiDoctor } from '@/lib/api';
 import { generateTimeSlots, formatScheduleDisplay } from '@/lib/utils/timeSlotGenerator';
 
@@ -60,6 +61,7 @@ interface NewDoctorForm {
 }
 
 export default function DoctorDashboard() {
+  const { user: currentUser, isAuthenticated } = useAuth();
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorDisplay | null>(null);
   const [showQueueDialog, setShowQueueDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -67,6 +69,7 @@ export default function DoctorDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [filteredDoctors, setFilteredDoctors] = useState<DoctorDisplay[]>([]);
   const [newDoctor, setNewDoctor] = useState<NewDoctorForm>({
     name: '',
     specialty: '',
@@ -208,7 +211,8 @@ export default function DoctorDashboard() {
   }, [showAssistantsDropdown, showEditAssistantsDropdown]);
 
   // Transform API doctors to display format
-  const transformedDoctors: DoctorDisplay[] = doctors.map((doctor, index) => {
+  const transformedDoctors: DoctorDisplay[] = useMemo(() => {
+    return doctors.map((doctor, index) => {
     const doctorAppointments = appointments.filter(apt => apt.doctorId === doctor.id);
     const todayAppointments = doctorAppointments.filter(apt => {
       const aptDate = new Date(apt.appointmentDate);
@@ -275,9 +279,73 @@ export default function DoctorDashboard() {
       queue: queue // Populate with actual appointments
     };
   });
+  }, [doctors, appointments]);
 
-  // Filter doctors based on search query
-  const filteredDoctors = transformedDoctors.filter(doctor =>
+  // Filter doctors based on user role and search query
+  useEffect(() => {
+    if (!transformedDoctors.length) {
+      setFilteredDoctors([]);
+      return;
+    }
+
+    let roleFiltered = [...transformedDoctors];
+
+    // If no user is authenticated, show all doctors (shouldn't happen in admin portal)
+    if (!isAuthenticated || !currentUser) {
+      setFilteredDoctors(roleFiltered);
+      return;
+    }
+
+    // If doctor is authenticated, show only their own profile
+    if (currentUser.role === 'doctor') {
+      console.log('Doctor filtering - currentUser:', currentUser);
+      console.log('Available doctors:', transformedDoctors);
+      
+      roleFiltered = transformedDoctors.filter(doctor => {
+        // Find the original doctor data to match by userId
+        const originalDoctor = doctors.find(d => d.id === doctor.id);
+        const isOwnProfile = originalDoctor?.userId === currentUser.id;
+        console.log(`Doctor ${doctor.name}: userId=${originalDoctor?.userId}, currentUser.id=${currentUser.id}, isOwnProfile=${isOwnProfile}`);
+        return isOwnProfile;
+      });
+      
+      console.log('Filtered doctors for doctor:', roleFiltered.map(d => ({ name: d.name, id: d.id })));
+    }
+    
+    // If assistant is authenticated, show only doctors assigned to them
+    else if (currentUser.role === 'assistant') {
+      console.log('Assistant filtering doctors - currentUser:', currentUser);
+      console.log('Available assistants:', assistants);
+      
+      const assistant = assistants.find(a => a.userId === currentUser.id);
+      console.log('Found assistant:', assistant);
+      
+      if (assistant && assistant.assignedDoctors && assistant.assignedDoctors.length > 0) {
+        console.log('Assistant assigned doctors:', assistant.assignedDoctors);
+        
+        roleFiltered = transformedDoctors.filter(doctor => {
+          const isAssigned = assistant.assignedDoctors.includes(doctor.id);
+          console.log(`Doctor ${doctor.name}: id=${doctor.id}, isAssigned=${isAssigned}`);
+          return isAssigned;
+        });
+        
+        console.log('Filtered doctors for assistant:', roleFiltered.map(d => ({ name: d.name, id: d.id })));
+      } else {
+        console.log('No assigned doctors found, showing empty list for assistant');
+        roleFiltered = [];
+      }
+    }
+    
+    // If admin is authenticated, show all doctors
+    else if (currentUser.role === 'admin') {
+      roleFiltered = transformedDoctors;
+    }
+
+    setFilteredDoctors(roleFiltered);
+  }, [transformedDoctors, currentUser, isAuthenticated, assistants]);
+
+  // Apply search filter to role-filtered doctors
+  const searchFilteredDoctors = filteredDoctors.filter(doctor =>
     doctor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     doctor.specialty.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -612,8 +680,30 @@ export default function DoctorDashboard() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-1">Doctors</h1>
-            <p className="text-gray-500">Manage doctor profiles and schedules</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-1">
+              {currentUser?.role === 'doctor' 
+                ? 'Your Profile' 
+                : currentUser?.role === 'assistant'
+                ? 'Your Assigned Doctors'
+                : 'Doctors'
+              }
+            </h1>
+            <p className="text-gray-500">
+              {currentUser?.role === 'doctor' 
+                ? 'Your professional profile and information' 
+                : currentUser?.role === 'assistant'
+                ? 'Doctors assigned to you for patient management'
+                : 'Manage doctor profiles and schedules'
+              }
+            </p>
+            {/* User context indicator */}
+            {currentUser && (
+              <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+                {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+                {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+                {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+              </div>
+            )}
           </div>
           <button 
             onClick={openAddDialog}
@@ -641,8 +731,8 @@ export default function DoctorDashboard() {
 
         {/* Doctor Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredDoctors.length > 0 ? (
-            filteredDoctors.map((doctor) => (
+          {searchFilteredDoctors.length > 0 ? (
+            searchFilteredDoctors.map((doctor) => (
             <div key={doctor.id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
               {/* Doctor Header */}
               <div className="flex items-start justify-between mb-6">
@@ -721,7 +811,12 @@ export default function DoctorDashboard() {
             ))
           ) : (
             <div className="col-span-full bg-white rounded-lg shadow-sm p-12 text-center">
-              <p className="text-gray-500">No doctors found</p>
+              <p className="text-gray-500">
+                {searchQuery ? 'No doctors match your search.' : 
+                 currentUser?.role === 'doctor' ? 'Your profile is not available.' :
+                 currentUser?.role === 'assistant' ? 'No doctors are assigned to you.' :
+                 'No doctors found.'}
+              </p>
             </div>
           )}
         </div>

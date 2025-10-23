@@ -11,9 +11,12 @@ import {
 import QueueDetailsDialog from './QueueDetailsDialog';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useDoctors } from '@/lib/hooks/useDoctors';
+import { useAuth } from '@/lib/contexts/AuthContext';
+import { useAssistants } from '@/lib/hooks/useAssistants';
 import { Doctor } from '@/lib/api';
 
 export default function DashboardPage() {
+  const { user: currentUser, isAuthenticated } = useAuth();
   const [isQueueDialogOpen, setIsQueueDialogOpen] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<any | null>(null);
   const [dashboardData, setDashboardData] = useState({
@@ -29,6 +32,7 @@ export default function DashboardPage() {
 
   const { appointments, loading: appointmentsLoading } = useAppointments();
   const { doctors: doctorsData, loading: doctorsLoading, fetchDoctors } = useDoctors();
+  const { assistants } = useAssistants();
 
   // Load dashboard data
   useEffect(() => {
@@ -56,16 +60,56 @@ export default function DashboardPage() {
     try {
       // Filter today's appointments
       const today = new Date().toISOString().split('T')[0];
-      const todayAppointments = appointments.filter(apt => 
+      let todayAppointments = appointments.filter(apt => 
         apt.appointmentDate === today
       );
+
+      // Apply role-based filtering to appointments
+      if (isAuthenticated && currentUser) {
+        if (currentUser.role === 'doctor') {
+          // Doctor sees only their own appointments
+          todayAppointments = todayAppointments.filter(apt => apt.doctorId === currentUser.id);
+        } else if (currentUser.role === 'assistant') {
+          // Assistant sees appointments for their assigned doctors
+          const assistant = assistants.find(a => a.userId === currentUser.id);
+          if (assistant && assistant.assignedDoctors) {
+            todayAppointments = todayAppointments.filter(apt => 
+              assistant.assignedDoctors.includes(apt.doctorId)
+            );
+          } else {
+            todayAppointments = []; // No assigned doctors
+          }
+        }
+        // Admin sees all appointments (no filtering)
+      }
 
       // Calculate dashboard metrics
       const appointmentsToday = todayAppointments.length;
       const patientsWaiting = todayAppointments.filter(apt => 
         apt.status === 'scheduled' || apt.status === 'confirmed'
       ).length;
-      const doctorsActive = doctorsData.filter(doctor => 
+      
+      // Apply role-based filtering to doctors
+      let filteredDoctors = doctorsData;
+      if (isAuthenticated && currentUser) {
+        if (currentUser.role === 'doctor') {
+          // Doctor sees only themselves
+          filteredDoctors = doctorsData.filter(doctor => doctor.userId === currentUser.id);
+        } else if (currentUser.role === 'assistant') {
+          // Assistant sees only their assigned doctors
+          const assistant = assistants.find(a => a.userId === currentUser.id);
+          if (assistant && assistant.assignedDoctors) {
+            filteredDoctors = doctorsData.filter(doctor => 
+              assistant.assignedDoctors.includes(doctor.id)
+            );
+          } else {
+            filteredDoctors = []; // No assigned doctors
+          }
+        }
+        // Admin sees all doctors (no filtering)
+      }
+
+      const doctorsActive = filteredDoctors.filter(doctor => 
         doctor.status === 'In'
       ).length;
       const noShows = todayAppointments.filter(apt => 
@@ -80,7 +124,7 @@ export default function DashboardPage() {
       });
 
       // Transform doctors data for display
-      const transformedDoctors = doctorsData.map(doctor => ({
+      const transformedDoctors = filteredDoctors.map(doctor => ({
         id: doctor.id,
         name: doctor.user?.name || '',
         specialty: doctor.specialty,
@@ -110,7 +154,7 @@ export default function DashboardPage() {
     } catch (err) {
       console.error('Error processing dashboard data:', err);
     }
-  }, [appointments, doctorsData, appointmentsLoading, doctorsLoading]);
+  }, [appointments, doctorsData, appointmentsLoading, doctorsLoading, currentUser, isAuthenticated, assistants]);
 
   const handleViewQueue = (doctor: any) => {
     setSelectedDoctor(doctor);
@@ -148,8 +192,30 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Quick overview of today clinic operations</p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {currentUser?.role === 'doctor' 
+              ? 'Your Dashboard' 
+              : currentUser?.role === 'assistant'
+              ? 'Assigned Doctors Dashboard'
+              : 'Dashboard'
+            }
+          </h1>
+          <p className="text-gray-500 mt-1">
+            {currentUser?.role === 'doctor' 
+              ? 'Overview of your appointments and patients today' 
+              : currentUser?.role === 'assistant'
+              ? 'Overview of your assigned doctors and their patients'
+              : 'Quick overview of today clinic operations'
+            }
+          </p>
+          {/* User context indicator */}
+          {currentUser && (
+            <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+              {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+              {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+              {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

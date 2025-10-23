@@ -2,16 +2,48 @@ import React, { useState, useEffect } from 'react';
 import { AlertCircle, RefreshCw, Shield, User } from 'lucide-react';
 import { useRecentActivity } from '@/lib/hooks/useRecentActivity';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useAssistants } from '@/lib/hooks/useAssistants';
 
 export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { user: currentUser, isAuthenticated } = useAuth();
+  const { assistants } = useAssistants();
+  const isAdmin = currentUser?.role === 'admin';
   
   // Only fetch audit logs for admin users
   const { auditLogs, loading, error: apiError, refetch } = useRecentActivity(isAdmin ? 20 : 0);
+
+  // Filter audit logs based on user role
+  const getFilteredAuditLogs = () => {
+    if (!isAuthenticated || !currentUser) return [];
+    
+    if (currentUser.role === 'admin') {
+      // Admin sees all audit logs
+      return auditLogs;
+    } else if (currentUser.role === 'doctor') {
+      // Doctor sees only their own activities
+      return auditLogs.filter(log => 
+        log.userId === currentUser.id || 
+        log.action?.includes('doctor') ||
+        log.action?.includes(currentUser.name || '')
+      );
+    } else if (currentUser.role === 'assistant') {
+      // Assistant sees their own activities and activities related to their assigned doctors
+      const assistant = assistants.find(a => a.userId === currentUser.id);
+      const assignedDoctorIds = assistant?.assignedDoctors || [];
+      
+      return auditLogs.filter(log => 
+        log.userId === currentUser.id || 
+        assignedDoctorIds.includes(log.userId) ||
+        log.action?.includes('assistant') ||
+        log.action?.includes(currentUser.name || '')
+      );
+    }
+    
+    return [];
+  };
   
   // Track if we've manually refreshed
   const [hasManuallyRefreshed, setHasManuallyRefreshed] = useState(false);
@@ -62,8 +94,30 @@ export default function SettingsPage() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-1">Settings</h1>
-            <p className="text-gray-500">System settings and user management</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-1">
+              {currentUser?.role === 'doctor' 
+                ? 'Your Settings' 
+                : currentUser?.role === 'assistant'
+                ? 'Your Settings'
+                : 'Settings'
+              }
+            </h1>
+            <p className="text-gray-500">
+              {currentUser?.role === 'doctor' 
+                ? 'Your profile settings and activity logs' 
+                : currentUser?.role === 'assistant'
+                ? 'Your profile settings and activity logs'
+                : 'System settings and user management'
+              }
+            </p>
+            {/* User context indicator */}
+            {currentUser && (
+              <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+                {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+                {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+                {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+              </div>
+            )}
           </div>
           <button 
             onClick={handleRefresh}
@@ -87,17 +141,17 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <p className="text-gray-900 font-medium">{user?.name || 'N/A'}</p>
+                <p className="text-gray-900 font-medium">{currentUser?.name || 'N/A'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <p className="text-gray-900">{user?.email || 'N/A'}</p>
+                <p className="text-gray-900">{currentUser?.email || 'N/A'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                 <div className="flex items-center gap-2">
                   <Shield className="w-4 h-4 text-teal-600" />
-                  <span className="text-gray-900 font-medium capitalize">{user?.role || 'N/A'}</span>
+                  <span className="text-gray-900 font-medium capitalize">{currentUser?.role || 'N/A'}</span>
                 </div>
               </div>
             </div>
@@ -107,7 +161,7 @@ export default function SettingsPage() {
               <p className="text-sm text-gray-600">
                 {isAdmin 
                   ? "You have full administrative access to all system features and data."
-                  : user?.role === 'doctor'
+                  : currentUser?.role === 'doctor'
                   ? "You have access to view and manage appointments, queues, and patient data."
                   : "You have access to view appointments, queues, and assist with patient management."
                 }
@@ -144,7 +198,7 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 <>
-                  {auditLogs.map((log) => (
+                  {getFilteredAuditLogs().map((log) => (
                     <div key={log.id} className="flex items-start justify-between p-4 border-b border-gray-200 last:border-0">
                       <div>
                         <h3 className="font-medium text-gray-900">{log.action}</h3>
@@ -180,7 +234,7 @@ export default function SettingsPage() {
                 <div className="bg-blue-50 rounded-lg p-4">
                   <h3 className="font-semibold text-blue-900 mb-2">Your Access</h3>
                   <p className="text-sm text-blue-700">
-                    As a {user?.role}, you have access to view and manage appointments, 
+                    As a {currentUser?.role}, you have access to view and manage appointments, 
                     patient queues, and relevant patient data. You can also update your 
                     own profile information.
                   </p>

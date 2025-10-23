@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, X, User, Mail, Phone, Briefcase, Users, AlertCircle, Loader2 } from 'lucide-react';
 import { useAssistants, AssistantWithUser } from '@/lib/hooks/useAssistants';
+import { useAuth } from '@/lib/contexts/AuthContext';
 import { apiUtils } from '@/lib/api';
 
 interface AssistantCardProps {
@@ -81,6 +82,7 @@ const AssistantCard = ({ assistant, onEdit, onDelete, loading }: AssistantCardPr
 };
 
 const AssistantsPage = () => {
+  const { user: currentUser, isAuthenticated } = useAuth();
   const {
     assistants,
     doctors,
@@ -112,6 +114,7 @@ const AssistantsPage = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
+  const [filteredAssistants, setFilteredAssistants] = useState<AssistantWithUser[]>([]);
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -137,6 +140,72 @@ const AssistantsPage = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showDoctorDropdown]);
+
+  // Filter assistants based on user role
+  useEffect(() => {
+    if (!assistants.length) {
+      console.log('No assistants data available yet');
+      setFilteredAssistants([]);
+      return;
+    }
+
+    let filtered = [...assistants];
+
+    // If no user is authenticated, show all assistants (shouldn't happen in admin portal)
+    if (!isAuthenticated || !currentUser) {
+      setFilteredAssistants(filtered);
+      return;
+    }
+
+    // If doctor is authenticated, show only assistants assigned to them
+    if (currentUser.role === 'doctor') {
+      console.log('Doctor filtering assistants - currentUser:', currentUser);
+      console.log('Available assistants:', assistants);
+      
+      // Find the doctor record for this user to get the doctor ID
+      const doctorRecord = doctors.find(d => d.userId === currentUser.id);
+      console.log('Doctor record found:', doctorRecord);
+      
+      if (doctorRecord) {
+        // Find assistants that have this doctor ID in their assignedDoctors array
+        filtered = assistants.filter(assistant => {
+          const hasDoctor = assistant.assignedDoctors && assistant.assignedDoctors.includes(doctorRecord.id);
+          console.log(`Assistant ${assistant.user.name}: assignedDoctors=${assistant.assignedDoctors}, doctorRecord.id=${doctorRecord.id}, hasDoctor=${hasDoctor}`);
+          return hasDoctor;
+        });
+        
+        console.log('Filtered assistants for doctor:', filtered.map(a => ({ name: a.user.name, assignedDoctors: a.assignedDoctors })));
+      } else {
+        console.log('No doctor record found for current user');
+        filtered = [];
+      }
+    }
+    
+    // If assistant is authenticated, show only themselves
+    else if (currentUser.role === 'assistant') {
+      console.log('Assistant filtering - currentUser:', currentUser);
+      console.log('Available assistants:', assistants);
+      
+      // Check if the current assistant exists in the assistants list
+      const currentAssistant = assistants.find(a => a.userId === currentUser.id);
+      console.log('Current assistant found:', currentAssistant);
+      
+      if (currentAssistant) {
+        filtered = [currentAssistant];
+        console.log('Showing assistant own profile:', currentAssistant.user.name);
+      } else {
+        console.log('Current assistant not found in assistants list');
+        filtered = [];
+      }
+    }
+    
+    // If admin is authenticated, show all assistants
+    else if (currentUser.role === 'admin') {
+      filtered = assistants;
+    }
+
+    setFilteredAssistants(filtered);
+  }, [assistants, currentUser, isAuthenticated, doctors]);
 
   const handleEdit = (assistant: AssistantWithUser) => {
     setSelectedAssistant(assistant);
@@ -207,6 +276,21 @@ const AssistantsPage = () => {
   const handleAddSubmit = async () => {
     setActionLoading(true);
     
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError('Please enter a valid email address');
+      setActionLoading(false);
+      return;
+    }
+    
+    // Validate required fields
+    if (!formData.name.trim() || !formData.email.trim() || !formData.phone.trim()) {
+      setError('Please fill in all required fields');
+      setActionLoading(false);
+      return;
+    }
+    
     // Convert assigned doctors string to array
     const assignedDoctorsArray = formData.assignedDoctors
       .split(',')
@@ -214,20 +298,29 @@ const AssistantsPage = () => {
       .filter(doctor => doctor.length > 0);
     
     console.log('Assigned doctors:', assignedDoctorsArray);
+    console.log('Creating assistant with email:', formData.email);
     
-    const success = await createAssistant({
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      password: formData.password,
-      role: formData.role,
-      assignedDoctors: assignedDoctorsArray,
-    });
-    setActionLoading(false);
-    
-    if (success) {
-      setSuccessMessage('Assistant created successfully');
-      closeDialogs();
+    try {
+      const success = await createAssistant({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        password: formData.password,
+        role: formData.role,
+        assignedDoctors: assignedDoctorsArray,
+      });
+      
+      if (success) {
+        setSuccessMessage('Assistant created successfully');
+        closeDialogs();
+      } else {
+        setError('Failed to create assistant. Please try again.');
+      }
+    } catch (error: any) {
+      console.error('Error creating assistant:', error);
+      setError(error.message || 'Failed to create assistant. Please check the email format and try again.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -237,6 +330,21 @@ const AssistantsPage = () => {
     // Clear any previous errors
     setError(null);
     setActionLoading(true);
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      setError('Please enter a valid email address');
+      setActionLoading(false);
+      return;
+    }
+    
+    // Validate required fields
+    if (!formData.name.trim() || !formData.email.trim() || !formData.phone.trim()) {
+      setError('Please fill in all required fields');
+      setActionLoading(false);
+      return;
+    }
     
     try {
       // Convert assigned doctors string to array
@@ -295,7 +403,7 @@ const AssistantsPage = () => {
     });
   };
 
-  const filteredAssistants = assistants.filter((assistant) => {
+  const searchFilteredAssistants = filteredAssistants.filter((assistant) => {
     const query = searchQuery.toLowerCase();
     return (
       assistant.user.name.toLowerCase().includes(query) ||
@@ -329,10 +437,30 @@ const AssistantsPage = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Assistants</h1>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {currentUser?.role === 'doctor' 
+                  ? 'Your Assigned Assistants' 
+                  : currentUser?.role === 'assistant'
+                  ? 'Your Profile'
+                  : 'Assistants'
+                }
+              </h1>
               <p className="text-sm text-gray-600 mt-1">
-                Manage assistant profiles and doctor assignments
+                {currentUser?.role === 'doctor' 
+                  ? 'Assistants assigned to you for patient management' 
+                  : currentUser?.role === 'assistant'
+                  ? 'Your assistant profile and information'
+                  : 'Manage assistant profiles and doctor assignments'
+                }
               </p>
+              {/* User context indicator */}
+              {currentUser && (
+                <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+                  {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+                  {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+                  {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+                </div>
+              )}
             </div>
             <button
               onClick={handleAddAssistant}
@@ -370,8 +498,8 @@ const AssistantsPage = () => {
         {/* Assistant Cards */}
         {!loading && (
           <div className="space-y-4">
-            {filteredAssistants.length > 0 ? (
-              filteredAssistants.map((assistant) => (
+            {searchFilteredAssistants.length > 0 ? (
+              searchFilteredAssistants.map((assistant) => (
                 <AssistantCard
                   key={assistant.id}
                   assistant={assistant}
@@ -382,7 +510,11 @@ const AssistantsPage = () => {
               ))
             ) : (
               <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
-                <p className="text-gray-500">No assistants found</p>
+                <p className="text-gray-500">
+                  {searchQuery ? 'No assistants match your search.' : 
+                   currentUser?.role === 'doctor' ? 'No assistants are assigned to you.' :
+                   'No assistants found.'}
+                </p>
               </div>
             )}
           </div>

@@ -1,12 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDoctors } from '@/lib/hooks/useDoctors';
+
 
 const MainDashboard = () => {
   const router = useRouter();
   const { doctors, loading, error } = useDoctors();
+  const [filteredDoctors, setFilteredDoctors] = useState<any[]>([]);
 
   const handleLogin = () => {
     router.push('/auth-login');
@@ -15,6 +17,15 @@ const MainDashboard = () => {
   const handleBookAppointment = () => {
     router.push('/Auth-patientLogin');
   };
+
+  // Always show all doctors - no filtering applied
+  useEffect(() => {
+    if (loading || !doctors.length) return;
+    
+    // Always show all doctors regardless of login status
+    setFilteredDoctors(doctors);
+    console.log('Main dashboard - showing all doctors:', doctors.length);
+  }, [doctors, loading]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -98,10 +109,18 @@ const MainDashboard = () => {
         <div className="max-w-screen-2xl mx-auto px-1 sm:px-2 lg:px-4">
           {/* Section Header */}
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-800 mb-4">Our Doctors</h2>
+            <h2 className="text-4xl font-bold text-gray-800 mb-4">
+              Our Doctors
+            </h2>
             <p className="text-lg text-gray-600">
               Meet our experienced healthcare professionals dedicated to your wellbeing.
             </p>
+            {/* Results count indicator */}
+            {!loading && (
+              <div className="mt-2 text-sm text-gray-500">
+                Showing all {filteredDoctors.length} doctors
+              </div>
+            )}
           </div>
 
           {/* Doctor Cards */}
@@ -111,7 +130,9 @@ const MainDashboard = () => {
               <div className="col-span-full flex justify-center items-center py-12">
                 <div className="flex items-center space-x-2">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <span className="text-gray-600">Loading doctors...</span>
+                  <span className="text-gray-600">
+                    {loading ? 'Loading doctors...' : 'Filtering doctors...'}
+                  </span>
                 </div>
               </div>
             ) : error ? (
@@ -123,17 +144,19 @@ const MainDashboard = () => {
                   <p className="text-sm text-gray-500">{error}</p>
                 </div>
               </div>
-            ) : doctors.length === 0 ? (
+            ) : filteredDoctors.length === 0 ? (
               // No doctors state
               <div className="col-span-full flex justify-center items-center py-12">
                 <div className="text-center">
                   <div className="text-gray-400 mb-2">👨‍⚕️</div>
-                  <p className="text-gray-600">No doctors available at the moment</p>
-                </div>
-              </div>
+                  <p className="text-gray-600">
+                    No doctors available at the moment. Please try again later.
+                  </p>
+          </div>
+        </div>
             ) : (
-              // Display doctors
-              doctors.map((doctor) => (
+              // Display filtered doctors
+              filteredDoctors.map((doctor) => (
                 <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 h-full flex flex-col">
                   <div className="h-72 bg-blue-100 flex items-center justify-center">
                     <div className="w-36 h-36 bg-blue-200 rounded-full flex items-center justify-center">
@@ -235,7 +258,7 @@ const MainDashboard = () => {
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-red-500" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-                  </svg>
+              </svg>
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-gray-800 mb-2">Headache</h3>
@@ -261,7 +284,7 @@ const MainDashboard = () => {
                   </p>
                 </div>
               </div>
-            </div>
+          </div>
 
             {/* Allergies */}
             <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
