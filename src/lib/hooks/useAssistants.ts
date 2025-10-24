@@ -300,8 +300,58 @@ export const useAssistants = (): UseAssistantsReturn => {
     setError(null);
     
     try {
+      console.log('Starting assistant deletion for ID:', id);
+      
+      // Step 1: Get the assistant document to find userId
+      const assistantDoc = await getDoc(doc(db, 'assistants', id));
+      if (!assistantDoc.exists()) {
+        throw new Error('Assistant not found');
+      }
+      
+      const assistantData = assistantDoc.data();
+      const userId = assistantData.userId;
+      
+      console.log('Found assistant with userId:', userId);
+      
+      // Step 2: Delete user document from 'users' collection
+      if (userId) {
+        console.log('Deleting user document:', userId);
+        await deleteDoc(doc(db, 'users', userId));
+        console.log('User document deleted successfully');
+        
+        // Step 3: Delete user from Firebase Authentication (via API)
+        try {
+          console.log('Deleting authentication account...');
+          const response = await fetch('/api/assistant/delete-auth', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userId }),
+          });
+          
+          const result = await response.json();
+          if (result.success) {
+            console.log('Authentication account deleted successfully');
+          } else {
+            console.warn('Failed to delete authentication account:', result.message);
+            // Continue anyway - Firestore cleanup is more important
+          }
+        } catch (authError) {
+          console.warn('Error deleting authentication account:', authError);
+          // Continue anyway - Firestore cleanup is more important
+        }
+      }
+      
+      // Step 4: Delete assistant document from 'assistants' collection
+      console.log('Deleting assistant document:', id);
       await deleteDoc(doc(db, 'assistants', id));
+      console.log('Assistant document deleted successfully');
+      
+      // Step 5: Refresh the assistants list
       await fetchAssistants(pagination.page);
+      
+      console.log('Assistant deletion completed successfully');
       return true;
     } catch (err: any) {
       setError(err.message);

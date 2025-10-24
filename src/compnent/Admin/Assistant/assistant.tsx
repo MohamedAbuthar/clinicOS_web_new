@@ -5,6 +5,7 @@ import { Plus, Search, X, User, Mail, Phone, Briefcase, Users, AlertCircle, Load
 import { useAssistants, AssistantWithUser } from '@/lib/hooks/useAssistants';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { apiUtils } from '@/lib/api';
+import { sendPasswordEmailWithRetry } from '@/lib/services/assistantPasswordService';
 
 interface AssistantCardProps {
   assistant: AssistantWithUser;
@@ -291,6 +292,13 @@ const AssistantsPage = () => {
       return;
     }
     
+    // Validate password
+    if (!formData.password.trim()) {
+      setError('Please enter a password for the assistant');
+      setActionLoading(false);
+      return;
+    }
+    
     // Convert assigned doctors string to array
     const assignedDoctorsArray = formData.assignedDoctors
       .split(',')
@@ -311,7 +319,22 @@ const AssistantsPage = () => {
       });
       
       if (success) {
-        setSuccessMessage('Assistant created successfully');
+        // Send password email to the assistant
+        console.log('Sending login credentials to assistant email...');
+        const emailResult = await sendPasswordEmailWithRetry(
+          formData.email,
+          formData.password,
+          formData.name
+        );
+        
+        if (emailResult.success) {
+          setSuccessMessage('Assistant created successfully! Login credentials sent to their email.');
+        } else {
+          // Assistant created but email failed
+          setSuccessMessage('Assistant created successfully, but failed to send email. Please share credentials manually.');
+          console.warn('Failed to send password email:', emailResult.message);
+        }
+        
         closeDialogs();
       } else {
         setError('Failed to create assistant. Please try again.');
@@ -625,9 +648,12 @@ const AssistantsPage = () => {
                     placeholder="Enter password for assistant login"
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    This password will be used for assistant to login to the admin portal
-                  </p>
+                  <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs text-blue-700 flex items-center gap-1">
+                      <Mail className="w-3 h-3" />
+                      This password will be automatically sent to the assistant's email address
+                    </p>
+                  </div>
                 </div>
 
                 {/* Role */}
