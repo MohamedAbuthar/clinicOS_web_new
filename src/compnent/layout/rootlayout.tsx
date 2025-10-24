@@ -1,5 +1,6 @@
 "use client"
 
+import { Toaster } from '@/components/ui/sonner';
 import React, { ReactNode } from 'react';
 
 interface RootLayoutProps {
@@ -10,6 +11,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {children}
+      <Toaster />
     </div>
   );
 }
