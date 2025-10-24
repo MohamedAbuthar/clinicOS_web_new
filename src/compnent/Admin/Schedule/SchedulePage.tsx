@@ -432,7 +432,7 @@ const SchedulePage: React.FC = () => {
               className="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="w-5 h-5" />
-              Add Override
+              Add Holidays
             </button>
           </div>
         </div>
@@ -484,7 +484,7 @@ const SchedulePage: React.FC = () => {
         {/* Schedule Overrides Section */}
         <div className="bg-white border border-gray-200 rounded-lg p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-1">
-            Schedule Overrides
+            Schedule Holidays
           </h2>
           <p className="text-sm text-gray-600 mb-6">
             Holidays, extended hours, and special schedules

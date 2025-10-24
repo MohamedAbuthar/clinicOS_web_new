@@ -34,6 +34,8 @@ export default function AppointmentsPage() {
   const [selectedDoctor, setSelectedDoctor] = useState<string>('');
   const [showDoctorFilter, setShowDoctorFilter] = useState(false);
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10); // Number of appointments per page
 
   const { 
     appointments, 
@@ -102,7 +104,28 @@ export default function AppointmentsPage() {
       return matchesDate && matchesDoctor;
     });
 
-    setFilteredAppointments(finalFiltered);
+    // Sort appointments to show newest first (recently added at top)
+    const sortedAppointments = finalFiltered.sort((a, b) => {
+      // Sort by creation timestamp in descending order (newest first)
+      const timestampA = a.createdAt;
+      const timestampB = b.createdAt;
+      
+      // Handle Firebase Timestamp objects
+      if (timestampA && timestampB) {
+        const dateA = timestampA.toDate ? timestampA.toDate() : new Date(timestampA);
+        const dateB = timestampB.toDate ? timestampB.toDate() : new Date(timestampB);
+        return dateB.getTime() - dateA.getTime();
+      }
+      
+      // Fallback to appointment date/time if createdAt is not available
+      const dateA = new Date(`${a.appointmentDate}T${a.appointmentTime}`);
+      const dateB = new Date(`${b.appointmentDate}T${b.appointmentTime}`);
+      return dateB.getTime() - dateA.getTime();
+    });
+
+    setFilteredAppointments(sortedAppointments);
+    // Reset to first page when filters change
+    setCurrentPage(1);
   }, [appointments, currentUser, isAuthenticated, assistants, selectedDate, selectedDoctor]);
 
   // Filter appointments by selected date and doctor (legacy - now handled in useEffect above)
@@ -228,6 +251,8 @@ export default function AppointmentsPage() {
         setSuccessMessage(`✅ Appointment created successfully for ${formData.patientName} with Dr. ${doctors.find(d => d.id === formData.doctor)?.user?.name || 'Unknown Doctor'}`);
         setIsDialogOpen(false);
         resetForm();
+        // Reset to first page to show the new appointment at the top
+        setCurrentPage(1);
         // Refresh the appointments list to show the new appointment
         await refreshAppointments();
       } else {
@@ -415,6 +440,39 @@ export default function AppointmentsPage() {
     }
   };
 
+  // Pagination logic
+  const totalPages = Math.ceil(filteredAppointments.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedAppointments = filteredAppointments.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // Debug pagination info
+  console.log('=== PAGINATION DEBUG ===');
+  console.log('filteredAppointments.length:', filteredAppointments.length);
+  console.log('itemsPerPage:', itemsPerPage);
+  console.log('totalPages:', totalPages);
+  console.log('currentPage:', currentPage);
+  console.log('startIndex:', startIndex);
+  console.log('endIndex:', endIndex);
+  console.log('paginatedAppointments.length:', paginatedAppointments.length);
+  console.log('========================');
+
+  // Debug sorting info
+  console.log('=== SORTING DEBUG ===');
+  if (filteredAppointments.length > 0) {
+    console.log('First appointment createdAt:', filteredAppointments[0].createdAt);
+    console.log('First appointment patient:', filteredAppointments[0].patientName);
+    if (filteredAppointments.length > 1) {
+      console.log('Second appointment createdAt:', filteredAppointments[1].createdAt);
+      console.log('Second appointment patient:', filteredAppointments[1].patientName);
+    }
+  }
+  console.log('========================');
+
   if (loading) {
     return (
       <div className="w-full flex items-center justify-center py-12">
@@ -481,6 +539,9 @@ export default function AppointmentsPage() {
             )}
             {filteredAppointments.length > 0 && (
               <span> | First: {filteredAppointments[0].patientName || 'No name'}</span>
+            )}
+            {filteredAppointments.length > itemsPerPage && (
+              <span> | Page {currentPage} of {totalPages}</span>
             )}
           </div>
         </div>
@@ -623,8 +684,8 @@ export default function AppointmentsPage() {
         </div>
 
         {/* Table Body */}
-        {filteredAppointments.length > 0 ? (
-          filteredAppointments.map((appointment) => {
+        {paginatedAppointments.length > 0 ? (
+          paginatedAppointments.map((appointment) => {
             const patient = patients.find(p => p.id === appointment.patientId);
             const doctor = doctors.find(d => d.id === appointment.doctorId);
             
@@ -764,6 +825,50 @@ export default function AppointmentsPage() {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls - Right Corner */}
+      {filteredAppointments.length > 0 && (
+        <div className="mt-6 flex justify-end">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 mr-4">
+              Showing {startIndex + 1}-{Math.min(endIndex, filteredAppointments.length)} of {filteredAppointments.length}
+            </span>
+            
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+            >
+              ←
+            </button>
+            
+            {/* Page Numbers */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  onClick={() => handlePageChange(page)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    currentPage === page
+                      ? 'bg-teal-500 text-white'
+                      : 'border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+            
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+            >
+              →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Dialog/Modal */}
       <NewAppointmentDialog

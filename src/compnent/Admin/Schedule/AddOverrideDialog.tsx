@@ -66,7 +66,7 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
       <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Add Schedule Override</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Add Schedule Holidays</h2>
           <button
             onClick={handleClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -102,7 +102,8 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
                 type="date"
                 value={formData.date}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                onClick={(e) => e.currentTarget.showPicker?.()}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                 required
               />
             </div>
@@ -122,7 +123,8 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
                     const endTime = formData.timeRange.split(' - ')[1] || '';
                     setFormData({ ...formData, timeRange: `${e.target.value} - ${endTime}` });
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  onClick={(e) => e.currentTarget.showPicker?.()}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                 />
               </div>
               <span className="flex items-center text-gray-500">to</span>
@@ -134,7 +136,8 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
                     const startTime = formData.timeRange.split(' - ')[0] || '';
                     setFormData({ ...formData, timeRange: `${startTime} - ${e.target.value}` });
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  onClick={(e) => e.currentTarget.showPicker?.()}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                 />
               </div>
             </div>
@@ -183,7 +186,7 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
               type="submit"
               className="flex-1 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors font-medium"
             >
-              Add Override
+              Add Holidays
             </button>
           </div>
         </form>

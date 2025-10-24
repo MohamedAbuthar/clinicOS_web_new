@@ -115,7 +115,8 @@ const EditScheduleDialog: React.FC<EditScheduleDialogProps> = ({
                         const endTime = formData.timeRange?.split(' - ')[1] || '';
                         setFormData({ ...formData, timeRange: `${e.target.value} - ${endTime}` });
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      onClick={(e) => e.currentTarget.showPicker?.()}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                       required
                     />
                   </div>
@@ -128,7 +129,8 @@ const EditScheduleDialog: React.FC<EditScheduleDialogProps> = ({
                         const startTime = formData.timeRange?.split(' - ')[0] || '';
                         setFormData({ ...formData, timeRange: `${startTime} - ${e.target.value}` });
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      onClick={(e) => e.currentTarget.showPicker?.()}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                       required
                     />
                   </div>

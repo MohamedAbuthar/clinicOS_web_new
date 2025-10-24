@@ -968,13 +968,16 @@ export default function QueueManagementPage() {
     return () => clearInterval(interval);
   }, [doctorBreakStatus]);
 
-  // Auto-select first doctor if available
+  // Auto-select first doctor if available (only for doctors and assistants)
   useEffect(() => {
     if (doctors.length > 0 && !selectedDoctorId) {
-      console.log('Auto-selecting first doctor:', doctors[0]);
-      setSelectedDoctorId(doctors[0].id);
+      // Only auto-select for doctors and assistants, not for admins
+      if (currentUser?.role === 'doctor' || currentUser?.role === 'assistant') {
+        console.log('Auto-selecting first doctor:', doctors[0]);
+        setSelectedDoctorId(doctors[0].id);
+      }
     }
-  }, [doctors, selectedDoctorId, setSelectedDoctorId]);
+  }, [doctors, selectedDoctorId, setSelectedDoctorId, currentUser?.role]);
 
   // Filter appointments for selected doctor
   const doctorAppointments = selectedDoctorId 
@@ -1579,6 +1582,73 @@ export default function QueueManagementPage() {
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-teal-500 mx-auto mb-4" />
           <p className="text-gray-600">Loading queue data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't show any data until a doctor is selected
+  if (!selectedDoctorId) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {currentUser?.role === 'doctor' 
+                  ? 'Your Queue Management' 
+                  : currentUser?.role === 'assistant'
+                  ? 'Assigned Doctors Queue Management'
+                  : 'Queue Management'
+                }
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                {currentUser?.role === 'doctor' 
+                  ? `Real-time token board for your patients`
+                  : currentUser?.role === 'assistant'
+                  ? `Real-time token board for assigned doctors`
+                  : `Real-time token board for selected doctor`
+                }
+              </p>
+              {/* User context indicator */}
+              {currentUser && (
+                <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+                  {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+                  {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+                  {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <select
+                value={selectedDoctorId || ''}
+                onChange={(e) => setSelectedDoctorId(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">Select Doctor</option>
+                {getFilteredDoctors().map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* No Doctor Selected Message */}
+          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <UserPlus className="w-8 h-8 text-gray-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Select a Doctor</h2>
+            <p className="text-gray-600 mb-6">
+              Please select a doctor from the dropdown above to view their queue and appointments.
+            </p>
+            <div className="text-sm text-gray-500">
+              Available doctors: {getFilteredDoctors().length}
+            </div>
+          </div>
         </div>
       </div>
     );
