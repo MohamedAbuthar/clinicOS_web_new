@@ -4,51 +4,15 @@ import type { NextRequest } from 'next/server';
 /**
  * API endpoint to delete a user from Firebase Authentication
  * 
- * This uses Firebase Admin SDK to delete users from Firebase Auth
- * Setup required:
- * 1. Install firebase-admin: npm install firebase-admin
- * 2. Add service account credentials to .env.local
- * 3. See ASSISTANT_DELETE_SETUP.md for detailed instructions
+ * Note: This endpoint currently only deletes from Firestore database.
+ * Firebase Admin SDK is not installed, so authentication deletion is skipped.
+ * To enable full deletion, install firebase-admin and configure credentials.
  */
 
-// Initialize Firebase Admin (only if credentials are available)
-let adminAuth: any = null;
-
+// Simple function that always returns null (no Firebase Admin SDK available)
 async function getAdminAuth() {
-  if (adminAuth) return adminAuth;
-
-  // Check if Firebase Admin credentials are configured
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
-  if (!projectId || !clientEmail || !privateKey) {
-    console.warn('Firebase Admin SDK credentials not configured. User will not be deleted from Firebase Auth.');
-    return null;
-  }
-
-  try {
-    // Dynamically import firebase-admin (only if installed)
-    const admin = await import('firebase-admin');
-    
-    // Initialize if not already initialized
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId,
-          clientEmail,
-          privateKey: privateKey.replace(/\\n/g, '\n'),
-        }),
-      });
-    }
-
-    adminAuth = admin.auth();
-    return adminAuth;
-  } catch (error) {
-    console.error('Error initializing Firebase Admin SDK:', error);
-    console.warn('Make sure firebase-admin is installed: npm install firebase-admin');
-    return null;
-  }
+  console.warn('Firebase Admin SDK not available. User will only be deleted from database, not from authentication.');
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -77,9 +41,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Delete user from Firebase Authentication
-    await auth.deleteUser(userId);
-    console.log('Successfully deleted user from Firebase Auth:', userId);
+    // This code will never execute since getAdminAuth always returns null
+    // But keeping it for future when Firebase Admin SDK is installed
+    // Note: When Firebase Admin SDK is installed, uncomment the following:
+    // try {
+    //   await auth.deleteUser(userId);
+    //   console.log('Successfully deleted user from Firebase Auth:', userId);
+    // } catch (authError) {
+    //   console.warn('Failed to delete user from Firebase Auth:', authError);
+    // }
 
     return NextResponse.json({
       success: true,

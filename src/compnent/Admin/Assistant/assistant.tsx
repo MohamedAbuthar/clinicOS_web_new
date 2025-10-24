@@ -651,7 +651,7 @@ const AssistantsPage = () => {
                   <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-blue-700 flex items-center gap-1">
                       <Mail className="w-3 h-3" />
-                      This password will be automatically sent to the assistant's email address
+                      This password will be automatically sent to the assistant&apos;s email address
                     </p>
                   </div>
                 </div>
