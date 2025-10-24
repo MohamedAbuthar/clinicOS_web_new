@@ -226,6 +226,7 @@ export default function NewAppointmentDialog({
                     value={formData.date}
                     onChange={onInputChangeAction}
                     onClick={(e) => e.currentTarget.showPicker?.()}
+                    min={new Date().toISOString().split('T')[0]}
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                   />
                 </div>
@@ -243,6 +244,7 @@ export default function NewAppointmentDialog({
                     value={formData.time}
                     onChange={onInputChangeAction}
                     onClick={(e) => e.currentTarget.showPicker?.()}
+                    min={formData.date === new Date().toISOString().split('T')[0] ? new Date().toLocaleTimeString('en-GB', { hour12: false }).slice(0, 5) : undefined}
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                   />
                 </div>
