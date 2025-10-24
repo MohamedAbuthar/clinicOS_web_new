@@ -4,6 +4,7 @@ import "./globals.css";
 import { PatientAuthProvider } from "@/lib/contexts/PatientAuthContext";
 import { AuthProvider } from "@/lib/contexts/AuthContext";
 import FirebaseInitializer from "@/lib/firebase/FirebaseInitializer";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,16 @@ export default function RootLayout({
             {children}
           </PatientAuthProvider>
         </AuthProvider>
+        <Toaster 
+          position="top-right" 
+          toastOptions={{
+            style: {
+              background: '#14b8a6',
+              color: 'white',
+            },
+            className: 'bg-teal-500 text-white',
+          }}
+        />
       </body>
     </html>
   );

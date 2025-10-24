@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { X, User, Phone, Mail, Calendar, Clock, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface FormData {
   patientName: string;
@@ -42,6 +43,70 @@ export default function NewAppointmentDialog({
   doctors
 }: NewAppointmentDialogProps) {
   if (!isOpen) return null;
+
+  // Email validation function
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Valid email domains
+  const validDomains = [
+    'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
+    'protonmail.com', 'aol.com', 'live.com', 'msn.com', 'yandex.com',
+    'zoho.com', 'mail.com', 'gmx.com', 'web.de', 'tutanota.com'
+  ];
+
+  // Check if email domain is valid
+  const isValidDomain = (email: string) => {
+    const domain = email.split('@')[1]?.toLowerCase();
+    return validDomains.includes(domain);
+  };
+
+  // Handle email input with validation
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const email = e.target.value;
+    
+    // Only validate if email is not empty
+    if (email) {
+      if (!validateEmail(email)) {
+        toast.error("Please enter a valid email format");
+      } else if (!isValidDomain(email)) {
+        toast.error("Please use a valid email provider (Gmail, Yahoo, Outlook, etc.)");
+      }
+    }
+    
+    // Call the original onChange handler
+    onInputChangeAction(e);
+  };
+
+  // Validation function for required fields
+  const validateRequiredFields = () => {
+    const requiredFields = [
+      { field: 'patientName', value: formData.patientName, label: 'Patient Name' },
+      { field: 'phone', value: formData.phone, label: 'Phone Number' },
+      { field: 'doctor', value: formData.doctor, label: 'Doctor' },
+      { field: 'date', value: formData.date, label: 'Date' },
+      { field: 'time', value: formData.time, label: 'Time' }
+    ];
+
+    for (const { field, value, label } of requiredFields) {
+      if (!value || value.trim() === '') {
+        console.log(`Validation failed for ${field}:`, value); // Debug log
+        toast.error(`${label} is required`);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  // Handle submit with validation
+  const handleSubmit = () => {
+    if (validateRequiredFields()) {
+      onSubmitAction();
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -102,6 +167,8 @@ export default function NewAppointmentDialog({
                     value={formData.phone}
                     onChange={onInputChangeAction}
                     placeholder="+91 98765 43210"
+                    maxLength={13}
+                    pattern="[0-9+\\s-]*"
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
                 </div>
@@ -117,7 +184,7 @@ export default function NewAppointmentDialog({
                     type="email"
                     name="email"
                     value={formData.email}
-                    onChange={onInputChangeAction}
+                    onChange={handleEmailChange}
                     placeholder="patient@example.com"
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
@@ -152,13 +219,14 @@ export default function NewAppointmentDialog({
                   Date <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
                   <input
                     type="date"
                     name="date"
                     value={formData.date}
                     onChange={onInputChangeAction}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    onClick={(e) => e.currentTarget.showPicker?.()}
+                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                   />
                 </div>
               </div>
@@ -168,13 +236,14 @@ export default function NewAppointmentDialog({
                   Time <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
                   <input
                     type="time"
                     name="time"
                     value={formData.time}
                     onChange={onInputChangeAction}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    onClick={(e) => e.currentTarget.showPicker?.()}
+                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                   />
                 </div>
               </div>
@@ -207,7 +276,7 @@ export default function NewAppointmentDialog({
             </button>
             <button
               type="button"
-              onClick={onSubmitAction}
+              onClick={handleSubmit}
               disabled={actionLoading}
               className="px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
