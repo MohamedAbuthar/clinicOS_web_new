@@ -35,15 +35,7 @@ export default function Header() {
           </div>
 
           {/* Notification Bell */}
-          <div className="relative">
-            <button className="p-2 hover:bg-gray-50 rounded-lg transition-colors">
-              <Bell className="w-5 h-5 text-gray-600" strokeWidth={2} />
-            </button>
-            {/* Notification Badge */}
-            <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-              <span className="text-white text-xs font-bold">3</span>
-            </div>
-          </div>
+          
 
           {/* User Info and Logout */}
           <LogoutButton />

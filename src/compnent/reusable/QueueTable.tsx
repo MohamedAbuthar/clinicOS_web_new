@@ -36,9 +36,9 @@ export const QueueTable: React.FC<QueueTableProps> = ({ doctors, onViewQueue }) 
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              {/* <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
-              </th>
+              </th> */}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -64,14 +64,14 @@ export const QueueTable: React.FC<QueueTableProps> = ({ doctors, onViewQueue }) 
                 <td className="px-6 py-4">
                   <StatusBadge status={doctor.status} />
                 </td>
-                <td className="px-6 py-4">
+                {/* <td className="px-6 py-4">
                   <Button 
                     icon={<Eye className="w-4 h-4" />}
                     onClick={() => onViewQueue?.(doctor)}
                   >
                     View Queue
                   </Button>
-                </td>
+                </td> */}
               </tr>
             ))}
           </tbody>
