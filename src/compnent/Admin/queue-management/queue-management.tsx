@@ -1716,7 +1716,7 @@ export default function QueueManagementPage() {
                 </option>
               ))}
             </select>
-            <div ref={breakButtonRef}>
+            {/* <div ref={breakButtonRef}>
               <Button 
                 variant={doctorBreakStatus.isOnBreak ? "secondary" : "primary"}
                 onClick={() => setIsBreakDropdownOpen(!isBreakDropdownOpen)}
@@ -1726,7 +1726,7 @@ export default function QueueManagementPage() {
                  doctorBreakStatus.isOnBreak ? `On Break (Until ${doctorBreakStatus.breakEndTime})` : 
                  'Mark Doctor Break'}
               </Button>
-            </div>
+            </div> */}
           </div>
         </div>
 
