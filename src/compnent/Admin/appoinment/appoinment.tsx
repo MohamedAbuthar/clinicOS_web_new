@@ -546,7 +546,7 @@ export default function AppointmentsPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button 
+          {/* <button 
             onClick={handleMigrateTokens}
             disabled={isMigrating || actionLoading}
             className="flex items-center gap-2 bg-orange-500 text-white px-4 py-3 rounded-lg hover:bg-orange-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -562,7 +562,7 @@ export default function AppointmentsPage() {
                 Fix Tokens
               </>
             )}
-          </button>
+          </button> */}
           <button 
             onClick={() => setIsDialogOpen(true)}
             disabled={actionLoading}

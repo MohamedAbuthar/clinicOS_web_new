@@ -353,13 +353,13 @@ const ReportsPage: React.FC = () => {
               </div>
 
               {/* Export Button */}
-              <button
+              {/* <button
                 onClick={handleExport}
                 className="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg transition-colors font-medium"
               >
                 <Download className="w-5 h-5" />
                 Export
-              </button>
+              </button> */}
             </div>
           </div>
         </div>

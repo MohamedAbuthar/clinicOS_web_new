@@ -668,9 +668,6 @@ const AssistantsPage = () => {
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   >
                     <option value="assistant">Assistant</option>
-                    <option value="Queue Manager">Queue Manager</option>
-                    <option value="Medical Assistant">Medical Assistant</option>
-                    <option value="Administrative">Administrative</option>
                   </select>
                 </div>
 
@@ -868,9 +865,6 @@ const AssistantsPage = () => {
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   >
                     <option value="assistant">Assistant</option>
-                    <option value="Queue Manager">Queue Manager</option>
-                    <option value="Medical Assistant">Medical Assistant</option>
-                    <option value="Administrative">Administrative</option>
                   </select>
                 </div>
 
