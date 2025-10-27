@@ -42,9 +42,7 @@ export default function NewAppointmentDialog({
   actionLoading,
   doctors
 }: NewAppointmentDialogProps) {
-  if (!isOpen) return null;
-
-  // Time picker state
+  // Time picker state - MUST be called before any conditional returns
   const [hour, setHour] = useState('12');
   const [minute, setMinute] = useState('00');
   const [period, setPeriod] = useState('AM');
@@ -92,6 +90,9 @@ export default function NewAppointmentDialog({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showHourDropdown, showMinuteDropdown]);
+
+  // Early return after all hooks
+  if (!isOpen) return null;
 
   // Convert 12-hour format to 24-hour format and update formData
   const handleTimeChange = (newHour?: string, newMinute?: string, newPeriod?: string) => {

@@ -18,8 +18,6 @@ export default function PatientProfileWithEdit() {
   // Form state
   const [formData, setFormData] = useState<Partial<Patient>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
 
   // Family member modal states
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -204,7 +202,6 @@ export default function PatientProfileWithEdit() {
       chronicConditions: '',
     });
     setShowAddMemberModal(true);
-    setErrorMessage('');
   };
 
   const handleEditMemberClick = (member: Patient) => {
@@ -222,7 +219,6 @@ export default function PatientProfileWithEdit() {
       chronicConditions: member.chronicConditions,
     });
     setShowEditMemberModal(true);
-    setErrorMessage('');
   };
 
   const handleDeleteMemberClick = (member: Patient) => {
