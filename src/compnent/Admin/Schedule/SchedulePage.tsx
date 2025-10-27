@@ -15,6 +15,7 @@ import { useScheduleOverrides } from '@/lib/hooks/useScheduleOverrides';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils } from '@/lib/api';
+import { toast } from 'sonner';
 
 const SchedulePage: React.FC = () => {
   const { user: currentUser, isAuthenticated } = useAuth();
@@ -71,13 +72,24 @@ const SchedulePage: React.FC = () => {
     deleteOverride
   } = useScheduleOverrides();
 
-  // Show success message and hide after 3 seconds
+  // Show error messages from hooks as toast
   useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(null), 3000);
-      return () => clearTimeout(timer);
+    if (error) {
+      toast.error(`❌ ${error}`);
     }
-  }, [successMessage]);
+  }, [error]);
+
+  useEffect(() => {
+    if (scheduleError) {
+      toast.error(`❌ ${scheduleError}`);
+    }
+  }, [scheduleError]);
+
+  useEffect(() => {
+    if (overridesError) {
+      toast.error(`❌ ${overridesError}`);
+    }
+  }, [overridesError]);
 
   // Auto-select first doctor when doctors are loaded
   useEffect(() => {
@@ -175,7 +187,7 @@ const SchedulePage: React.FC = () => {
 
   const handleDeleteOverride = async (id: string) => {
     if (!selectedDoctor) {
-      setSuccessMessage('Please select a doctor first');
+      toast.error('❌ Please select a doctor first');
       return;
     }
 
@@ -190,13 +202,13 @@ const SchedulePage: React.FC = () => {
       const success = await deleteOverride(selectedDoctor, id);
       
       if (success) {
-        setSuccessMessage('Schedule override deleted successfully');
+        toast.success('✅ Schedule override deleted successfully');
       } else {
-        setSuccessMessage('Failed to delete schedule override');
+        toast.error('❌ Failed to delete schedule override');
       }
     } catch (err) {
       const errorMessage = apiUtils.handleError(err);
-      setSuccessMessage(errorMessage);
+      toast.error(`❌ ${errorMessage}`);
     } finally {
       setActionLoading(false);
     }
@@ -208,7 +220,7 @@ const SchedulePage: React.FC = () => {
 
   const handleSaveEditOverride = async (data: { id: string; title: string; date: string; timeRange: string; type: 'special-event' | 'holiday' | 'extended-hours'; description?: string }) => {
     if (!selectedDoctor) {
-      setSuccessMessage('Please select a doctor first');
+      toast.error('❌ Please select a doctor first');
       return;
     }
 
@@ -229,15 +241,15 @@ const SchedulePage: React.FC = () => {
       });
       
       if (success) {
-        setSuccessMessage('Schedule override updated successfully');
+        toast.success('✅ Schedule override updated successfully');
         setIsEditOverrideOpen(false);
         setEditingOverride(null);
       } else {
-        setSuccessMessage('Failed to update schedule override');
+        toast.error('❌ Failed to update schedule override');
       }
     } catch (err) {
       const errorMessage = apiUtils.handleError(err);
-      setSuccessMessage(errorMessage);
+      toast.error(`❌ ${errorMessage}`);
     } finally {
       setActionLoading(false);
     }
@@ -245,7 +257,7 @@ const SchedulePage: React.FC = () => {
 
   const handleSaveOverride = async (data: { title: string; date: string; timeRange: string; type: 'special-event' | 'holiday' | 'extended-hours'; description?: string }) => {
     if (!selectedDoctor) {
-      setSuccessMessage('Please select a doctor first');
+      toast.error('❌ Please select a doctor first');
       return;
     }
 
@@ -266,14 +278,14 @@ const SchedulePage: React.FC = () => {
       });
       
       if (success) {
-        setSuccessMessage('Schedule override saved successfully');
+        toast.success('✅ Schedule override saved successfully');
         setIsAddOverrideOpen(false);
       } else {
-        setSuccessMessage('Failed to save schedule override');
+        toast.error('❌ Failed to save schedule override');
       }
     } catch (err) {
       const errorMessage = apiUtils.handleError(err);
-      setSuccessMessage(errorMessage);
+      toast.error(`❌ ${errorMessage}`);
     } finally {
       setActionLoading(false);
     }
@@ -281,7 +293,7 @@ const SchedulePage: React.FC = () => {
 
   const handleSaveSchedule = async (data: { day: string; timeRange?: string; slotDuration?: string; status: 'active' | 'off' }) => {
     if (!selectedDoctor) {
-      setSuccessMessage('Please select a doctor first');
+      toast.error('❌ Please select a doctor first');
       return;
     }
 
@@ -297,17 +309,17 @@ const SchedulePage: React.FC = () => {
         if (existingSchedule) {
           const success = await deleteSchedule(selectedDoctor, existingSchedule.id);
           if (success) {
-            setSuccessMessage('Schedule updated successfully');
+            toast.success('✅ Schedule updated successfully');
           } else {
-            setSuccessMessage('Failed to update schedule');
+            toast.error('❌ Failed to update schedule');
           }
         } else {
-          setSuccessMessage('Schedule updated successfully');
+          toast.success('✅ Schedule updated successfully');
         }
       } else {
         // If setting to active, create or update schedule
         if (!data.timeRange) {
-          setSuccessMessage('Please provide time range for active schedule');
+          toast.error('❌ Please provide time range for active schedule');
           return;
         }
 
@@ -324,9 +336,9 @@ const SchedulePage: React.FC = () => {
           });
           
           if (success) {
-            setSuccessMessage('Schedule updated successfully');
+            toast.success('✅ Schedule updated successfully');
           } else {
-            setSuccessMessage('Failed to update schedule');
+            toast.error('❌ Failed to update schedule');
           }
         } else {
           // Create new schedule
@@ -337,9 +349,9 @@ const SchedulePage: React.FC = () => {
           });
           
           if (success) {
-            setSuccessMessage('Schedule created successfully');
+            toast.success('✅ Schedule created successfully');
           } else {
-            setSuccessMessage('Failed to create schedule');
+            toast.error('❌ Failed to create schedule');
           }
         }
       }
@@ -348,7 +360,7 @@ const SchedulePage: React.FC = () => {
       setEditingSchedule(null);
     } catch (err) {
       const errorMessage = apiUtils.handleError(err);
-      setSuccessMessage(errorMessage);
+      toast.error(`❌ ${errorMessage}`);
     } finally {
       setActionLoading(false);
     }
@@ -379,23 +391,6 @@ const SchedulePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Success Message */}
-        {successMessage && (
-          <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
-            <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-              <div className="w-2 h-2 bg-white rounded-full"></div>
-            </div>
-            {successMessage}
-          </div>
-        )}
-
-        {/* Error Message */}
-        {(error || scheduleError || overridesError) && (
-          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" />
-            {error || scheduleError || overridesError}
-          </div>
-        )}
 
         {/* Header */}
         <div className="mb-6">

@@ -18,6 +18,7 @@ import {
   canBookSession,
   getAvailableSessionsForDate
 } from '@/lib/utils/sessionBookingHelper';
+import { toast } from 'sonner';
 
 interface FamilyMember {
   id: string;
@@ -65,7 +66,7 @@ export default function BookAppointmentPage() {
   // Handle doctors loading error
   useEffect(() => {
     if (doctorsError) {
-      setError(doctorsError);
+      toast.error(`❌ ${doctorsError}`);
     }
   }, [doctorsError]);
 
@@ -98,19 +99,18 @@ export default function BookAppointmentPage() {
       if (selectedDoctor && selectedDate) {
         try {
           setIsLoading(true);
-          setError('');
           
           // Find the selected doctor
           const doctor = doctors.find(d => d.id === selectedDoctor);
           
           if (!doctor) {
-            setError('Doctor not found');
+            toast.error('❌ Doctor not found');
             setIsLoading(false);
             return;
           }
 
           if (!doctor.availableSlots || doctor.availableSlots.length === 0) {
-            setError('⚠️ This doctor does not have time slots configured. Please contact the admin to set up the doctor\'s schedule.');
+            toast.error('⚠️ This doctor does not have time slots configured. Please contact the admin to set up the doctor\'s schedule.');
             setIsLoading(false);
             return;
           }
@@ -142,7 +142,7 @@ export default function BookAppointmentPage() {
 
         } catch (error: any) {
           console.error('Error loading session capacity:', error);
-          setError(error.message || 'Failed to load session information');
+          toast.error(`❌ ${error.message || 'Failed to load session information'}`);
         } finally {
           setIsLoading(false);
         }
@@ -171,7 +171,7 @@ export default function BookAppointmentPage() {
 
   const handleConfirmBooking = async () => {
     if (!selectedDoctorData || !selectedSession || !selectedDate || !reason.trim() || !patient?.id) {
-      setError('Please fill in all required fields');
+      toast.error('❌ Please fill in all required fields');
       return;
     }
 
@@ -181,7 +181,7 @@ export default function BookAppointmentPage() {
       const totalBookings = 1 + selectedFamilyMembers.length;
       
       if (capacity.availableSlots < totalBookings) {
-        setError(`Not enough slots available in this session. Available: ${capacity.availableSlots}, Requested: ${totalBookings}`);
+        toast.error(`❌ Not enough slots available in this session. Available: ${capacity.availableSlots}, Requested: ${totalBookings}`);
         return;
       }
     }
@@ -189,13 +189,12 @@ export default function BookAppointmentPage() {
     // Validate session booking rules
     const sessionCheck = canBookSession(selectedDate, selectedSession);
     if (!sessionCheck.canBook) {
-      setError(sessionCheck.reason || 'Cannot book this session');
+      toast.error(`❌ ${sessionCheck.reason || 'Cannot book this session'}`);
       return;
     }
 
       try {
         setIsBooking(true);
-        setError('');
         
       const dateStr = formatDateForAPI(selectedDate);
       
@@ -217,7 +216,7 @@ export default function BookAppointmentPage() {
       const patientSlot = assignSlotByToken(patientToken, sessionSlots, bookedSlots);
       
       if (!patientSlot) {
-        setError('No available slots for the selected session');
+        toast.error('❌ No available slots for the selected session');
         setIsBooking(false);
         return;
       }
@@ -254,7 +253,7 @@ export default function BookAppointmentPage() {
         const memberSlot = assignSlotByToken(memberToken, sessionSlots, bookedSlots);
         
         if (!memberSlot) {
-          setError(`Not enough slots available for all selected family members`);
+          toast.error('❌ Not enough slots available for all selected family members');
           setIsBooking(false);
           return;
         }
@@ -286,16 +285,18 @@ export default function BookAppointmentPage() {
       if (bookingResult.success) {
         const summary = appointmentsToCreate.map(apt => 
           `${apt.patientName}: Token ${apt.tokenNumber} at ${apt.appointmentTime}`
-        ).join('\n');
+        ).join(', ');
         
-        alert(`✅ Appointments booked successfully!\n\nDoctor: ${selectedDoctorData.user?.name || 'Dr. Unknown'}\nDate: ${selectedDate.toLocaleDateString()}\nSession: ${formatSessionText(selectedSession)}\n\n${summary}`);
-          router.push('/Patient/myappoinment');
+        toast.success(`✅ Appointments booked successfully! ${summary}`, {
+          duration: 5000
+        });
+        router.push('/Patient/myappoinment');
         } else {
-        setError(bookingResult.error || 'Failed to book appointment');
+        toast.error(`❌ ${bookingResult.error || 'Failed to book appointment'}`);
         }
       } catch (error: any) {
       console.error('Booking error:', error);
-        setError(error.message || 'Failed to book appointment');
+        toast.error(`❌ ${error.message || 'Failed to book appointment'}`);
       } finally {
         setIsBooking(false);
     }
@@ -389,12 +390,6 @@ export default function BookAppointmentPage() {
         </div>
 
         {/* Error Message */}
-        {error && !error.includes('Authentication') && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <Info className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <p className="text-red-600">{error}</p>
-          </div>
-        )}
 
         {/* Step 1: Select Doctor */}
         <div className="bg-white rounded-xl p-6 border border-gray-200 mb-6">

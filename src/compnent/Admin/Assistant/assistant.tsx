@@ -1,11 +1,12 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, X, User, Mail, Phone, Briefcase, Users, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, Search, X, User, Mail, Phone, Briefcase, Users, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useAssistants, AssistantWithUser } from '@/lib/hooks/useAssistants';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { apiUtils } from '@/lib/api';
 import { sendPasswordEmailWithRetry } from '@/lib/services/assistantPasswordService';
+import { toast } from 'sonner';
 
 interface AssistantCardProps {
   assistant: AssistantWithUser;
@@ -116,6 +117,7 @@ const AssistantsPage = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
   const [filteredAssistants, setFilteredAssistants] = useState<AssistantWithUser[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -225,11 +227,25 @@ const AssistantsPage = () => {
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this assistant?')) {
       setActionLoading(true);
-      const success = await deleteAssistant(id);
-      setActionLoading(false);
-      
-      if (success) {
-        setSuccessMessage('Assistant deleted successfully');
+      try {
+        const success = await deleteAssistant(id);
+        
+        if (success) {
+          toast.success('✅ Assistant deleted successfully');
+        } else {
+          toast.error('❌ Failed to delete assistant. Please try again.');
+        }
+      } catch (error: any) {
+        console.error('Error deleting assistant:', error);
+        
+        // Handle specific error cases
+        if (error.message?.includes('permission-denied') || error.message?.includes('permissions')) {
+          toast.error('❌ Permission denied. You do not have access to delete this assistant.');
+        } else {
+          toast.error(`❌ ${error.message || 'Failed to delete assistant. Please try again.'}`);
+        }
+      } finally {
+        setActionLoading(false);
       }
     }
   };
@@ -280,21 +296,21 @@ const AssistantsPage = () => {
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      setError('Please enter a valid email address');
+      toast.error('Please enter a valid email address');
       setActionLoading(false);
       return;
     }
     
     // Validate required fields
     if (!formData.name.trim() || !formData.email.trim() || !formData.phone.trim()) {
-      setError('Please fill in all required fields');
+      toast.error('Please fill in all required fields');
       setActionLoading(false);
       return;
     }
     
     // Validate password
     if (!formData.password.trim()) {
-      setError('Please enter a password for the assistant');
+      toast.error('Please enter a password for the assistant');
       setActionLoading(false);
       return;
     }
@@ -328,20 +344,28 @@ const AssistantsPage = () => {
         );
         
         if (emailResult.success) {
-          setSuccessMessage('Assistant created successfully! Login credentials sent to their email.');
+          toast.success('✅ Assistant created successfully! Login credentials sent to their email.');
         } else {
           // Assistant created but email failed
-          setSuccessMessage('Assistant created successfully, but failed to send email. Please share credentials manually.');
+          toast.warning('Assistant created successfully, but failed to send email. Please share credentials manually.');
           console.warn('Failed to send password email:', emailResult.message);
         }
         
         closeDialogs();
       } else {
-        setError('Failed to create assistant. Please try again.');
+        toast.error('❌ Failed to create assistant. Please try again.');
       }
     } catch (error: any) {
       console.error('Error creating assistant:', error);
-      setError(error.message || 'Failed to create assistant. Please check the email format and try again.');
+      
+      // Handle specific error cases
+      if (error.message?.includes('email-already-in-use') || error.message?.includes('already exists')) {
+        toast.error('❌ Email already exists. Please use a different email address.');
+      } else if (error.message?.includes('weak-password')) {
+        toast.error('❌ Password is too weak. Please use a stronger password.');
+      } else {
+        toast.error(`❌ ${error.message || 'Failed to create assistant. Please try again.'}`);
+      }
     } finally {
       setActionLoading(false);
     }
@@ -350,21 +374,19 @@ const AssistantsPage = () => {
   const handleEditSubmit = async () => {
     if (!selectedAssistant) return;
     
-    // Clear any previous errors
-    setError(null);
     setActionLoading(true);
     
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      setError('Please enter a valid email address');
+      toast.error('Please enter a valid email address');
       setActionLoading(false);
       return;
     }
     
     // Validate required fields
     if (!formData.name.trim() || !formData.email.trim() || !formData.phone.trim()) {
-      setError('Please fill in all required fields');
+      toast.error('Please fill in all required fields');
       setActionLoading(false);
       return;
     }
@@ -397,14 +419,22 @@ const AssistantsPage = () => {
       });
       
       if (success) {
-        setSuccessMessage('Assistant updated successfully');
+        toast.success('✅ Assistant updated successfully');
         closeDialogs();
       } else {
-        setError('Failed to update assistant. Please try again.');
+        toast.error('❌ Failed to update assistant. Please try again.');
       }
     } catch (err: any) {
       console.error('Error updating assistant:', err);
-      setError(err.message || 'Failed to update assistant. Please check your permissions and try again.');
+      
+      // Handle specific error cases
+      if (err.message?.includes('email-already-in-use') || err.message?.includes('already exists')) {
+        toast.error('❌ Email already exists. Please use a different email address.');
+      } else if (err.message?.includes('permission-denied') || err.message?.includes('permissions')) {
+        toast.error('❌ Permission denied. You do not have access to update this assistant.');
+      } else {
+        toast.error(`❌ ${err.message || 'Failed to update assistant. Please try again.'}`);
+      }
     } finally {
       setActionLoading(false);
     }
@@ -415,6 +445,7 @@ const AssistantsPage = () => {
     setShowEditDialog(false);
     setSelectedAssistant(null);
     setShowDoctorDropdown(false);
+    setShowPassword(false);
     setFormData({
       name: '',
       email: '',
@@ -641,13 +672,26 @@ const AssistantsPage = () => {
                     <User className="inline w-4 h-4 mr-1" />
                     Password <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => handleFormChange('password', e.target.value)}
-                    placeholder="Enter password for assistant login"
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={formData.password}
+                      onChange={(e) => handleFormChange('password', e.target.value)}
+                      placeholder="Enter password for assistant login"
+                      className="w-full px-4 py-2.5 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-5 h-5" />
+                      ) : (
+                        <Eye className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
                   <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs text-blue-700 flex items-center gap-1">
                       <Mail className="w-3 h-3" />
@@ -660,15 +704,14 @@ const AssistantsPage = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Briefcase className="inline w-4 h-4 mr-1" />
-                    Role <span className="text-red-500">*</span>
+                    Role
                   </label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => handleFormChange('role', e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  >
-                    <option value="assistant">Assistant</option>
-                  </select>
+                  <input
+                    type="text"
+                    value="Assistant"
+                    disabled
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
+                  />
                 </div>
 
                 {/* Assigned Doctors */}
@@ -857,15 +900,14 @@ const AssistantsPage = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Briefcase className="inline w-4 h-4 mr-1" />
-                    Role <span className="text-red-500">*</span>
+                    Role
                   </label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => handleFormChange('role', e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  >
-                    <option value="assistant">Assistant</option>
-                  </select>
+                  <input
+                    type="text"
+                    value="Assistant"
+                    disabled
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
+                  />
                 </div>
 
                 {/* Assigned Doctors */}

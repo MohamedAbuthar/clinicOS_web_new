@@ -38,13 +38,17 @@ export default function RootLayout({
           </PatientAuthProvider>
         </AuthProvider>
         <Toaster 
-          position="top-right" 
+          position="top-right"
+          expand={true}
+          richColors
           toastOptions={{
+            duration: 3000,
             style: {
-              background: '#14b8a6',
-              color: 'white',
+              borderRadius: '0.5rem',
+              padding: '1rem',
+              fontSize: '0.875rem',
+              fontWeight: '500',
             },
-            className: 'bg-teal-500 text-white',
           }}
         />
       </body>

@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { apiUtils, Doctor as ApiDoctor } from '@/lib/api';
 import { generateTimeSlots, formatScheduleDisplay } from '@/lib/utils/timeSlotGenerator';
 import AddDoctorDialog from './AddDoctorDialog';
+import { toast } from 'sonner';
 
 // TypeScript Interfaces
 interface Patient {
@@ -141,13 +142,12 @@ export default function DoctorDashboard() {
     console.log('Test functions available: window.testFirestorePermissions(), window.testDoctorEdit(doctorId), window.testDoctorEditOnly(doctorId), and window.checkUserRole()');
   }, [testFirestorePermissions, updateDoctor]);
 
-  // Show success message and hide after 3 seconds
+  // Show error message from hook as toast
   useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(null), 3000);
-      return () => clearTimeout(timer);
+    if (error) {
+      toast.error(`❌ ${error}`);
     }
-  }, [successMessage]);
+  }, [error]);
 
 
   // Close dropdown when clicking outside
@@ -373,13 +373,13 @@ export default function DoctorDashboard() {
       const success = await createDoctor(doctorData);
 
       if (success) {
-        setSuccessMessage(`Doctor created successfully with ${doctorData.availableSlots.length} time slots!`);
+        toast.success(`✅ Doctor created successfully with ${doctorData.availableSlots.length} time slots!`);
         closeDialogs();
       } else {
-        setSuccessMessage('Failed to create doctor');
+        toast.error('❌ Failed to create doctor');
       }
     } catch (err) {
-      setSuccessMessage(apiUtils.handleError(err));
+      toast.error(`❌ ${apiUtils.handleError(err)}`);
     } finally {
       setActionLoading(false);
     }
@@ -398,7 +398,7 @@ export default function DoctorDashboard() {
       // Get form values from the edit dialog
       const form = document.querySelector('#edit-doctor-form') as HTMLFormElement;
       if (!form) {
-        setError('Form not found. Please try again.');
+        toast.error('❌ Form not found. Please try again.');
         setActionLoading(false);
         return;
       }
@@ -416,14 +416,14 @@ export default function DoctorDashboard() {
 
       // Validate form data
       if (!name || !email || !phone || !specialty || !startTime || !endTime || !consultationDurationStr) {
-        setError('Please fill in all required fields.');
+        toast.error('❌ Please fill in all required fields.');
         setActionLoading(false);
         return;
       }
 
       const slotDuration = parseInt(consultationDurationStr);
       if (isNaN(slotDuration) || slotDuration <= 0) {
-        setError('Invalid slot duration. Please select a valid duration.');
+        toast.error('❌ Invalid slot duration. Please select a valid duration.');
         setActionLoading(false);
         return;
       }
@@ -476,14 +476,14 @@ export default function DoctorDashboard() {
       const success = await updateDoctor(selectedDoctor.id, updates as any);
 
       if (success) {
-        setSuccessMessage(`Doctor updated successfully with ${slots.length} time slots!`);
+        toast.success(`✅ Doctor updated successfully with ${slots.length} time slots!`);
         closeDialogs();
       } else {
-        setError('Failed to update doctor. Please check your permissions and try again.');
+        toast.error('❌ Failed to update doctor. Please check your permissions and try again.');
       }
     } catch (err: any) {
       console.error('Error updating doctor:', err);
-      setError(err.message || 'Failed to update doctor. Please try again.');
+      toast.error(`❌ ${err.message || 'Failed to update doctor. Please try again.'}`);
     } finally {
       setActionLoading(false);
     }
@@ -496,12 +496,12 @@ export default function DoctorDashboard() {
         const success = await deleteDoctor(doctorId);
         
         if (success) {
-          setSuccessMessage('Doctor deleted successfully');
+          toast.success('✅ Doctor deleted successfully');
         } else {
-          setSuccessMessage('Failed to delete doctor');
+          toast.error('❌ Failed to delete doctor');
         }
       } catch (err) {
-        setSuccessMessage(apiUtils.handleError(err));
+        toast.error(`❌ ${apiUtils.handleError(err)}`);
       } finally {
         setActionLoading(false);
       }
@@ -520,12 +520,12 @@ export default function DoctorDashboard() {
       const success = await updateDoctorStatus(doctorId, statusMap[newStatus]);
       
       if (success) {
-        setSuccessMessage('Doctor status updated successfully');
+        toast.success('✅ Doctor status updated successfully');
       } else {
-        setSuccessMessage('Failed to update doctor status');
+        toast.error('❌ Failed to update doctor status');
       }
     } catch (err) {
-      setSuccessMessage(apiUtils.handleError(err));
+      toast.error(`❌ ${apiUtils.handleError(err)}`);
     } finally {
       setActionLoading(false);
     }
@@ -545,24 +545,6 @@ export default function DoctorDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-full mx-auto">
-        {/* Success Message */}
-        {successMessage && (
-          <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
-            <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-              <div className="w-2 h-2 bg-white rounded-full"></div>
-            </div>
-            {successMessage}
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" />
-            {error}
-          </div>
-        )}
-
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
