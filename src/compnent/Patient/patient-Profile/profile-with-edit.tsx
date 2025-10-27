@@ -7,6 +7,7 @@ import { usePatientProfile } from '@/lib/hooks/usePatientProfile';
 import { useFamilyMembers } from '@/lib/hooks/useFamilyMembers';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 import { Patient } from '@/lib/api';
+import { toast } from 'sonner';
 
 export default function PatientProfileWithEdit() {
   const router = useRouter();
@@ -27,6 +28,13 @@ export default function PatientProfileWithEdit() {
   const [selectedMember, setSelectedMember] = useState<Patient | null>(null);
   const [memberFormData, setMemberFormData] = useState<Partial<Patient>>({});
   const [isSavingMember, setIsSavingMember] = useState(false);
+
+  // Show errors from hooks as toast
+  useEffect(() => {
+    if (familyError) {
+      toast.error(`❌ ${familyError}`);
+    }
+  }, [familyError]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -54,13 +62,10 @@ export default function PatientProfileWithEdit() {
 
   const handleEditClick = () => {
     setIsEditing(true);
-    setSuccessMessage('');
-    setErrorMessage('');
   };
 
   const handleCancelEdit = () => {
     setIsEditing(false);
-    setErrorMessage('');
     // Reset form data
     if (profile) {
       setFormData({
@@ -79,14 +84,11 @@ export default function PatientProfileWithEdit() {
 
   const handleInputChange = (field: keyof Patient, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    setErrorMessage('');
   };
 
   const handleSaveProfile = async () => {
     try {
       setIsSaving(true);
-      setErrorMessage('');
-      setSuccessMessage('');
 
       // Validation
       if (!formData.name || formData.name.trim().length < 2) {
@@ -116,12 +118,9 @@ export default function PatientProfileWithEdit() {
 
       // Update profile
       await updateProfile(cleanFormData);
-      setSuccessMessage('Profile updated successfully!');
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccessMessage(''), 3000);
+      toast.success('✅ Profile updated successfully!');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to update profile');
+      toast.error(`❌ ${err.message || 'Failed to update profile'}`);
     } finally {
       setIsSaving(false);
     }
@@ -233,13 +232,11 @@ export default function PatientProfileWithEdit() {
 
   const handleMemberInputChange = (field: keyof Patient, value: string | number) => {
     setMemberFormData(prev => ({ ...prev, [field]: value }));
-    setErrorMessage('');
   };
 
   const handleSaveMember = async () => {
     try {
       setIsSavingMember(true);
-      setErrorMessage('');
 
       console.log('💾 Starting to save family member...');
       console.log('   Patient ID:', patient?.id);
@@ -273,7 +270,7 @@ export default function PatientProfileWithEdit() {
       
       console.log('✅ Family member added, closing modal...');
       setShowAddMemberModal(false);
-      setSuccessMessage('✅ Family member added successfully!');
+      toast.success('✅ Family member added successfully!');
       
       // Clear form data
       setMemberFormData({
@@ -288,12 +285,9 @@ export default function PatientProfileWithEdit() {
         allergies: '',
         chronicConditions: '',
       });
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err: any) {
       console.error('❌ Error saving family member:', err);
-      setErrorMessage(err.message || 'Failed to add family member');
+      toast.error(`❌ ${err.message || 'Failed to add family member'}`);
     } finally {
       setIsSavingMember(false);
     }
@@ -304,7 +298,6 @@ export default function PatientProfileWithEdit() {
 
     try {
       setIsSavingMember(true);
-      setErrorMessage('');
 
       // Validation
       if (!memberFormData.name || memberFormData.name.trim().length < 2) {
@@ -319,10 +312,9 @@ export default function PatientProfileWithEdit() {
       await updateMember(selectedMember.id, cleanMemberData);
       setShowEditMemberModal(false);
       setSelectedMember(null);
-      setSuccessMessage('Family member updated successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      toast.success('✅ Family member updated successfully!');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to update family member');
+      toast.error(`❌ ${err.message || 'Failed to update family member'}`);
     } finally {
       setIsSavingMember(false);
     }
@@ -333,15 +325,13 @@ export default function PatientProfileWithEdit() {
 
     try {
       setIsSavingMember(true);
-      setErrorMessage('');
 
       await deleteMember(selectedMember.id);
       setShowDeleteMemberModal(false);
       setSelectedMember(null);
-      setSuccessMessage('Family member removed successfully!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      toast.success('✅ Family member removed successfully!');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to remove family member');
+      toast.error(`❌ ${err.message || 'Failed to remove family member'}`);
     } finally {
       setIsSavingMember(false);
     }
@@ -353,7 +343,6 @@ export default function PatientProfileWithEdit() {
     setShowDeleteMemberModal(false);
     setSelectedMember(null);
     setMemberFormData({});
-    setErrorMessage('');
   };
 
 
@@ -397,19 +386,6 @@ export default function PatientProfileWithEdit() {
           </div>
         </div>
 
-        {/* Success Message */}
-        {successMessage && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-green-600 font-medium">{successMessage}</p>
-          </div>
-        )}
-
-        {/* Error Message */}
-        {errorMessage && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600 font-medium">{errorMessage}</p>
-          </div>
-        )}
 
         {/* Profile Card */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
@@ -985,11 +961,6 @@ export default function PatientProfileWithEdit() {
                   </div>
                 </div>
 
-                {errorMessage && (
-                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-600 text-sm">{errorMessage}</p>
-                  </div>
-                )}
 
                 <div className="flex justify-end gap-3 mt-6">
                   <button
@@ -1186,11 +1157,6 @@ export default function PatientProfileWithEdit() {
                   </div>
                 </div>
 
-                {errorMessage && (
-                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-600 text-sm">{errorMessage}</p>
-                  </div>
-                )}
 
                 <div className="flex justify-end gap-3 mt-6">
                   <button
@@ -1237,12 +1203,6 @@ export default function PatientProfileWithEdit() {
                 <p className="text-gray-600 text-center mb-6">
                   Are you sure you want to remove <strong>{selectedMember.name}</strong> from your family members? This action cannot be undone.
                 </p>
-
-                {errorMessage && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-600 text-sm">{errorMessage}</p>
-                  </div>
-                )}
 
                 <div className="flex gap-3">
                   <button

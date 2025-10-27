@@ -10,6 +10,7 @@ import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils, Appointment } from '@/lib/api';
 import { migrateAppointmentTokens } from '@/lib/firebase/firestore';
 import NewAppointmentDialog from './newappointmentdialog';
+import { toast } from 'sonner';
 
 export default function AppointmentsPage() {
   const { user: currentUser, isAuthenticated } = useAuth();
@@ -26,7 +27,6 @@ export default function AppointmentsPage() {
     source: 'assistant',
     notes: '',
   });
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -142,14 +142,6 @@ export default function AppointmentsPage() {
     console.log('Appointments page - patients:', patients);
   }, [doctors, appointments, patients]);
 
-  // Show success message and hide after 3 seconds
-  useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [successMessage]);
-
   // Close date filter when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -198,7 +190,7 @@ export default function AppointmentsPage() {
       .map(([key]) => key);
     
     if (missingFields.length > 0) {
-      setSuccessMessage(`Please fill in: ${missingFields.join(', ')}`);
+      toast.error(`Please fill in: ${missingFields.join(', ')}`);
       return;
     }
 
@@ -223,7 +215,7 @@ export default function AppointmentsPage() {
         console.log('Patient created with ID:', newPatientId);
         
         if (!newPatientId) {
-          setSuccessMessage('Failed to create patient');
+          toast.error('Failed to create patient');
           setActionLoading(false);
           return;
         }
@@ -248,7 +240,9 @@ export default function AppointmentsPage() {
       console.log('Appointment creation result:', success);
 
       if (success) {
-        setSuccessMessage(`✅ Appointment created successfully for ${formData.patientName} with Dr. ${doctors.find(d => d.id === formData.doctor)?.user?.name || 'Unknown Doctor'}`);
+        toast.success(`Appointment created successfully for ${formData.patientName} with Dr. ${doctors.find(d => d.id === formData.doctor)?.user?.name || 'Unknown Doctor'}`, {
+          duration: 4000,
+        });
         setIsDialogOpen(false);
         resetForm();
         // Reset to first page to show the new appointment at the top
@@ -256,11 +250,11 @@ export default function AppointmentsPage() {
         // Refresh the appointments list to show the new appointment
         await refreshAppointments();
       } else {
-        setSuccessMessage('❌ Failed to create appointment. Please try again.');
+        toast.error('Failed to create appointment. Please try again.');
       }
     } catch (err: unknown) {
       console.error('Error creating appointment:', err);
-      setSuccessMessage(err instanceof Error ? err.message : 'Failed to create appointment');
+      toast.error(err instanceof Error ? err.message : 'Failed to create appointment');
     } finally {
       setActionLoading(false);
     }
@@ -286,15 +280,15 @@ export default function AppointmentsPage() {
       const result = await migrateAppointmentTokens();
       
       if (result.success) {
-        setSuccessMessage(`Token migration completed! Updated: ${result.updated}, Skipped: ${result.skipped}`);
+        toast.success(`Token migration completed! Updated: ${result.updated}, Skipped: ${result.skipped}`);
         // Refresh appointments to show updated tokens
         await refreshAppointments();
       } else {
-        setSuccessMessage(`Migration failed: ${result.error}`);
+        toast.error(`Migration failed: ${result.error}`);
       }
     } catch (error: unknown) {
       console.error('Migration error:', error);
-      setSuccessMessage(`Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsMigrating(false);
     }
@@ -358,16 +352,16 @@ export default function AppointmentsPage() {
           'complete': 'completed',
           'no-show': 'marked as no-show'
         };
-        setSuccessMessage(`Appointment ${actionMessages[action] || action + 'ed'} successfully`);
+        toast.success(`Appointment ${actionMessages[action] || action + 'ed'} successfully`);
         // Refresh the appointments list to show updated data
         await refreshAppointments();
         console.log('Appointments refreshed');
       } else {
-        setSuccessMessage(`Failed to ${action} appointment`);
+        toast.error(`Failed to ${action} appointment`);
       }
     } catch (err) {
       console.error('Appointment action error:', err);
-      setSuccessMessage(apiUtils.handleError(err));
+      toast.error(apiUtils.handleError(err));
     } finally {
       setActionLoading(false);
     }
@@ -486,16 +480,6 @@ export default function AppointmentsPage() {
 
   return (
     <div className="w-full">
-      {/* Success Message */}
-      {successMessage && (
-        <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
-          <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-            <div className="w-2 h-2 bg-white rounded-full"></div>
-          </div>
-          {successMessage}
-        </div>
-      )}
-
       {/* Error Message */}
       {error && (
         <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">

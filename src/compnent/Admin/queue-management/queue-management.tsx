@@ -11,6 +11,7 @@ import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils, Appointment as BaseAppointment, Patient as ApiPatient, Doctor } from '@/lib/api';
 import { db } from '@/lib/firebase/config';
 import { doc, updateDoc } from 'firebase/firestore';
+import { toast } from 'sonner';
 
 // Extended Appointment interface for queue management
 interface Appointment extends BaseAppointment {
@@ -923,13 +924,12 @@ export default function QueueManagementPage() {
     return doctors;
   };
 
-  // Show success message and hide after 3 seconds
+  // Show error message from hook as toast
   useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(null), 3000);
-      return () => clearTimeout(timer);
+    if (error) {
+      toast.error(`❌ ${error}`);
     }
-  }, [successMessage]);
+  }, [error]);
 
   // Update current time every 30 seconds for real-time waiting time calculation
   useEffect(() => {
@@ -954,7 +954,7 @@ export default function QueueManagementPage() {
             breakStartTime: '',
             breakEndTime: ''
           });
-          setSuccessMessage('Break time ended - Doctor is now active');
+          toast.success('✅ Break time ended - Doctor is now active');
         }
       }
     };
@@ -1169,9 +1169,9 @@ export default function QueueManagementPage() {
         const success = await callNextPatient();
         setActionLoading(false);
         if (success) {
-          setSuccessMessage('Next patient called successfully');
+          toast.success('✅ Next patient called successfully');
         } else {
-          setSuccessMessage('Failed to call next patient');
+          toast.error('❌ Failed to call next patient');
         }
       }
     },
@@ -1187,7 +1187,7 @@ export default function QueueManagementPage() {
           setPendingCheckIns(pending);
         }
         setActionLoading(false);
-        setSuccessMessage('Queue refreshed');
+        toast.success('✅ Queue refreshed');
       }
     },
     {
@@ -1216,14 +1216,14 @@ export default function QueueManagementPage() {
         // Reset the state
         setReorderedQueueItems([]);
         setIsManualReorder(false);
-        setSuccessMessage('Queue order reset to original (by appointment time)');
+        toast.success('✅ Queue order reset to original (by appointment time)');
       }
     },
     {
       label: `Restore Skipped (${skippedItems.size})`,
       onClick: () => {
         setSkippedItems(new Set());
-        setSuccessMessage('Skipped items restored');
+        toast.success('✅ Skipped items restored');
       }
     },
     {
@@ -1241,9 +1241,9 @@ export default function QueueManagementPage() {
     setActionLoading(false);
     
     if (success) {
-      setSuccessMessage('Patient consultation completed');
+      toast.success('✅ Patient consultation completed');
     } else {
-      setSuccessMessage('Failed to complete consultation');
+      toast.error('❌ Failed to complete consultation');
     }
   };
 
@@ -1266,20 +1266,20 @@ export default function QueueManagementPage() {
         const skippedItem = appointmentQueueItems.find(item => item.id === queueItemId);
         if (skippedItem) {
           console.log('Skipped appointment:', skippedItem);
-          setSuccessMessage(`Token ${skippedItem.tokenNumber} skipped successfully`);
+          toast.success(`✅ Token ${skippedItem.tokenNumber} skipped successfully`);
         }
       } else {
         // For regular queue items, use the original skip logic
         const success = await skipPatient(queueItemId, 'Skipped by assistant');
         if (success) {
-          setSuccessMessage('Patient skipped successfully');
+          toast.success('✅ Patient skipped successfully');
         } else {
-          setSuccessMessage('Failed to skip patient');
+          toast.error('❌ Failed to skip patient');
         }
       }
     } catch (error) {
       console.error('Skip error:', error);
-      setSuccessMessage('Failed to skip patient');
+      toast.error('❌ Failed to skip patient');
     } finally {
       setActionLoading(false);
     }
@@ -1382,7 +1382,7 @@ export default function QueueManagementPage() {
       
       await Promise.all(updates);
       console.log('✅ Queue order saved to database');
-      setSuccessMessage('Queue order saved successfully');
+      toast.success('✅ Queue order saved successfully');
       
       // Keep the manual reorder flag active for 15 seconds to prevent race conditions
       // This gives Firebase time to propagate the changes through real-time listeners
@@ -1394,7 +1394,7 @@ export default function QueueManagementPage() {
       }, 15000);
     } catch (error) {
       console.error('❌ Error saving queue order:', error);
-      setSuccessMessage('Failed to save queue order');
+      toast.error('❌ Failed to save queue order');
     }
     
     console.log(`✅ Moved item ${draggedItemId} to position of ${dropItemId}`);
@@ -1407,7 +1407,7 @@ export default function QueueManagementPage() {
     
     // Check if break time is valid (end time should be after start time)
     if (fromTime >= toTime) {
-      setSuccessMessage('End time must be after start time');
+      toast.error('❌ End time must be after start time');
       return;
     }
 
@@ -1422,13 +1422,13 @@ export default function QueueManagementPage() {
         breakStartTime: fromTime,
         breakEndTime: toTime
       });
-      setSuccessMessage(`Doctor is now on break until ${toTime}`);
+      toast.success(`✅ Doctor is now on break until ${toTime}`);
     } else if (fromTime > currentTimeStr) {
       // Break is scheduled for later
-      setSuccessMessage(`Break scheduled from ${fromTime} to ${toTime}`);
+      toast.success(`✅ Break scheduled from ${fromTime} to ${toTime}`);
     } else {
       // Break time has already passed
-      setSuccessMessage('Break time has already passed');
+      toast.warning('⚠️ Break time has already passed');
     }
 
     // Update doctor status in database if needed
@@ -1452,7 +1452,7 @@ export default function QueueManagementPage() {
       breakStartTime: '',
       breakEndTime: ''
     });
-    setSuccessMessage('Break ended - Doctor is now active');
+    toast.success('✅ Break ended - Doctor is now active');
 
     // Update doctor status in database
     if (selectedDoctorId) {
@@ -1482,13 +1482,13 @@ export default function QueueManagementPage() {
     setActionLoading(false);
     
     if (success) {
-      setSuccessMessage(`Patient ${appointment.tokenNumber} added to queue successfully`);
+      toast.success(`✅ Patient ${appointment.tokenNumber} added to queue successfully`);
       // Refresh pending check-ins
       const today = new Date().toISOString().split('T')[0];
       const pending = await getPendingCheckIns(selectedDoctorId, today);
       setPendingCheckIns(pending);
     } else {
-      setSuccessMessage('Failed to add patient to queue');
+      toast.error('❌ Failed to add patient to queue');
     }
   };
 
@@ -1527,7 +1527,7 @@ export default function QueueManagementPage() {
           'complete': 'completed',
           'no-show': 'marked as no-show'
         };
-        setSuccessMessage(`Appointment ${actionMessages[action] || action + 'ed'} successfully`);
+        toast.success(`✅ Appointment ${actionMessages[action] || action + 'ed'} successfully`);
         
         // Refresh data
         await refreshQueue();
@@ -1537,11 +1537,11 @@ export default function QueueManagementPage() {
           setPendingCheckIns(pending);
         }
       } else {
-        setSuccessMessage(`Failed to ${action} appointment`);
+        toast.error(`❌ Failed to ${action} appointment`);
       }
     } catch (err) {
       console.error('Appointment action error:', err);
-      setSuccessMessage(apiUtils.handleError(err));
+      toast.error(`❌ ${apiUtils.handleError(err)}`);
     } finally {
       setActionLoading(false);
     }
@@ -1556,7 +1556,7 @@ export default function QueueManagementPage() {
       const success = await completeAppointment(appointmentId);
       
       if (success) {
-        setSuccessMessage('Appointment completed successfully and removed from queue');
+        toast.success('✅ Appointment completed successfully and removed from queue');
         
         // Refresh data to update the queue
         await refreshQueue();
@@ -1566,11 +1566,11 @@ export default function QueueManagementPage() {
           setPendingCheckIns(pending);
         }
       } else {
-        setSuccessMessage('Failed to complete appointment');
+        toast.error('❌ Failed to complete appointment');
       }
     } catch (err) {
       console.error('Complete appointment error:', err);
-      setSuccessMessage('Failed to complete appointment');
+      toast.error('❌ Failed to complete appointment');
     } finally {
       setActionLoading(false);
     }
@@ -1657,24 +1657,6 @@ export default function QueueManagementPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Success Message */}
-        {successMessage && (
-          <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
-            <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-              <div className="w-2 h-2 bg-white rounded-full"></div>
-            </div>
-            {successMessage}
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" />
-            {error}
-          </div>
-        )}
-
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>

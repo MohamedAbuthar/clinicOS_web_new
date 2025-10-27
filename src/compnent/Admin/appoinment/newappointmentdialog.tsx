@@ -1,7 +1,7 @@
 "use client"
 
-import React from 'react';
-import { X, User, Phone, Mail, Calendar, Clock, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, User, Phone, Mail, Calendar, Clock, Loader2, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface FormData {
@@ -44,6 +44,82 @@ export default function NewAppointmentDialog({
 }: NewAppointmentDialogProps) {
   if (!isOpen) return null;
 
+  // Time picker state
+  const [hour, setHour] = useState('12');
+  const [minute, setMinute] = useState('00');
+  const [period, setPeriod] = useState('AM');
+  const [showHourDropdown, setShowHourDropdown] = useState(false);
+  const [showMinuteDropdown, setShowMinuteDropdown] = useState(false);
+
+  // Parse existing time when formData.time changes
+  useEffect(() => {
+    if (formData.time) {
+      const [hours, mins] = formData.time.split(':');
+      const hourNum = parseInt(hours);
+      
+      if (hourNum === 0) {
+        setHour('12');
+        setPeriod('AM');
+      } else if (hourNum < 12) {
+        setHour(hourNum.toString().padStart(2, '0'));
+        setPeriod('AM');
+      } else if (hourNum === 12) {
+        setHour('12');
+        setPeriod('PM');
+      } else {
+        setHour((hourNum - 12).toString().padStart(2, '0'));
+        setPeriod('PM');
+      }
+      
+      setMinute(mins);
+    }
+  }, [formData.time]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.hour-dropdown-container')) {
+        setShowHourDropdown(false);
+      }
+      if (!target.closest('.minute-dropdown-container')) {
+        setShowMinuteDropdown(false);
+      }
+    };
+
+    if (showHourDropdown || showMinuteDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showHourDropdown, showMinuteDropdown]);
+
+  // Convert 12-hour format to 24-hour format and update formData
+  const handleTimeChange = (newHour?: string, newMinute?: string, newPeriod?: string) => {
+    const h = newHour || hour;
+    const m = newMinute || minute;
+    const p = newPeriod || period;
+    
+    let hour24 = parseInt(h);
+    
+    if (p === 'AM') {
+      if (hour24 === 12) hour24 = 0;
+    } else {
+      if (hour24 !== 12) hour24 += 12;
+    }
+    
+    const time24 = `${hour24.toString().padStart(2, '0')}:${m}`;
+    
+    // Create a synthetic event to trigger the parent's onChange
+    const event = {
+      target: {
+        name: 'time',
+        value: time24
+      }
+    } as React.ChangeEvent<HTMLInputElement>;
+    
+    onInputChangeAction(event);
+  };
+
   // Email validation function
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -61,6 +137,29 @@ export default function NewAppointmentDialog({
   const isValidDomain = (email: string) => {
     const domain = email.split('@')[1]?.toLowerCase();
     return validDomains.includes(domain);
+  };
+
+  // Handle phone number input with +91 validation
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    
+    // Always ensure +91 prefix
+    if (!value.startsWith('+91 ')) {
+      value = '+91 ';
+    }
+    
+    // Extract only the number part after +91 
+    const numberPart = value.slice(4).replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    const limitedNumber = numberPart.slice(0, 10);
+    
+    // Format as +91 XXXXXXXXXX
+    const formattedValue = '+91 ' + limitedNumber;
+    
+    // Update the input value
+    e.target.value = formattedValue;
+    onInputChangeAction(e);
   };
 
   // Handle email input with validation
@@ -85,6 +184,7 @@ export default function NewAppointmentDialog({
     const requiredFields = [
       { field: 'patientName', value: formData.patientName, label: 'Patient Name' },
       { field: 'phone', value: formData.phone, label: 'Phone Number' },
+      { field: 'email', value: formData.email, label: 'Email' },
       { field: 'doctor', value: formData.doctor, label: 'Doctor' },
       { field: 'date', value: formData.date, label: 'Date' },
       { field: 'time', value: formData.time, label: 'Time' }
@@ -95,6 +195,27 @@ export default function NewAppointmentDialog({
         console.log(`Validation failed for ${field}:`, value); // Debug log
         toast.error(`${label} is required`);
         return false;
+      }
+
+      // Validate phone number has exactly 10 digits after +91
+      if (field === 'phone') {
+        const phoneNumber = value.replace('+91 ', '').replace(/\D/g, '');
+        if (phoneNumber.length < 10) {
+          toast.error('Phone number must be exactly 10 digits');
+          return false;
+        }
+      }
+
+      // Validate email format
+      if (field === 'email') {
+        if (!validateEmail(value)) {
+          toast.error('Please enter a valid email format');
+          return false;
+        }
+        if (!isValidDomain(value)) {
+          toast.error('Please use a valid email provider (Gmail, Yahoo, Outlook, etc.)');
+          return false;
+        }
       }
     }
 
@@ -164,11 +285,10 @@ export default function NewAppointmentDialog({
                   <input
                     type="tel"
                     name="phone"
-                    value={formData.phone}
-                    onChange={onInputChangeAction}
-                    placeholder="+91 98765 43210"
-                    maxLength={13}
-                    pattern="[0-9+\\s-]*"
+                    value={formData.phone || '+91 '}
+                    onChange={handlePhoneChange}
+                    placeholder="+91 9876543210"
+                    maxLength={14}
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
                 </div>
@@ -176,7 +296,7 @@ export default function NewAppointmentDialog({
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Email
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -237,16 +357,96 @@ export default function NewAppointmentDialog({
                   Time <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                  <input
-                    type="time"
-                    name="time"
-                    value={formData.time}
-                    onChange={onInputChangeAction}
-                    onClick={(e) => e.currentTarget.showPicker?.()}
-                    min={formData.date === new Date().toISOString().split('T')[0] ? new Date().toLocaleTimeString('en-GB', { hour12: false }).slice(0, 5) : undefined}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
-                  />
+                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
+                  <div className="flex gap-2">
+                    {/* Hour - Custom Dropdown */}
+                    <div className="relative flex-1 hour-dropdown-container">
+                      <button
+                        type="button"
+                        onClick={() => setShowHourDropdown(!showHourDropdown)}
+                        className="w-full pl-11 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer bg-white text-left"
+                      >
+                        {hour}
+                      </button>
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      
+                      {/* Custom Dropdown Menu */}
+                      {showHourDropdown && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {Array.from({ length: 12 }, (_, i) => {
+                            const h = (i + 1).toString().padStart(2, '0');
+                            return (
+                              <div
+                                key={h}
+                                onClick={() => {
+                                  setHour(h);
+                                  handleTimeChange(h, minute, period);
+                                  setShowHourDropdown(false);
+                                }}
+                                className={`px-4 py-2 cursor-pointer hover:bg-teal-50 transition-colors ${
+                                  hour === h ? 'bg-teal-100 text-teal-700 font-semibold' : 'text-gray-700'
+                                }`}
+                              >
+                                {h}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Minute - Custom Dropdown */}
+                    <div className="relative flex-1 minute-dropdown-container">
+                      <button
+                        type="button"
+                        onClick={() => setShowMinuteDropdown(!showMinuteDropdown)}
+                        className="w-full px-3 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer bg-white text-left"
+                      >
+                        {minute}
+                      </button>
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      
+                      {/* Custom Dropdown Menu */}
+                      {showMinuteDropdown && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {Array.from({ length: 60 }, (_, i) => {
+                            const m = i.toString().padStart(2, '0');
+                            return (
+                              <div
+                                key={m}
+                                onClick={() => {
+                                  setMinute(m);
+                                  handleTimeChange(hour, m, period);
+                                  setShowMinuteDropdown(false);
+                                }}
+                                className={`px-4 py-2 cursor-pointer hover:bg-teal-50 transition-colors ${
+                                  minute === m ? 'bg-teal-100 text-teal-700 font-semibold' : 'text-gray-700'
+                                }`}
+                              >
+                                {m}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* AM/PM */}
+                    <div className="relative w-24">
+                      <select
+                        value={period}
+                        onChange={(e) => {
+                          setPeriod(e.target.value);
+                          handleTimeChange(hour, minute, e.target.value);
+                        }}
+                        className="w-full px-3 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent appearance-none cursor-pointer bg-white font-semibold"
+                      >
+                        <option value="AM">AM</option>
+                        <option value="PM">PM</option>
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
