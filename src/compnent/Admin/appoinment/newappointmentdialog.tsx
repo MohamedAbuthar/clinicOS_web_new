@@ -185,7 +185,6 @@ export default function NewAppointmentDialog({
     const requiredFields = [
       { field: 'patientName', value: formData.patientName, label: 'Patient Name' },
       { field: 'phone', value: formData.phone, label: 'Phone Number' },
-      { field: 'email', value: formData.email, label: 'Email' },
       { field: 'doctor', value: formData.doctor, label: 'Doctor' },
       { field: 'date', value: formData.date, label: 'Date' },
       { field: 'time', value: formData.time, label: 'Time' }
@@ -206,17 +205,17 @@ export default function NewAppointmentDialog({
           return false;
         }
       }
+    }
 
-      // Validate email format
-      if (field === 'email') {
-        if (!validateEmail(value)) {
-          toast.error('Please enter a valid email format');
-          return false;
-        }
-        if (!isValidDomain(value)) {
-          toast.error('Please use a valid email provider (Gmail, Yahoo, Outlook, etc.)');
-          return false;
-        }
+    // Validate email format only if email is provided (optional field)
+    if (formData.email && formData.email.trim() !== '') {
+      if (!validateEmail(formData.email)) {
+        toast.error('Please enter a valid email format');
+        return false;
+      }
+      if (!isValidDomain(formData.email)) {
+        toast.error('Please use a valid email provider (Gmail, Yahoo, Outlook, etc.)');
+        return false;
       }
     }
 
@@ -297,7 +296,7 @@ export default function NewAppointmentDialog({
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Email <span className="text-red-500">*</span>
+                  Email
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -306,7 +305,7 @@ export default function NewAppointmentDialog({
                     name="email"
                     value={formData.email}
                     onChange={handleEmailChange}
-                    placeholder="patient@example.com"
+                    placeholder="patient@example.com (optional)"
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
                 </div>
