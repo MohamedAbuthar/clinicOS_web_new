@@ -47,7 +47,7 @@ export interface UseAssistantsReturn {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   fetchAssistants: (page?: number) => Promise<void>;
-  createAssistant: (data: any) => Promise<boolean>;
+  createAssistant: (data: any) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   updateAssistant: (id: string, data: any) => Promise<boolean>;
   deleteAssistant: (id: string) => Promise<boolean>;
   refreshAssistants: () => Promise<void>;
@@ -162,7 +162,7 @@ export const useAssistants = (): UseAssistantsReturn => {
     }
   }, []);
 
-  const createAssistant = useCallback(async (data: any): Promise<boolean> => {
+  const createAssistant = useCallback(async (data: any): Promise<{ success: boolean; error?: string; errorCode?: string }> => {
     setLoading(true);
     setError(null);
     
@@ -200,11 +200,28 @@ export const useAssistants = (): UseAssistantsReturn => {
       console.log('Assistant created successfully. Admin session maintained.');
       
       await fetchAssistants();
-      return true;
+      return { success: true };
     } catch (err: any) {
-      setError(err.message);
       console.error('Error creating assistant:', err);
-      return false;
+      
+      // Handle specific Firebase Auth errors
+      if (err.code === 'auth/email-already-in-use') {
+        const errorMessage = 'Email already exists. Please use a different email address.';
+        setError(errorMessage);
+        return { success: false, error: errorMessage, errorCode: 'email-already-in-use' };
+      } else if (err.code === 'auth/weak-password') {
+        const errorMessage = 'Password is too weak. Please use a stronger password.';
+        setError(errorMessage);
+        return { success: false, error: errorMessage, errorCode: 'weak-password' };
+      } else if (err.code === 'auth/invalid-email') {
+        const errorMessage = 'Invalid email address format.';
+        setError(errorMessage);
+        return { success: false, error: errorMessage, errorCode: 'invalid-email' };
+      } else {
+        const errorMessage = err.message || 'Failed to create assistant. Please try again.';
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
+      }
     } finally {
       setLoading(false);
     }
