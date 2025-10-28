@@ -48,6 +48,7 @@ export default function NewAppointmentDialog({
   const [period, setPeriod] = useState('AM');
   const [showHourDropdown, setShowHourDropdown] = useState(false);
   const [showMinuteDropdown, setShowMinuteDropdown] = useState(false);
+  const [emailErrorShown, setEmailErrorShown] = useState(false);
 
   // Parse existing time when formData.time changes
   useEffect(() => {
@@ -169,11 +170,18 @@ export default function NewAppointmentDialog({
     
     // Only validate if email is not empty
     if (email) {
-      if (!validateEmail(email)) {
-        toast.error("Please enter a valid email format");
-      } else if (!isValidDomain(email)) {
-        toast.error("Please use a valid email provider (Gmail, Yahoo, Outlook, etc.)");
+      if (!validateEmail(email) || !isValidDomain(email)) {
+        if (!emailErrorShown) {
+          toast.error("Please enter a valid email");
+          setEmailErrorShown(true);
+        }
+      } else {
+        // Valid email entered, reset error state
+        setEmailErrorShown(false);
       }
+    } else {
+      // Empty email, reset error state
+      setEmailErrorShown(false);
     }
     
     // Call the original onChange handler
