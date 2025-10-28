@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { X, User, Phone, Mail, Clock, MapPin, Users, UserPlus, Loader2, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { useAssistants } from '@/lib/hooks/useAssistants';
 import { generateTimeSlots, formatScheduleDisplay } from '@/lib/utils/timeSlotGenerator';
+import { toast } from 'sonner';
 
 // TypeScript Interfaces
 interface NewDoctorForm {
@@ -32,7 +33,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
   const [newDoctor, setNewDoctor] = useState<NewDoctorForm>({
     name: '',
     specialty: '',
-    phone: '',
+    phone: '+91 ',
     email: '',
     password: '',
     schedule: '',
@@ -46,6 +47,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
   const [previewSlots, setPreviewSlots] = useState<string[]>([]);
   const [showAssistantsDropdown, setShowAssistantsDropdown] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [emailErrorShown, setEmailErrorShown] = useState(false);
 
   const { assistants, loading: assistantsLoading } = useAssistants();
 
@@ -80,6 +82,72 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
 
   const handleAddDoctorChange = (field: keyof NewDoctorForm, value: string) => {
     setNewDoctor(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Email validation function
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Valid email domains
+  const validDomains = [
+    'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
+    'protonmail.com', 'aol.com', 'live.com', 'msn.com', 'yandex.com',
+    'zoho.com', 'mail.com', 'gmx.com', 'web.de', 'tutanota.com'
+  ];
+
+  // Check if email domain is valid
+  const isValidDomain = (email: string) => {
+    const domain = email.split('@')[1]?.toLowerCase();
+    return validDomains.includes(domain);
+  };
+
+  // Handle email input with validation
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const email = e.target.value;
+    
+    // Only validate if email is not empty
+    if (email) {
+      if (!validateEmail(email) || !isValidDomain(email)) {
+        if (!emailErrorShown) {
+          toast.error("Please enter a valid email");
+          setEmailErrorShown(true);
+        }
+      } else {
+        // Valid email entered, reset error state
+        setEmailErrorShown(false);
+      }
+    } else {
+      // Empty email, reset error state
+      setEmailErrorShown(false);
+    }
+    
+    // Update the form state
+    handleAddDoctorChange('email', email);
+  };
+
+  // Handle phone number input with +91 validation
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    
+    // Always ensure +91 prefix
+    if (!value.startsWith('+91 ')) {
+      value = '+91 ';
+    }
+    
+    // Extract only the number part after +91 
+    const numberPart = value.slice(4).replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    const limitedNumber = numberPart.slice(0, 10);
+    
+    // Format as +91 XXXXXXXXXX
+    const formattedValue = '+91 ' + limitedNumber;
+    
+    // Update the input value
+    e.target.value = formattedValue;
+    handleAddDoctorChange('phone', formattedValue);
   };
 
   const toggleAssistant = (assistantId: string) => {
@@ -140,7 +208,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
       setNewDoctor({
         name: '',
         specialty: '',
-        phone: '',
+        phone: '+91 ',
         email: '',
         password: '',
         schedule: '',
@@ -154,6 +222,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
       setPreviewSlots([]);
       setShowAssistantsDropdown(false);
       setShowPassword(false);
+      setEmailErrorShown(false);
     } catch (err) {
       // Error handling is done in parent component
     }
@@ -164,7 +233,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
     setNewDoctor({
       name: '',
       specialty: '',
-      phone: '',
+      phone: '+91 ',
       email: '',
       password: '',
       schedule: '',
@@ -178,30 +247,31 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
     setPreviewSlots([]);
     setShowAssistantsDropdown(false);
     setShowPassword(false);
+    setEmailErrorShown(false);
     onCloseAction();
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-white/5 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Dialog Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-blue-50">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">Add New Doctor</h2>
-            <p className="text-sm text-gray-500 mt-1">Fill in the doctor information</p>
+            <h2 className="text-2xl font-bold text-gray-900">Add New Doctor</h2>
+            <p className="text-sm text-gray-600 mt-1">Fill in the details to add a new doctor</p>
           </div>
           <button 
             onClick={handleClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-200 rounded-full transition-colors"
           >
-            <X size={20} className="text-gray-500" />
+            <X size={24} className="text-gray-600" />
           </button>
         </div>
 
-        {/* Add Form */}
-        <div className="overflow-y-auto max-h-[calc(90vh-180px)] p-6">
+        {/* Dialog Body */}
+        <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-5">
             {/* Name */}
             <div>
@@ -218,54 +288,61 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
               />
             </div>
 
-            {/* Specialization */}
+            {/* Specialty */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Specialization <span className="text-red-500">*</span>
+                Specialty <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
+              <select 
                 value={newDoctor.specialty}
                 onChange={(e) => handleAddDoctorChange('specialty', e.target.value)}
-                placeholder="General Physician, Cardiologist, etc."
+                className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              >
+                <option value="">Select Specialty</option>
+                <option value="Cardiology">Cardiology</option>
+                <option value="Dermatology">Dermatology</option>
+                <option value="Orthopedics">Orthopedics</option>
+                <option value="Pediatrics">Pediatrics</option>
+                <option value="General Medicine">General Medicine</option>
+                <option value="ENT">ENT</option>
+                <option value="Gynecology">Gynecology</option>
+                <option value="Neurology">Neurology</option>
+              </select>
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Phone size={16} className="inline mr-1" />
+                Phone Number <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="tel"
+                value={newDoctor.phone}
+                onChange={handlePhoneChange}
+                placeholder="+91 XXXXXXXXXX"
                 className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               />
             </div>
 
-            {/* Contact Info */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Phone size={16} className="inline mr-1" />
-                  Phone Number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="tel"
-                  value={newDoctor.phone}
-                  onChange={(e) => handleAddDoctorChange('phone', e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Mail size={16} className="inline mr-1" />
-                  Email <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  value={newDoctor.email}
-                  onChange={(e) => handleAddDoctorChange('email', e.target.value)}
-                  placeholder="doctor@clinic.com"
-                  className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                />
-              </div>
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Mail size={16} className="inline mr-1" />
+                Email <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                value={newDoctor.email}
+                onChange={handleEmailChange}
+                placeholder="doctor@example.com"
+                className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              />
             </div>
 
             {/* Password */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                <User size={16} className="inline mr-1" />
                 Password <span className="text-red-500">*</span>
               </label>
               <div className="relative">
@@ -273,23 +350,20 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
                   type={showPassword ? "text" : "password"}
                   value={newDoctor.password}
                   onChange={(e) => handleAddDoctorChange('password', e.target.value)}
-                  placeholder="Enter password for doctor login"
-                  className="w-full px-4 py-2.5 pr-12 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  placeholder="Enter password"
+                  className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent pr-11"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                This password will be used for doctor to login to the admin portal
-              </p>
             </div>
 
-            {/* Schedule Times */}
+            {/* Start and End Time */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">

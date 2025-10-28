@@ -107,7 +107,7 @@ const AssistantsPage = () => {
   const [formData, setFormData] = useState<AssistantForm>({
     name: '',
     email: '',
-    phone: '',
+    phone: '+91 ',
     password: '',
     role: 'assistant',
     assignedDoctors: '',
@@ -118,6 +118,7 @@ const AssistantsPage = () => {
   const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
   const [filteredAssistants, setFilteredAssistants] = useState<AssistantWithUser[]>([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [emailErrorShown, setEmailErrorShown] = useState(false);
 
   // Show success message and hide after 3 seconds
   useEffect(() => {
@@ -215,7 +216,7 @@ const AssistantsPage = () => {
     setFormData({
       name: assistant.user.name,
       email: assistant.user.email,
-      phone: assistant.user.phone || '',
+      phone: assistant.user.phone || '+91 ',
       password: '', // Password not shown in edit mode for security
       role: 'assistant', // Default role
       assignedDoctors: assistant.assignedDoctors.join(','), // Convert array to string with comma separator
@@ -258,6 +259,29 @@ const AssistantsPage = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // Handle phone number input with +91 validation
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    
+    // Always ensure +91 prefix
+    if (!value.startsWith('+91 ')) {
+      value = '+91 ';
+    }
+    
+    // Extract only the number part after +91 
+    const numberPart = value.slice(4).replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    const limitedNumber = numberPart.slice(0, 10);
+    
+    // Format as +91 XXXXXXXXXX
+    const formattedValue = '+91 ' + limitedNumber;
+    
+    // Update the input value
+    e.target.value = formattedValue;
+    handleFormChange('phone', formattedValue);
+  };
+
   // Helper functions for doctor selection
   const getSelectedDoctors = () => {
     return formData.assignedDoctors.split(',').map(d => d.trim()).filter(d => d);
@@ -290,15 +314,64 @@ const AssistantsPage = () => {
     });
   };
 
+  // Email validation function
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Valid email domains
+  const validDomains = [
+    'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
+    'protonmail.com', 'aol.com', 'live.com', 'msn.com', 'yandex.com',
+    'zoho.com', 'mail.com', 'gmx.com', 'web.de', 'tutanota.com'
+  ];
+
+  // Check if email domain is valid
+  const isValidDomain = (email: string) => {
+    const domain = email.split('@')[1]?.toLowerCase();
+    return validDomains.includes(domain);
+  };
+
+  // Handle email input with validation
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const email = e.target.value;
+    
+    // Only validate if email is not empty
+    if (email) {
+      if (!validateEmail(email) || !isValidDomain(email)) {
+        if (!emailErrorShown) {
+          toast.error("Please enter a valid email");
+          setEmailErrorShown(true);
+        }
+      } else {
+        // Valid email entered, reset error state
+        setEmailErrorShown(false);
+      }
+    } else {
+      // Empty email, reset error state
+      setEmailErrorShown(false);
+    }
+    
+    // Call the original onChange handler
+    handleFormChange('email', email);
+  };
+
   const handleAddSubmit = async () => {
     setActionLoading(true);
     
     // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      toast.error('Please enter a valid email address');
-      setActionLoading(false);
-      return;
+    if (formData.email && formData.email.trim() !== '') {
+      if (!validateEmail(formData.email)) {
+        toast.error('Please enter a valid email format');
+        setActionLoading(false);
+        return;
+      }
+      if (!isValidDomain(formData.email)) {
+        toast.error('Please use a valid email provider (Gmail, Yahoo, Outlook, etc.)');
+        setActionLoading(false);
+        return;
+      }
     }
     
     // Validate required fields
@@ -325,7 +398,7 @@ const AssistantsPage = () => {
     console.log('Creating assistant with email:', formData.email);
     
     try {
-      const success = await createAssistant({
+      const result = await createAssistant({
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
@@ -334,38 +407,51 @@ const AssistantsPage = () => {
         assignedDoctors: assignedDoctorsArray,
       });
       
-      if (success) {
+      if (result.success) {
         // Send password email to the assistant
         console.log('Sending login credentials to assistant email...');
-        const emailResult = await sendPasswordEmailWithRetry(
-          formData.email,
-          formData.password,
-          formData.name
-        );
-        
-        if (emailResult.success) {
-          toast.success('✅ Assistant created successfully! Login credentials sent to their email.');
-        } else {
+        try {
+          const emailResult = await sendPasswordEmailWithRetry(
+            formData.email,
+            formData.password,
+            formData.name
+          );
+          
+          if (emailResult.success) {
+            toast.success('✅ Assistant created successfully! Login credentials sent to their email.');
+          } else {
+            // Assistant created but email failed - provide manual credentials
+            toast.warning(
+              `✅ Assistant created successfully!\n\n⚠️ Email sending failed: ${emailResult.message}\n\nPlease share these credentials manually:\nEmail: ${formData.email}\nPassword: ${formData.password}`,
+              { duration: 10000 }
+            );
+            console.warn('Failed to send password email:', emailResult.message);
+          }
+        } catch (emailError: any) {
           // Assistant created but email failed
-          toast.warning('Assistant created successfully, but failed to send email. Please share credentials manually.');
-          console.warn('Failed to send password email:', emailResult.message);
+          toast.warning(
+            `✅ Assistant created successfully!\n\n⚠️ Failed to send email: ${emailError.message}\n\nPlease share these credentials manually:\nEmail: ${formData.email}\nPassword: ${formData.password}`,
+            { duration: 10000 }
+          );
+          console.warn('Error sending password email:', emailError);
         }
         
         closeDialogs();
       } else {
-        toast.error('❌ Failed to create assistant. Please try again.');
+        // Handle specific error cases
+        if (result.errorCode === 'email-already-in-use') {
+          toast.error('❌ Email already exists. Please use a different email address.');
+        } else if (result.errorCode === 'weak-password') {
+          toast.error('❌ Password is too weak. Please use a stronger password.');
+        } else if (result.errorCode === 'invalid-email') {
+          toast.error('❌ Invalid email address format.');
+        } else {
+          toast.error(`❌ ${result.error || 'Failed to create assistant. Please try again.'}`);
+        }
       }
     } catch (error: any) {
-      console.error('Error creating assistant:', error);
-      
-      // Handle specific error cases
-      if (error.message?.includes('email-already-in-use') || error.message?.includes('already exists')) {
-        toast.error('❌ Email already exists. Please use a different email address.');
-      } else if (error.message?.includes('weak-password')) {
-        toast.error('❌ Password is too weak. Please use a stronger password.');
-      } else {
-        toast.error(`❌ ${error.message || 'Failed to create assistant. Please try again.'}`);
-      }
+      console.error('Unexpected error creating assistant:', error);
+      toast.error(`❌ ${error.message || 'Failed to create assistant. Please try again.'}`);
     } finally {
       setActionLoading(false);
     }
@@ -449,7 +535,7 @@ const AssistantsPage = () => {
     setFormData({
       name: '',
       email: '',
-      phone: '',
+      phone: '+91 ',
       password: '',
       role: 'assistant',
       assignedDoctors: '',
@@ -658,9 +744,10 @@ const AssistantsPage = () => {
                     </label>
                     <input
                       type="tel"
-                      value={formData.phone}
-                      onChange={(e) => handleFormChange('phone', e.target.value)}
-                      placeholder="+91 98765 43210"
+                      value={formData.phone || '+91 '}
+                      onChange={handlePhoneChange}
+                      placeholder="+91 9876543210"
+                      maxLength={14}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
                   </div>
@@ -888,9 +975,10 @@ const AssistantsPage = () => {
                     </label>
                     <input
                       type="tel"
-                      value={formData.phone}
-                      onChange={(e) => handleFormChange('phone', e.target.value)}
-                      placeholder="+91 98765 43210"
+                      value={formData.phone || '+91 '}
+                      onChange={handlePhoneChange}
+                      placeholder="+91 9876543210"
+                      maxLength={14}
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
                   </div>

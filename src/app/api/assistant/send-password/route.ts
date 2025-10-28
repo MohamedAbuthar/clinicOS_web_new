@@ -51,18 +51,64 @@ export async function POST(req: NextRequest) {
 			)
 		}
 
-		const transporter = nodemailer.createTransport({
-			host: 'smtp.gmail.com',
-			port: 465,
-			secure: true,
-			auth: {
-				user: smtpUser,
-				pass: smtpPass,
-			},
-			tls: {
-				rejectUnauthorized: false,
-			},
-		})
+		// Determine SMTP configuration based on email provider
+		let smtpConfig;
+		if (smtpUser.includes('@gmail.com')) {
+			smtpConfig = {
+				host: 'smtp.gmail.com',
+				port: 465,
+				secure: true,
+				auth: {
+					user: smtpUser,
+					pass: smtpPass,
+				},
+				tls: {
+					rejectUnauthorized: false,
+				},
+			};
+		} else if (smtpUser.includes('@outlook.com') || smtpUser.includes('@hotmail.com')) {
+			smtpConfig = {
+				host: 'smtp-mail.outlook.com',
+				port: 587,
+				secure: false,
+				auth: {
+					user: smtpUser,
+					pass: smtpPass,
+				},
+				tls: {
+					rejectUnauthorized: false,
+				},
+			};
+		} else if (smtpUser.includes('@yahoo.com')) {
+			smtpConfig = {
+				host: 'smtp.mail.yahoo.com',
+				port: 587,
+				secure: false,
+				auth: {
+					user: smtpUser,
+					pass: smtpPass,
+				},
+				tls: {
+					rejectUnauthorized: false,
+				},
+			};
+		} else {
+			// Default to Gmail configuration
+			smtpConfig = {
+				host: 'smtp.gmail.com',
+				port: 465,
+				secure: true,
+				auth: {
+					user: smtpUser,
+					pass: smtpPass,
+				},
+				tls: {
+					rejectUnauthorized: false,
+				},
+			};
+		}
+
+		const transporter = nodemailer.createTransport(smtpConfig)
 
 		// Verify transporter configuration
 		console.log('Verifying SMTP connection...')
