@@ -13,13 +13,36 @@ const Auth = () => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState('+91 ');
   const [role, setRole] = useState<'admin' | 'doctor' | 'assistant'>('admin');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const router = useRouter();
   const { login: contextLogin } = useAuth();
+
+  // Handle phone number input with +91 validation
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    
+    // Always ensure +91 prefix
+    if (!value.startsWith('+91 ')) {
+      value = '+91 ';
+    }
+    
+    // Extract only the number part after +91 
+    const numberPart = value.slice(4).replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    const limitedNumber = numberPart.slice(0, 10);
+    
+    // Format as +91 XXXXXXXXXX
+    const formattedValue = '+91 ' + limitedNumber;
+    
+    // Update the input value
+    e.target.value = formattedValue;
+    setPhone(formattedValue);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +78,7 @@ const Auth = () => {
           setFullName('');
           setEmail('');
           setPassword('');
-          setPhone('');
+          setPhone('+91 ');
           setRole('admin');
         } else {
           setError('Failed to create account');
@@ -207,8 +230,8 @@ const Auth = () => {
                 type="tel"
                 id="phone"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+1234567890"
+                onChange={handlePhoneChange}
+                placeholder="+91 XXXXXXXXXX"
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
                 required
               />
