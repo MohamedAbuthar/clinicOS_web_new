@@ -906,11 +906,15 @@ const AssistantsPage = () => {
               </button>
               <button
                 onClick={handleAddSubmit}
-                disabled={!formData.name || !formData.email || !formData.phone || !formData.password}
+                disabled={!formData.name || !formData.email || !formData.phone || !formData.password || actionLoading}
                 className="flex items-center gap-2 px-5 py-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                <Plus className="w-4 h-4" />
-                Add Assistant
+                {actionLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
+                {actionLoading ? 'Adding...' : 'Add Assistant'}
               </button>
             </div>
           </div>
