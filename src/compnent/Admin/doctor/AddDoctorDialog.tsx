@@ -166,12 +166,49 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
       .join(', ') || 'Select assistants';
   };
 
-  const handleSubmit = async () => {
-    if (!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email || !newDoctor.password) {
-      return;
+  // Validation function for required fields
+  const validateRequiredFields = () => {
+    const requiredFields = [
+      { field: 'name', value: newDoctor.name, label: 'Full Name' },
+      { field: 'specialty', value: newDoctor.specialty, label: 'Specialty' },
+      { field: 'phone', value: newDoctor.phone, label: 'Phone Number' },
+      { field: 'email', value: newDoctor.email, label: 'Email' },
+      { field: 'password', value: newDoctor.password, label: 'Password' },
+      { field: 'startTime', value: newDoctor.startTime, label: 'Start Time' },
+      { field: 'endTime', value: newDoctor.endTime, label: 'End Time' }
+    ];
+
+    for (const { field, value, label } of requiredFields) {
+      if (!value || value.trim() === '') {
+        toast.error(`${label} is required`);
+        return false;
+      }
+
+      // Validate phone number has exactly 10 digits after +91
+      if (field === 'phone') {
+        const phoneNumber = value.replace('+91 ', '').replace(/\D/g, '');
+        if (phoneNumber.length < 10) {
+          toast.error('Phone number must be exactly 10 digits');
+          return false;
+        }
+      }
     }
 
-    if (!newDoctor.startTime || !newDoctor.endTime) {
+    // Validate email format (required field)
+    if (!validateEmail(newDoctor.email)) {
+      toast.error('Please enter a valid email format');
+      return false;
+    }
+    if (!isValidDomain(newDoctor.email)) {
+      toast.error('Please use a valid email provider (Gmail, Yahoo, Outlook, etc.)');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateRequiredFields()) {
       return;
     }
 
