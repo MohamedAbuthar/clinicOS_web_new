@@ -36,7 +36,8 @@ service cloud.firestore {
           get(/databases/$(database)/documents/doctors/$(doctorId)).data.userId == request.auth.uid) ||
         // Assistants can manage schedules for doctors they are assigned to
         (isAssistant() &&
-          request.auth.uid in get(/databases/$(database)/documents/doctors/$(doctorId)).data.assignedAssistants);
+          get(/databases/$(database)/documents/doctors/$(doctorId)).data.assignedAssistants != null &&
+          get(/databases/$(database)/documents/doctors/$(doctorId)).data.assignedAssistants.hasAny([request.auth.uid]));
     }
     
     function isPatient() {

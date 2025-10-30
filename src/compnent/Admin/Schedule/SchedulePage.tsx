@@ -91,12 +91,22 @@ const SchedulePage: React.FC = () => {
     }
   }, [overridesError]);
 
-  // Auto-select first doctor when doctors are loaded
+  // Auto-select first doctor from the FILTERED list (respect role)
   useEffect(() => {
-    if (doctors.length > 0 && !selectedDoctor) {
-      setSelectedDoctor(doctors[0].id);
+    const filtered = getFilteredDoctors();
+    if (!selectedDoctor && filtered.length > 0) {
+      setSelectedDoctor(filtered[0].id);
     }
-  }, [doctors, selectedDoctor]);
+  }, [doctors, assistants, currentUser, isAuthenticated, selectedDoctor]);
+
+  // Ensure selectedDoctor always remains within the filtered list
+  useEffect(() => {
+    const filtered = getFilteredDoctors();
+    const stillValid = filtered.some(d => d.id === selectedDoctor);
+    if (selectedDoctor && !stillValid) {
+      setSelectedDoctor(filtered[0]?.id || '');
+    }
+  }, [doctors, assistants, currentUser, isAuthenticated, selectedDoctor]);
 
   // Fetch schedules and overrides when doctor is selected
   useEffect(() => {
