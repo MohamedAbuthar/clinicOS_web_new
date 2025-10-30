@@ -37,7 +37,6 @@ const EditScheduleDialog: React.FC<EditScheduleDialogProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
-    onClose();
   };
 
   const handleClose = () => {

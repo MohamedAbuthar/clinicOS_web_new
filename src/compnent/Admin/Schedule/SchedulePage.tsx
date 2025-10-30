@@ -133,7 +133,7 @@ const SchedulePage: React.FC = () => {
         return {
           day,
           timeRange: `${schedule.startTime} - ${schedule.endTime}`,
-          slotDuration: '10 min slots', // Default slot duration
+          slotDuration: (schedule as any).slotDuration || '10 min slots',
           status: 'active' as const,
           scheduleId: schedule.id,
         };
@@ -320,11 +320,13 @@ const SchedulePage: React.FC = () => {
           const success = await deleteSchedule(selectedDoctor, existingSchedule.id);
           if (success) {
             toast.success('✅ Schedule updated successfully');
+            await fetchSchedules(selectedDoctor);
           } else {
             toast.error('❌ Failed to update schedule');
           }
         } else {
           toast.success('✅ Schedule updated successfully');
+          await fetchSchedules(selectedDoctor);
         }
       } else {
         // If setting to active, create or update schedule
@@ -343,10 +345,12 @@ const SchedulePage: React.FC = () => {
             dayOfWeek: dayIndex,
             startTime,
             endTime,
+            slotDuration: data.slotDuration,
           });
           
           if (success) {
             toast.success('✅ Schedule updated successfully');
+            await fetchSchedules(selectedDoctor);
           } else {
             toast.error('❌ Failed to update schedule');
           }
@@ -356,10 +360,12 @@ const SchedulePage: React.FC = () => {
             dayOfWeek: dayIndex,
             startTime,
             endTime,
+            slotDuration: data.slotDuration,
           });
           
           if (success) {
             toast.success('✅ Schedule created successfully');
+            await fetchSchedules(selectedDoctor);
           } else {
             toast.error('❌ Failed to create schedule');
           }
