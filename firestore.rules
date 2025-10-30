@@ -26,6 +26,18 @@ service cloud.firestore {
     function isStaff() {
       return isAdmin() || isDoctor() || isAssistant();
     }
+
+    // Checks whether the current user (doctor/assistant/admin) can manage data for a given doctorId
+    function canManageForDoctor(doctorId) {
+      // Admins can always manage
+      return isAdmin() ||
+        // Doctors can manage their own schedules (doctor doc.userId matches auth uid)
+        (isDoctor() &&
+          get(/databases/$(database)/documents/doctors/$(doctorId)).data.userId == request.auth.uid) ||
+        // Assistants can manage schedules for doctors they are assigned to
+        (isAssistant() &&
+          request.auth.uid in get(/databases/$(database)/documents/doctors/$(doctorId)).data.assignedAssistants);
+    }
     
     function isPatient() {
       return isAuthenticated() && 
@@ -124,13 +136,17 @@ service cloud.firestore {
     // Doctor Schedules collection
     match /doctorSchedules/{scheduleId} {
       allow read: if true; // Public - patients need to see schedules
-      allow create, update, delete: if isAdmin();
+      // Allow admin, the doctor themselves, or assigned assistants
+      allow create: if canManageForDoctor(request.resource.data.doctorId);
+      allow update, delete: if canManageForDoctor(resource.data.doctorId);
     }
     
     // Schedule Overrides collection
     match /scheduleOverrides/{overrideId} {
       allow read: if true; // Public - patients need to see availability
-      allow create, update, delete: if isAdmin();
+      // Allow admin, the doctor themselves, or assigned assistants
+      allow create: if canManageForDoctor(request.resource.data.doctorId);
+      allow update, delete: if canManageForDoctor(resource.data.doctorId);
     }
     
     // Audit Logs collection
