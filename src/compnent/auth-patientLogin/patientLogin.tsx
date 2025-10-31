@@ -1,141 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { Users, ArrowLeft, Mail, Lock } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, ArrowLeft, Mail, Lock, User, Phone, Eye, EyeOff } from 'lucide-react';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 import { useRouter } from 'next/navigation';
 
 export default function PatientLogin() {
-  const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [isOtpSent, setIsOtpSent] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(180); // 3 minutes in seconds
-  const [isTimerActive, setIsTimerActive] = useState(false);
+  const [isSignup, setIsSignup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   
-  const { sendOTP, resendOTP, login } = usePatientAuth();
+  // Password visibility states
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  
+  // Login form fields
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  
+  // Signup form fields
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('+91 ');
+  const [role, setRole] = useState('assistant');
+  
+  const { loginWithEmailPassword, signup } = usePatientAuth();
   const router = useRouter();
-
-  // Timer effect
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isTimerActive && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft(prev => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0 && isTimerActive) {
-      setIsTimerActive(false);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerActive, timeLeft]);
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
 
   const handleBackToHome = () => {
     router.push('/');
-  };
-
-  const handleSendOTP = async () => {
-    if (!email || !isValidEmail(email)) {
-      setError('Please enter a valid email address');
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const result = await sendOTP(email);
-      if (result.success) {
-        setIsOtpSent(true);
-        setTimeLeft(180); // Reset timer to 3 minutes
-        setIsTimerActive(true);
-        setOtp('');
-      } else {
-        setError(result.message);
-      }
-    } catch (error: any) {
-      setError(error.message || 'Failed to send OTP');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleVerifyOTP = async () => {
-    if (otp.length !== 6) {
-      setError('Please enter a valid 6-digit OTP');
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const result = await login(email, otp);
-      console.log('Login result:', result); // Debug log
-      
-      if (result.success) {
-        if (result.patient && result.token) {
-          // Existing patient - logged in successfully
-          console.log('✅ Existing patient logged in successfully');
-          console.log('Token stored:', localStorage.getItem('patientToken'));
-          
-          // Wait a bit to ensure token is stored
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          // Redirect to dashboard for existing users
-          console.log('Redirecting to dashboard...');
-          router.push('/Patient/dashboard');
-        } else if (result.isNewUser) {
-          // New patient - needs to complete registration
-          console.log('📝 New patient - redirecting to registration');
-          router.push(`/Patient/register?email=${encodeURIComponent(email)}`);
-        } else {
-          setError('Login failed. Please try again.');
-        }
-      } else {
-        console.log('❌ Login failed:', result.message);
-        setError(result.message);
-      }
-    } catch (error: any) {
-      console.log('❌ Login error:', error);
-      setError(error.message || 'Failed to verify OTP');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-
-  const handleResendOTP = async () => {
-    if (!email || !isValidEmail(email)) {
-      setError('Please enter a valid email address');
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const result = await resendOTP(email);
-      if (result.success) {
-        setTimeLeft(180);
-        setIsTimerActive(true);
-        setOtp('');
-      } else {
-        setError(result.message);
-      }
-    } catch (error: any) {
-      setError(error.message || 'Failed to resend OTP');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEmail(e.target.value);
   };
 
   const isValidEmail = (email: string): boolean => {
@@ -143,14 +35,110 @@ export default function PatientLogin() {
     return emailRegex.test(email);
   };
 
-  const handleOtpChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, '');
-    if (value.length <= 6) {
-      setOtp(value);
+  // Handle phone number input with +91 prefix and 10 digit limit
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    
+    // Always ensure +91 prefix
+    if (!value.startsWith('+91 ')) {
+      value = '+91 ';
+    }
+    
+    // Extract only the number part after +91 
+    const numberPart = value.slice(4).replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    const limitedNumber = numberPart.slice(0, 10);
+    
+    // Format as +91 XXXXXXXXXX
+    const formattedValue = '+91 ' + limitedNumber;
+    
+    setPhoneNumber(formattedValue);
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!loginEmail || !isValidEmail(loginEmail)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    if (!loginPassword) {
+      setError('Please enter your password');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const result = await loginWithEmailPassword(loginEmail, loginPassword);
+      
+      if (result.success && result.patient && result.token) {
+        console.log('✅ Patient logged in successfully');
+        // Wait a bit to ensure token is stored
+        await new Promise(resolve => setTimeout(resolve, 300));
+        router.push('/Patient/dashboard');
+      } else {
+        setError(result.message || 'Login failed. Please check your credentials.');
+      }
+    } catch (error: any) {
+      console.log('❌ Login error:', error);
+      setError(error.message || 'Login failed');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const isTimerExpired = isTimerActive && timeLeft === 0;
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!signupEmail || !isValidEmail(signupEmail)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    if (!signupPassword || signupPassword.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return;
+    }
+
+    if (!fullName || fullName.trim() === '') {
+      setError('Please enter your full name');
+      return;
+    }
+
+    // Validate phone number has exactly 10 digits after +91
+    const phoneDigits = phoneNumber.replace('+91 ', '').replace(/\D/g, '');
+    if (!phoneNumber || phoneNumber.trim() === '' || phoneDigits.length !== 10) {
+      setError('Please enter a valid 10-digit phone number');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const result = await signup(signupEmail, signupPassword, fullName, phoneNumber, role);
+      
+      if (result.success && result.patient) {
+        console.log('✅ Patient registered successfully');
+        // Wait a bit to ensure token is stored
+        await new Promise(resolve => setTimeout(resolve, 300));
+        router.push('/Patient/dashboard');
+      } else {
+        // Error is already handled with user-friendly message in the context
+        setError(result.message || 'Registration failed');
+      }
+    } catch (error: any) {
+      console.log('❌ Signup error:', error);
+      // Fallback error handling if something unexpected happens
+      setError(error.message || 'Registration failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -176,12 +164,12 @@ export default function PatientLogin() {
 
           {/* Title */}
           <h1 className="text-3xl font-bold text-gray-900 text-center mb-2">
-            Patient Login
+            {isSignup ? 'Patient Sign Up' : 'Patient Login'}
           </h1>
           
           {/* Subtitle */}
           <p className="text-gray-500 text-center mb-8">
-            {isOtpSent ? 'Enter the OTP sent to your email' : 'Enter your email address to receive OTP'}
+            {isSignup ? 'Create your account to get started' : 'Enter your credentials to login'}
           </p>
 
           {/* Error Message */}
@@ -191,106 +179,235 @@ export default function PatientLogin() {
             </div>
           )}
 
-          {/* Email Input */}
-          <div className="mb-6">
-            <label className="block text-gray-900 font-medium mb-3">
-              Email Address
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Mail className="w-5 h-5 text-gray-400" />
-              </div>
-              <input
-                type="email"
-                value={email}
-                onChange={handleEmailChange}
-                placeholder="Enter your email address"
-                className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
-                disabled={isOtpSent}
-              />
-            </div>
-          </div>
-
-          {/* Send OTP Button */}
-          {!isOtpSent && (
-            <button
-              onClick={handleSendOTP}
-              disabled={isLoading}
-              className={`w-full font-medium py-3 rounded-lg transition-colors mb-6 ${
-                isLoading
-                  ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                  : 'bg-teal-500 hover:bg-teal-600 text-white'
-              }`}
-            >
-              {isLoading ? 'Sending...' : 'Send OTP'}
-            </button>
-          )}
-
-          {/* OTP Input - Show only after OTP is sent */}
-          {isOtpSent && (
-            <>
+          {/* Login Form */}
+          {!isSignup && (
+            <form onSubmit={handleLogin}>
+              {/* Email Input */}
               <div className="mb-6">
-                <div className="flex justify-between items-center mb-3">
-                  <label className="block text-gray-900 font-medium">
-                    Enter OTP
-                  </label>
-                  <span className={`text-sm font-medium ${isTimerExpired ? 'text-red-500' : 'text-teal-600'}`}>
-                    {formatTime(timeLeft)}
-                  </span>
+                <label className="block text-gray-900 font-medium mb-3">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Mail className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="Enter your email address"
+                    className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
+                    required
+                  />
                 </div>
+              </div>
+
+              {/* Password Input */}
+              <div className="mb-6">
+                <label className="block text-gray-900 font-medium mb-3">
+                  Password
+                </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <Lock className="w-5 h-5 text-gray-400" />
                   </div>
                   <input
-                    type="tel"
-                    value={otp}
-                    onChange={handleOtpChange}
-                    placeholder="Enter 6-digit OTP"
-                    className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
-                    disabled={isTimerExpired}
+                    type={showLoginPassword ? 'text' : 'password'}
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="w-full pl-12 pr-12 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
+                    required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword(!showLoginPassword)}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showLoginPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
                 </div>
-                {isTimerExpired && (
-                  <p className="text-xs text-red-500 mt-2">OTP has expired. Please request a new one.</p>
-                )}
               </div>
 
-              {/* Verify Button */}
+              {/* Login Button */}
               <button
-                onClick={handleVerifyOTP}
-                disabled={isTimerExpired || isLoading}
+                type="submit"
+                disabled={isLoading}
                 className={`w-full font-medium py-3 rounded-lg transition-colors mb-6 ${
-                  isTimerExpired || isLoading
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  isLoading
+                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                     : 'bg-teal-500 hover:bg-teal-600 text-white'
                 }`}
               >
-                {isLoading ? 'Verifying...' : 'Verify OTP'}
+                {isLoading ? 'Logging in...' : 'Login'}
               </button>
-
-              {/* Resend OTP */}
-              <div className="text-center mb-6">
-                {isTimerExpired ? (
-                  <button
-                    onClick={handleResendOTP}
-                    disabled={isLoading}
-                    className={`font-medium text-sm ${
-                      isLoading
-                        ? 'text-gray-400 cursor-not-allowed'
-                        : 'text-teal-500 hover:text-teal-600'
-                    }`}
-                  >
-                    {isLoading ? 'Resending...' : 'Resend OTP'}
-                  </button>
-                ) : (
-                  <p className="text-gray-500 text-sm">
-                    Didn&apos;t receive OTP? <span className="text-gray-400 text-xs">({formatTime(timeLeft)})</span>
-                  </p>
-                )}
-              </div>
-            </>
+            </form>
           )}
+
+          {/* Signup Form */}
+          {isSignup && (
+            <form onSubmit={handleSignup}>
+              {/* Full Name Input */}
+              <div className="mb-6">
+                <label className="block text-gray-900 font-medium mb-3">
+                  Full Name
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <User className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Enter your full name"
+                    className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Email Input */}
+              <div className="mb-6">
+                <label className="block text-gray-900 font-medium mb-3">
+                  Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Mail className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="email"
+                    value={signupEmail}
+                    onChange={(e) => setSignupEmail(e.target.value)}
+                    placeholder="Enter your email address"
+                    className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Phone Number Input */}
+              <div className="mb-6">
+                <label className="block text-gray-900 font-medium mb-3">
+                  Phone Number
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Phone className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={handlePhoneChange}
+                    placeholder="+91 9876543210"
+                    maxLength={14}
+                    className="w-full pl-12 pr-4 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Role Input - Read Only */}
+              <div className="mb-6">
+                <label className="block text-gray-900 font-medium mb-3">
+                  Role
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <User className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value="Assistant"
+                    readOnly
+                    className="w-full pl-12 pr-4 py-3 text-gray-900 bg-gray-50 border border-gray-300 rounded-lg cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              {/* Password Input */}
+              <div className="mb-6">
+                <label className="block text-gray-900 font-medium mb-3">
+                  Password
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Lock className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <input
+                    type={showSignupPassword ? 'text' : 'password'}
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    placeholder="Enter your password (min 6 characters)"
+                    className="w-full pl-12 pr-12 py-3 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all"
+                    required
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSignupPassword(!showSignupPassword)}
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showSignupPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Signup Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className={`w-full font-medium py-3 rounded-lg transition-colors mb-6 ${
+                  isLoading
+                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                    : 'bg-teal-500 hover:bg-teal-600 text-white'
+                }`}
+              >
+                {isLoading ? 'Creating account...' : 'Sign Up'}
+              </button>
+            </form>
+          )}
+
+          {/* Toggle between Login and Signup */}
+          <div className="text-center">
+            {!isSignup ? (
+              <p className="text-gray-600">
+                Don&apos;t have an account?{' '}
+                <button
+                  onClick={() => {
+                    setIsSignup(true);
+                    setError('');
+                    setPhoneNumber('+91 ');
+                  }}
+                  className="text-teal-500 hover:text-teal-600 font-medium"
+                >
+                  Sign Up
+                </button>
+              </p>
+            ) : (
+              <p className="text-gray-600">
+                Already have an account?{' '}
+                <button
+                  onClick={() => {
+                    setIsSignup(false);
+                    setError('');
+                  }}
+                  className="text-teal-500 hover:text-teal-600 font-medium"
+                >
+                  Login
+                </button>
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>
