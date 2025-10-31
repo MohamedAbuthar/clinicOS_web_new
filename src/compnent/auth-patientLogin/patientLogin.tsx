@@ -21,7 +21,7 @@ export default function PatientLogin() {
   const [signupPassword, setSignupPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('+91 ');
-  const [role, setRole] = useState('assistant');
+  const [role, setRole] = useState('patient');
   
   const { loginWithEmailPassword, signup } = usePatientAuth();
   const router = useRouter();
@@ -323,7 +323,7 @@ export default function PatientLogin() {
                   </div>
                   <input
                     type="text"
-                    value="Assistant"
+                    value="Patient"
                     readOnly
                     className="w-full pl-12 pr-4 py-3 text-gray-900 bg-gray-50 border border-gray-300 rounded-lg cursor-not-allowed"
                   />
