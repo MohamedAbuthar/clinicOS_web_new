@@ -5,6 +5,7 @@ import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { 
   patientSignInWithEmail,
+  registerPatient,
   signOut as firebaseSignOut,
   PatientProfile 
 } from '../firebase/auth';
@@ -20,6 +21,8 @@ interface PatientAuthContextType {
   verifyOTP: (email: string, otp: string) => Promise<any>;
   resendOTP: (email: string) => Promise<any>;
   login: (email: string, otp: string) => Promise<any>;
+  loginWithEmailPassword: (email: string, password: string) => Promise<any>;
+  signup: (email: string, password: string, fullName: string, phone: string, role: string) => Promise<any>;
   logout: () => void;
   refreshPatient: () => Promise<void>;
 }
@@ -197,6 +200,103 @@ export const PatientAuthProvider: React.FC<PatientAuthProviderProps> = ({ childr
     }
   };
 
+  // Login with email and password
+  const loginWithEmailPassword = async (email: string, password: string) => {
+    try {
+      console.log('Logging in with email and password:', email);
+      
+      const result = await patientSignInWithEmail(email, password);
+      
+      if (result.success && result.patient && result.firebaseUser) {
+        console.log('Patient logged in successfully');
+        setPatient(result.patient);
+        setFirebaseUser(result.firebaseUser);
+        
+        // Store token for protected routes
+        localStorage.setItem('patientToken', result.firebaseUser.uid);
+        
+        return {
+          success: true,
+          message: 'Login successful',
+          patient: result.patient,
+          token: result.firebaseUser.uid
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Login failed. Please check your credentials.'
+        };
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      return {
+        success: false,
+        message: error.message || 'Login failed. Please check your credentials.'
+      };
+    }
+  };
+
+  // Signup with email, password, full name, phone, and role
+  const signup = async (email: string, password: string, fullName: string, phone: string, role: string) => {
+    try {
+      console.log('Signing up new patient:', email);
+      
+      const patientData: Omit<PatientProfile, 'id' | 'createdAt' | 'updatedAt'> = {
+        name: fullName,
+        phone: phone,
+        email: email,
+        dateOfBirth: new Date().toISOString().split('T')[0], // Default to today, can be updated later
+        gender: 'other' as const, // Default gender, can be updated later
+        isActive: true
+      };
+
+      const result = await registerPatient(email, password, patientData);
+      
+      if (result.success && result.patient) {
+        console.log('Patient registered successfully');
+        // The auth state listener will automatically update the patient and firebaseUser states
+        
+        // Store token for protected routes
+        if (auth.currentUser) {
+          localStorage.setItem('patientToken', auth.currentUser.uid);
+        }
+        
+        return {
+          success: true,
+          message: result.message || 'Registration successful',
+          patient: result.patient,
+          token: auth.currentUser?.uid || null
+        };
+      } else {
+        return {
+          success: false,
+          message: result.message || 'Registration failed'
+        };
+      }
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      // Handle Firebase auth errors with user-friendly messages
+      let errorMessage = 'Registration failed';
+      
+      if (error.message) {
+        if (error.message.includes('email-already-in-use') || error.message.includes('auth/email-already-in-use')) {
+          errorMessage = 'This email is already registered. Please login or use a different email.';
+        } else if (error.message.includes('weak-password') || error.message.includes('auth/weak-password')) {
+          errorMessage = 'Password is too weak. Please use a stronger password.';
+        } else if (error.message.includes('invalid-email') || error.message.includes('auth/invalid-email')) {
+          errorMessage = 'Invalid email address. Please enter a valid email.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      return {
+        success: false,
+        message: errorMessage
+      };
+    }
+  };
+
   const logout = async () => {
     try {
       await firebaseSignOut();
@@ -230,6 +330,8 @@ export const PatientAuthProvider: React.FC<PatientAuthProviderProps> = ({ childr
     verifyOTP,
     resendOTP,
     login,
+    loginWithEmailPassword,
+    signup,
     logout,
     refreshPatient,
   };
