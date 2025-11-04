@@ -12,6 +12,10 @@ export interface Doctor {
   schedule?: string;
   startTime?: string;
   endTime?: string;
+  morningStartTime?: string;
+  morningEndTime?: string;
+  eveningStartTime?: string;
+  eveningEndTime?: string;
   availableSlots?: string[];
   user?: {
     id: string;

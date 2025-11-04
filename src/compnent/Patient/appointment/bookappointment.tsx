@@ -10,6 +10,8 @@ import { usePatientDoctors } from '@/lib/hooks/usePatientDoctors';
 import { useScheduleOverrides } from '@/lib/hooks/useScheduleOverrides';
 import { 
   SessionType, 
+  SessionConfig,
+  DEFAULT_SESSION_CONFIG,
   getSessionSlots,
   getNextTokenForSession, 
   assignSlotByToken,
@@ -65,6 +67,9 @@ export default function BookAppointmentPage() {
     evening: { totalSlots: number; bookedSlots: number; availableSlots: number; };
   } | null>(null);
 
+  // Force re-render to update session availability based on current time
+  const [currentTime, setCurrentTime] = useState(new Date());
+
   // Use the patient doctors hook
   const { doctors, loading: doctorsLoading, error: doctorsError, refreshDoctors } = usePatientDoctors();
   
@@ -94,6 +99,15 @@ export default function BookAppointmentPage() {
       toast.error(`❌ ${doctorsError}`);
     }
   }, [doctorsError]);
+
+  // Update current time every minute to refresh session availability
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Load family members when toggle is enabled
   useEffect(() => {
@@ -148,19 +162,65 @@ export default function BookAppointmentPage() {
           const result = await getDoctorAppointmentsByDate(selectedDoctor, dateStr);
           const existingAppointments = result.success && result.data ? result.data : [];
 
+          // Get doctor's session config
+          const doctorConfig: SessionConfig = {
+            morning: {
+              startTime: doctor.morningStartTime || '09:00',
+              endTime: doctor.morningEndTime || '13:00'
+            },
+            evening: {
+              startTime: doctor.eveningStartTime || '14:00',
+              endTime: doctor.eveningEndTime || '18:00'
+            }
+          };
+
+          // Normalize times to HH:MM format
+          const normalizeTime = (time: string | undefined, defaultTime: string): string => {
+            if (!time) return defaultTime;
+            if (/^\d{2}:\d{2}$/.test(time)) return time;
+            if (/^\d{2}:\d{2}:\d{2}/.test(time)) return time.substring(0, 5);
+            try {
+              const match = time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+              if (match) {
+                let hours = parseInt(match[1]);
+                const minutes = match[2];
+                const meridiem = match[3]?.toUpperCase();
+                if (meridiem === 'PM' && hours !== 12) hours += 12;
+                if (meridiem === 'AM' && hours === 12) hours = 0;
+                return `${hours.toString().padStart(2, '0')}:${minutes}`;
+              }
+            } catch (e) {
+              console.warn('Error parsing time:', time, e);
+            }
+            return defaultTime;
+          };
+
+          const normalizedConfig: SessionConfig = {
+            morning: {
+              startTime: normalizeTime(doctorConfig.morning.startTime, '09:00'),
+              endTime: normalizeTime(doctorConfig.morning.endTime, '13:00')
+            },
+            evening: {
+              startTime: normalizeTime(doctorConfig.evening.startTime, '14:00'),
+              endTime: normalizeTime(doctorConfig.evening.endTime, '18:00')
+            }
+          };
+
           // Calculate capacity for morning and evening sessions
           const morningCap = getSessionCapacity(
             doctor.availableSlots,
             'morning',
             dateStr,
-            existingAppointments
+            existingAppointments,
+            normalizedConfig
           );
 
           const eveningCap = getSessionCapacity(
             doctor.availableSlots,
             'evening',
             dateStr,
-            existingAppointments
+            existingAppointments,
+            normalizedConfig
           );
 
           setSessionCapacity({
@@ -188,6 +248,49 @@ export default function BookAppointmentPage() {
   );
 
   const selectedDoctorData = doctors.find(d => d.id === selectedDoctor);
+
+  // Helper function to create SessionConfig from doctor data
+  const getDoctorSessionConfig = (doctor: typeof selectedDoctorData): SessionConfig => {
+    if (!doctor) return DEFAULT_SESSION_CONFIG;
+    
+    // Helper to convert time to 24-hour format (HH:MM)
+    const normalizeTime = (time: string | undefined, defaultTime: string): string => {
+      if (!time) return defaultTime;
+      // If time is already in HH:MM format, return as is
+      if (/^\d{2}:\d{2}$/.test(time)) return time;
+      // If time is in HH:MM:SS format, extract HH:MM
+      if (/^\d{2}:\d{2}:\d{2}/.test(time)) return time.substring(0, 5);
+      // Try to parse and convert other formats
+      try {
+        const match = time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+        if (match) {
+          let hours = parseInt(match[1]);
+          const minutes = match[2];
+          const meridiem = match[3]?.toUpperCase();
+          if (meridiem === 'PM' && hours !== 12) hours += 12;
+          if (meridiem === 'AM' && hours === 12) hours = 0;
+          return `${hours.toString().padStart(2, '0')}:${minutes}`;
+        }
+      } catch (e) {
+        console.warn('Error parsing time:', time, e);
+      }
+      return defaultTime;
+    };
+
+    return {
+      morning: {
+        startTime: normalizeTime(doctor.morningStartTime, '09:00'),
+        endTime: normalizeTime(doctor.morningEndTime, '13:00')
+      },
+      evening: {
+        startTime: normalizeTime(doctor.eveningStartTime, '14:00'),
+        endTime: normalizeTime(doctor.eveningEndTime, '18:00')
+      }
+    };
+  };
+
+  // Get session config for selected doctor
+  const doctorSessionConfig = getDoctorSessionConfig(selectedDoctorData);
 
   const toggleFamilyMember = (memberId: string) => {
     setSelectedFamilyMembers(prev =>
@@ -260,8 +363,8 @@ export default function BookAppointmentPage() {
       const result = await getDoctorAppointmentsByDate(selectedDoctor!, dateStr);
       const existingAppointments = result.success && result.data ? result.data : [];
       
-      // Get session slots
-      const sessionSlots = getSessionSlots(selectedDoctorData.availableSlots || [], selectedSession);
+      // Get session slots using doctor's session config
+      const sessionSlots = getSessionSlots(selectedDoctorData.availableSlots || [], selectedSession, doctorSessionConfig);
       const bookedSlots = existingAppointments
         .filter((apt: any) => sessionSlots.includes(apt.appointmentTime))
         .map((apt: any) => apt.appointmentTime);
@@ -368,63 +471,111 @@ export default function BookAppointmentPage() {
 
   // Helper function to check if session can be booked (must be at least 3 hours before session starts)
   const canBookSessionByTime = (date: Date, session: SessionType): { canBook: boolean; reason?: string; showMessage?: boolean } => {
-    const now = new Date();
+    if (!selectedDoctorData) {
+      return { canBook: true }; // If no doctor selected, allow (will be caught by other validation)
+    }
+
+    // Use currentTime state to ensure real-time updates
+    const now = currentTime;
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     
-    // If selected date is today, check if there are at least 3 hours before session starts
-    if (selectedDay.getTime() === today.getTime()) {
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
-      const currentTimeInMinutes = currentHour * 60 + currentMinute;
-      
-      // Session start times (in minutes from midnight)
-      const morningStartMinutes = 9 * 60; // 09:00 = 540 minutes
-      const eveningStartMinutes = 14 * 60; // 14:00 = 840 minutes
-      
+    // Get session start time from doctor's config
+    const sessionStartTime = doctorSessionConfig[session].startTime;
+    const [startHours, startMinutes] = sessionStartTime.split(':').map(Number);
+    const sessionStartMinutes = startHours * 60 + startMinutes;
+    
+    // Calculate days difference between selected date and today
+    const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // If selected date is today or tomorrow, check if there are at least 3 hours before session starts
+    if (daysDiff === 0 || daysDiff === 1) {
       const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
       const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
       
-      if (session === 'evening') {
-        // Evening session starts at 14:00 (2:00 PM)
-        // Booking cutoff: 14:00 - 3 hours = 11:00 AM
-        const bookingCutoffMinutes = eveningStartMinutes - hoursBeforeBookingMinutes; // 11:00 = 660 minutes
+      // Booking cutoff: session start time - 3 hours
+      // Booking is allowed ONLY from this cutoff time onwards (until session starts)
+      const bookingCutoffMinutes = sessionStartMinutes - hoursBeforeBookingMinutes;
+      
+      if (daysDiff === 0) {
+        // Selected date is TODAY - check current time against today's session
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeInMinutes = currentHour * 60 + currentMinute;
         
-        if (currentTimeInMinutes >= bookingCutoffMinutes) {
+        // Check if current time is before the cutoff time (booking window hasn't opened yet)
+        if (currentTimeInMinutes < bookingCutoffMinutes) {
           const cutoffHour = Math.floor(bookingCutoffMinutes / 60);
           const cutoffMinute = bookingCutoffMinutes % 60;
           const cutoffTime12Hour = cutoffHour > 12 ? `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM` : 
                                    cutoffHour === 12 ? `12:${String(cutoffMinute).padStart(2, '0')} PM` :
+                                   cutoffHour === 0 ? `12:${String(cutoffMinute).padStart(2, '0')} AM` :
                                    `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
           
+          const sessionName = session === 'morning' ? 'Morning' : 'Evening';
           return {
             canBook: false,
-            reason: `Evening session can only be booked at least 3 hours before it starts (before ${cutoffTime12Hour})`,
+            reason: `⏰ Booking opens at ${cutoffTime12Hour} (3 hours before ${sessionName.toLowerCase()} session starts)`,
             showMessage: true
           };
         }
-      } else if (session === 'morning') {
-        // Morning session starts at 09:00 (9:00 AM)
-        // Booking cutoff: 09:00 - 3 hours = 06:00 AM
-        const bookingCutoffMinutes = morningStartMinutes - hoursBeforeBookingMinutes; // 06:00 = 360 minutes
         
-        if (currentTimeInMinutes >= bookingCutoffMinutes) {
+        // Check if session has already started (after session start time)
+        if (currentTimeInMinutes >= sessionStartMinutes) {
+          const sessionName = session === 'morning' ? 'Morning' : 'Evening';
+          return {
+            canBook: false,
+            reason: `❌ ${sessionName} session has already started`,
+            showMessage: true
+          };
+        }
+        
+        // Booking is allowed (between cutoff time and session start time)
+        return { canBook: true, showMessage: false };
+      } else {
+        // Selected date is TOMORROW - check if we're before tomorrow's cutoff time
+        // Tomorrow's cutoff time = tomorrow at (sessionStartMinutes - 3 hours)
+        // Since we're still on today, we need to check if we've reached tomorrow's cutoff time yet
+        
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeInMinutes = currentHour * 60 + currentMinute;
+        
+        // Calculate tomorrow's cutoff time in minutes from start of today
+        // For example, if session is at 9 AM tomorrow, cutoff is 6 AM tomorrow
+        // 6 AM tomorrow = 24 hours (1440 minutes) + 360 minutes = 1800 minutes from start of today
+        const tomorrowCutoffMinutes = (24 * 60) + bookingCutoffMinutes; // 24 hours (1440 minutes) + cutoff minutes
+        
+        // Calculate current time in minutes from start of today
+        const currentTimeFromStartOfToday = currentTimeInMinutes;
+        
+        // If we're still on today and haven't reached tomorrow's cutoff time, disable the session
+        // Note: Once we pass midnight and it becomes tomorrow, daysDiff will be 0, so this branch won't execute
+        // But if we're on today selecting tomorrow's date, we check if current time < tomorrow's cutoff
+        if (currentTimeFromStartOfToday < tomorrowCutoffMinutes) {
           const cutoffHour = Math.floor(bookingCutoffMinutes / 60);
           const cutoffMinute = bookingCutoffMinutes % 60;
           const cutoffTime12Hour = cutoffHour > 12 ? `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM` : 
                                    cutoffHour === 12 ? `12:${String(cutoffMinute).padStart(2, '0')} PM` :
+                                   cutoffHour === 0 ? `12:${String(cutoffMinute).padStart(2, '0')} AM` :
                                    `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
           
+          const sessionName = session === 'morning' ? 'Morning' : 'Evening';
+          const selectedDateStr = selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
           return {
             canBook: false,
-            reason: `Morning session can only be booked at least 3 hours before it starts (before ${cutoffTime12Hour})`,
+            reason: `⏰ Booking opens at ${cutoffTime12Hour} on ${selectedDateStr} (3 hours before ${sessionName.toLowerCase()} session starts)`,
             showMessage: true
           };
         }
+        
+        // Current time has reached tomorrow's cutoff time, booking is allowed
+        // This would only happen if it's very late at night (e.g., after 6 AM cutoff time)
+        return { canBook: true, showMessage: false };
       }
     }
     
-    // For future dates or if there are at least 3 hours before session, booking is available
+    // For dates beyond tomorrow (2+ days in the future), booking is available
     return { canBook: true, showMessage: false };
   };
 
@@ -528,7 +679,7 @@ export default function BookAppointmentPage() {
     const icon = session === 'morning' ? Sun : Moon;
     const Icon = icon;
     const isSelected = selectedSession === session;
-    const sessionCheck = selectedDate ? canBookSession(selectedDate, session) : { canBook: false };
+    const sessionCheck = selectedDate ? canBookSession(selectedDate, session, doctorSessionConfig) : { canBook: false };
     const leaveCheck = isDoctorOnLeave(selectedDate, session);
     
     // Check if session can be booked (must be at least 3 hours before session starts)
@@ -560,7 +711,7 @@ export default function BookAppointmentPage() {
               {session === 'morning' ? '🌅 Morning' : '🌆 Evening'}
             </h3>
             <p className={`text-sm mb-2 ${isDisabled ? 'text-gray-400' : isSelected ? 'text-teal-50' : 'text-gray-600'}`}>
-              {getSessionTimeRange(session)}
+              {getSessionTimeRange(session, doctorSessionConfig)}
             </p>
             <div className={`text-xs ${isDisabled ? 'text-gray-400' : isSelected ? 'text-white' : 'text-gray-500'}`}>
               {capacity.availableSlots} / {capacity.totalSlots} slots available
@@ -575,7 +726,7 @@ export default function BookAppointmentPage() {
             {sessionTimeCheck.showMessage && !leaveCheck.onLeave && (
               <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-xs text-yellow-700 font-semibold text-center">
-                  ⏰ {sessionTimeCheck.reason}
+                  {sessionTimeCheck.reason}
                 </p>
               </div>
             )}
@@ -767,7 +918,7 @@ export default function BookAppointmentPage() {
             </h2>
 
             {/* Session Info */}
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            {/* <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-start gap-3">
                 <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-blue-800">
@@ -780,7 +931,7 @@ export default function BookAppointmentPage() {
                   </ul>
                 </div>
               </div>
-            </div>
+            </div> */}
 
             {/* Session Cards */}
             {isLoading ? (
@@ -960,7 +1111,7 @@ export default function BookAppointmentPage() {
                     {formatSessionText(selectedSession)}
                   </p>
                   <p className="text-xs text-gray-500 mt-1.5 break-words">
-                    {getSessionTimeRange(selectedSession)} • Time slot will be assigned automatically
+                    {getSessionTimeRange(selectedSession, doctorSessionConfig)} • Time slot will be assigned automatically
                   </p>
                 </div>
               </div>

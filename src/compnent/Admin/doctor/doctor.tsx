@@ -60,6 +60,13 @@ export default function DoctorDashboard() {
   const [filteredDoctors, setFilteredDoctors] = useState<DoctorDisplay[]>([]);
   const [editAssistants, setEditAssistants] = useState<string[]>([]);
   const [showEditAssistantsDropdown, setShowEditAssistantsDropdown] = useState(false);
+  const [editDoctorData, setEditDoctorData] = useState<{
+    morningStartTime: string;
+    morningEndTime: string;
+    eveningStartTime: string;
+    eveningEndTime: string;
+    room: string;
+  } | null>(null);
 
   const {
     doctors,
@@ -75,7 +82,7 @@ export default function DoctorDashboard() {
 
   const { appointments } = useAppointments();
   
-  const { assistants, loading: assistantsLoading } = useAssistants();
+  const { assistants, loading: assistantsLoading, fetchAssistants } = useAssistants();
 
   // Make test function available globally for debugging
   React.useEffect(() => {
@@ -209,6 +216,23 @@ export default function DoctorDashboard() {
         }) : 'N/A'
       }));
 
+    // Get assigned assistant names
+    const assignedAssistantIds = doctor.assignedAssistants || [];
+    let assistantsText = 'No assistants assigned';
+    
+    if (assignedAssistantIds.length > 0 && assistants.length > 0) {
+      const assistantNames = assignedAssistantIds
+        .map(assistantId => {
+          const assistant = assistants.find(a => a.id === assistantId);
+          return assistant?.user?.name || null;
+        })
+        .filter(name => name !== null);
+      
+      if (assistantNames.length > 0) {
+        assistantsText = assistantNames.join(', ');
+      }
+    }
+
     return {
       id: doctor.id, // Keep as string (UUID)
       name: doctor.user?.name || 'Loading...',
@@ -225,7 +249,7 @@ export default function DoctorDashboard() {
         waiting: waiting 
       },
       slotDuration: `${doctor.consultationDuration} min slots`,
-      assistants: 'No assistants assigned', // TODO: Fetch from assistant assignments
+      assistants: assistantsText,
       online: doctor.isActive,
       phone: doctor.user?.phone || 'N/A',
       email: doctor.user?.email || 'N/A',
@@ -234,7 +258,7 @@ export default function DoctorDashboard() {
       queue: queue // Populate with actual appointments
     };
   });
-  }, [doctors, appointments]);
+  }, [doctors, appointments, assistants]);
 
   // Filter doctors based on user role and search query
   useEffect(() => {
@@ -313,7 +337,7 @@ export default function DoctorDashboard() {
   const openEditDialog = async (doctor: DoctorDisplay) => {
     setSelectedDoctor(doctor);
     
-    // Fetch doctor data from Firestore to get assignedAssistants
+    // Fetch doctor data from Firestore to get assignedAssistants and timing data
     try {
       const { getDoc, doc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase/config');
@@ -327,12 +351,35 @@ export default function DoctorDashboard() {
         } else {
           setEditAssistants([]);
         }
+        
+        // Load timing and room data
+        setEditDoctorData({
+          morningStartTime: doctorData.morningStartTime || '09:00',
+          morningEndTime: doctorData.morningEndTime || '12:00',
+          eveningStartTime: doctorData.eveningStartTime || '17:00',
+          eveningEndTime: doctorData.eveningEndTime || '20:00',
+          room: doctorData.room || 'Room 101'
+        });
       } else {
         setEditAssistants([]);
+        setEditDoctorData({
+          morningStartTime: '09:00',
+          morningEndTime: '12:00',
+          eveningStartTime: '17:00',
+          eveningEndTime: '20:00',
+          room: 'Room 101'
+        });
       }
     } catch (error) {
-      console.error('Error loading doctor assistants:', error);
+      console.error('Error loading doctor data:', error);
       setEditAssistants([]);
+      setEditDoctorData({
+        morningStartTime: '09:00',
+        morningEndTime: '12:00',
+        eveningStartTime: '17:00',
+        eveningEndTime: '20:00',
+        room: 'Room 101'
+      });
     }
     
     setShowEditDialog(true);
@@ -349,6 +396,7 @@ export default function DoctorDashboard() {
     setSelectedDoctor(null);
     setEditAssistants([]);
     setShowEditAssistantsDropdown(false);
+    setEditDoctorData(null);
   };
 
 
@@ -364,7 +412,7 @@ export default function DoctorDashboard() {
     return assistants
       .filter(a => editAssistants.includes(a.id))
       .map(a => a.user.name)
-      .join(', ') || 'Select assistants';
+      .join(', ') || 'Select assistants (Optional)';
   };
 
   const handleAddDoctorSubmit = async (doctorData: any) => {
@@ -422,18 +470,24 @@ export default function DoctorDashboard() {
       const email = formData.get('email') as string;
       const phone = formData.get('phone') as string;
       const specialty = formData.get('specialty') as string;
-      const startTime = formData.get('startTime') as string;
-      const endTime = formData.get('endTime') as string;
+      const morningStartTime = formData.get('morningStartTime') as string;
+      const morningEndTime = formData.get('morningEndTime') as string;
+      const eveningStartTime = formData.get('eveningStartTime') as string;
+      const eveningEndTime = formData.get('eveningEndTime') as string;
       const room = formData.get('room') as string;
       const consultationDurationStr = formData.get('consultationDuration') as string;
       const newStatus = formData.get('status') as string;
 
       // Validate form data
-      if (!name || !email || !phone || !specialty || !startTime || !endTime || !consultationDurationStr) {
+      if (!name || !email || !phone || !specialty || !morningStartTime || !morningEndTime || !eveningStartTime || !eveningEndTime || !consultationDurationStr) {
         toast.error('❌ Please fill in all required fields.');
         setActionLoading(false);
         return;
       }
+
+      // Use morning start time as overall start time and evening end time as overall end time for schedule
+      const startTime = morningStartTime;
+      const endTime = eveningEndTime;
 
       const slotDuration = parseInt(consultationDurationStr);
       if (isNaN(slotDuration) || slotDuration <= 0) {
@@ -463,6 +517,10 @@ export default function DoctorDashboard() {
         schedule: scheduleString,
         startTime: startTime.trim(),
         endTime: endTime.trim(),
+        morningStartTime: morningStartTime.trim(),
+        morningEndTime: morningEndTime.trim(),
+        eveningStartTime: eveningStartTime.trim(),
+        eveningEndTime: eveningEndTime.trim(),
         room: room?.trim() || 'Room 101',
         availableSlots: slots.map(slot => slot.time),
         assignedAssistants: editAssistants, // Include selected assistants
@@ -490,6 +548,8 @@ export default function DoctorDashboard() {
       const success = await updateDoctor(selectedDoctor.id, updates as any);
 
       if (success) {
+        // Refresh assistants to get updated data (in case assistant assignments changed)
+        await fetchAssistants();
         toast.success(`✅ Doctor updated successfully with ${slots.length} time slots!`);
         closeDialogs();
       } else {
@@ -822,27 +882,31 @@ export default function DoctorDashboard() {
       )}
 
       {/* Edit Doctor Dialog */}
-      {showEditDialog && selectedDoctor && (
-        <div className="fixed inset-0 bg-white/5 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+      {showEditDialog && selectedDoctor && editDoctorData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* Dialog Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">Edit Doctor Profile</h2>
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-blue-50">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Edit Doctor Profile</h2>
+                <p className="text-sm text-gray-600 mt-1">Update doctor information and schedule</p>
+              </div>
               <button 
                 onClick={closeDialogs}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
               >
-                <X size={20} className="text-gray-500" />
+                <X size={24} className="text-gray-600" />
               </button>
             </div>
 
             {/* Edit Form */}
-            <form id="edit-doctor-form" className="overflow-y-auto max-h-[calc(90vh-180px)] p-6">
+            <form id="edit-doctor-form" className="flex-1 overflow-y-auto p-6">
               <div className="space-y-5">
                 {/* Name */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Full Name
+                    <User size={16} className="inline mr-1" />
+                    Full Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -855,7 +919,7 @@ export default function DoctorDashboard() {
                 {/* Specialization */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Specialization
+                    Specialty <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -870,7 +934,7 @@ export default function DoctorDashboard() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       <Phone size={16} className="inline mr-1" />
-                      Phone Number
+                      Phone Number <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="tel"
@@ -882,7 +946,7 @@ export default function DoctorDashboard() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       <Mail size={16} className="inline mr-1" />
-                      Email
+                      Email <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="email"
@@ -893,31 +957,83 @@ export default function DoctorDashboard() {
                   </div>
                 </div>
 
-                {/* Schedule Times */}
+                {/* Morning Session */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-3">
+                    <Clock size={16} className="inline mr-1" />
+                    Morning Session
+                  </label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Clock size={16} className="inline mr-1" />
-                      Start Time
+                        Start Time <span className="text-red-500">*</span>
                     </label>
+                      <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
                     <input
                       type="time"
-                      name="startTime"
-                      defaultValue="09:00"
-                      className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                    />
+                          name="morningStartTime"
+                          defaultValue={editDoctorData.morningStartTime}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                        />
+                      </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                        End Time <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                        <input
+                          type="time"
+                          name="morningEndTime"
+                          defaultValue={editDoctorData.morningEndTime}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Evening Session */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-3">
                       <Clock size={16} className="inline mr-1" />
-                      End Time
+                    Evening Session
                     </label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Start Time <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
                     <input
                       type="time"
-                      name="endTime"
-                      defaultValue="17:00"
-                      className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                    />
+                          name="eveningStartTime"
+                          defaultValue={editDoctorData.eveningStartTime}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        End Time <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                        <input
+                          type="time"
+                          name="eveningEndTime"
+                          defaultValue={editDoctorData.eveningEndTime}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -925,12 +1041,12 @@ export default function DoctorDashboard() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <MapPin size={16} className="inline mr-1" />
-                    Room
+                    Room <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     name="room"
-                    defaultValue={selectedDoctor.room}
+                    defaultValue={editDoctorData.room}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
                 </div>
@@ -939,7 +1055,7 @@ export default function DoctorDashboard() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Clock size={16} className="inline mr-1" />
-                    Slot Duration
+                    Slot Duration <span className="text-red-500">*</span>
                   </label>
                   <select 
                     name="consultationDuration"
@@ -959,7 +1075,7 @@ export default function DoctorDashboard() {
                 <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Users size={16} className="inline mr-1" />
-                    Assistants {assistantsLoading && <span className="text-xs text-gray-500">(Loading...)</span>}
+                    Assistants <span className="text-gray-500 text-xs font-normal">(Optional)</span> {assistantsLoading && <span className="text-xs text-gray-500">(Loading...)</span>}
                   </label>
                   
                   {/* Dropdown Button */}

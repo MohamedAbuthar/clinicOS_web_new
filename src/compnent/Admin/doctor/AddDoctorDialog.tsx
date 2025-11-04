@@ -171,7 +171,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
     return assistants
       .filter(a => newDoctor.assistants.includes(a.id))
       .map(a => a.user.name)
-      .join(', ') || 'Select assistants';
+      .join(', ') || 'Select assistants (Optional)';
   };
 
   // Validation function for required fields
@@ -251,6 +251,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
         availableSlots: slots.map(slot => slot.time), // Store available slots
         assignedAssistants: newDoctor.assistants, // Include selected assistants
         status: newDoctor.status, // Include the initial status
+        room: newDoctor.room?.trim() || null, // Include room if provided, otherwise null
       };
 
       await onSubmitAction(doctorData);
@@ -506,13 +507,13 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 <MapPin size={16} className="inline mr-1" />
-                Room <span className="text-red-500">*</span>
+                Room <span className="text-gray-500 text-xs font-normal">(Optional)</span>
               </label>
               <input
                 type="text"
                 value={newDoctor.room}
                 onChange={(e) => handleAddDoctorChange('room', e.target.value)}
-                placeholder="Room 101"
+                placeholder="Room 101 (Optional)"
                 className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               />
             </div>
@@ -564,7 +565,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 <Users size={16} className="inline mr-1" />
-                Assistants {assistantsLoading && <span className="text-xs text-gray-500">(Loading...)</span>}
+                Assistants <span className="text-gray-500 text-xs font-normal">(Optional)</span> {assistantsLoading && <span className="text-xs text-gray-500">(Loading...)</span>}
               </label>
               
               {/* Dropdown Button */}

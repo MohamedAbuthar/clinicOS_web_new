@@ -961,15 +961,33 @@ export default function QueueManagementPage() {
     return () => clearInterval(interval);
   }, [doctorBreakStatus]);
 
-  // Auto-select first doctor if available (only for doctors and assistants)
+  // Auto-select doctor for logged-in users (only for doctors and assistants)
   useEffect(() => {
-    if (doctors.length > 0 && !selectedDoctorId) {
-      if (currentUser?.role === 'doctor' || currentUser?.role === 'assistant') {
-        console.log('Auto-selecting first doctor:', doctors[0]);
-        setSelectedDoctorId(doctors[0].id);
+    if (doctors.length > 0 && !selectedDoctorId && currentUser) {
+      if (currentUser.role === 'doctor') {
+        // For doctors, find the doctor that matches the logged-in user's ID
+        const loggedInDoctor = doctors.find(doctor => doctor.userId === currentUser.id);
+        if (loggedInDoctor) {
+          console.log('Auto-selecting logged-in doctor:', loggedInDoctor);
+          setSelectedDoctorId(loggedInDoctor.id);
+        } else if (doctors.length > 0) {
+          // Fallback to first doctor if exact match not found
+          console.log('Auto-selecting first doctor:', doctors[0]);
+          setSelectedDoctorId(doctors[0].id);
+        }
+      } else if (currentUser.role === 'assistant') {
+        // For assistants, select first assigned doctor
+        const assistant = assistants.find(a => a.userId === currentUser.id);
+        if (assistant && assistant.assignedDoctors && assistant.assignedDoctors.length > 0) {
+          const filteredDoctors = doctors.filter(doctor => assistant.assignedDoctors.includes(doctor.id));
+          if (filteredDoctors.length > 0) {
+            console.log('Auto-selecting first assigned doctor:', filteredDoctors[0]);
+            setSelectedDoctorId(filteredDoctors[0].id);
+          }
+        }
       }
     }
-  }, [doctors, selectedDoctorId, setSelectedDoctorId, currentUser?.role]);
+  }, [doctors, selectedDoctorId, setSelectedDoctorId, currentUser, assistants]);
 
   // Filter appointments for selected doctor
   const doctorAppointments = selectedDoctorId 
@@ -1530,33 +1548,21 @@ export default function QueueManagementPage() {
     );
   }
 
-  if (!selectedDoctorId) {
+  // Only show "Select a Doctor" screen for admin when no doctor is selected
+  // Doctors and assistants always have a doctor auto-selected
+  if (!selectedDoctorId && currentUser?.role === 'admin') {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                {currentUser?.role === 'doctor' 
-                  ? 'Your Queue Management' 
-                  : currentUser?.role === 'assistant'
-                  ? 'Assigned Doctors Queue Management'
-                  : 'Queue Management'
-                }
-              </h1>
+              <h1 className="text-2xl font-bold text-gray-900">Queue Management</h1>
               <p className="text-sm text-gray-500 mt-1">
-                {currentUser?.role === 'doctor' 
-                  ? `Real-time token board for your patients`
-                  : currentUser?.role === 'assistant'
-                  ? `Real-time token board for assigned doctors`
-                  : `Real-time token board for selected doctor`
-                }
+                Real-time token board for selected doctor
               </p>
               {currentUser && (
                 <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
-                  {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
-                  {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
-                  {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+                  👨‍💼 Admin View
                 </div>
               )}
             </div>
@@ -1630,20 +1636,23 @@ export default function QueueManagementPage() {
               </div>
             )}
           </div>
-          <div className="flex gap-3">
-            <select
-              value={selectedDoctorId || ''}
-              onChange={(e) => setSelectedDoctorId(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-            >
-              <option value="">Select Doctor</option>
-              {getFilteredDoctors().map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>
-                  {doctor.user?.name || 'Unknown'} - {doctor.specialty}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Show doctor selector only for admin */}
+          {currentUser?.role === 'admin' && (
+            <div className="flex gap-3">
+              <select
+                value={selectedDoctorId || ''}
+                onChange={(e) => setSelectedDoctorId(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">Select Doctor</option>
+                {getFilteredDoctors().map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Doctor Break Dropdown */}
