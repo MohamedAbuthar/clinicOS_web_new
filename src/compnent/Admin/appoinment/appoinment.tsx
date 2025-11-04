@@ -17,25 +17,18 @@ export default function AppointmentsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    patientName: '',
-    phone: '',
-    email: '',
-    doctor: '',
-    date: '',
-    time: '',
-    source: 'assistant',
-    notes: '',
-  });
   const [actionLoading, setActionLoading] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<string>('');
   const [showDoctorFilter, setShowDoctorFilter] = useState(false);
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
+  const [morningAppointments, setMorningAppointments] = useState<Appointment[]>([]);
+  const [eveningAppointments, setEveningAppointments] = useState<Appointment[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10); // Number of appointments per page
+  const [itemsPerPage] = useState(10);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   const { 
     appointments, 
@@ -55,94 +48,163 @@ export default function AppointmentsPage() {
   const { patients, createPatient } = usePatients();
   const { assistants } = useAssistants();
 
+  // Auto-select doctor and date when doctor logs in
+  useEffect(() => {
+    if (isAuthenticated && currentUser && doctors.length > 0) {
+      if (currentUser.role === 'doctor') {
+        // Find the doctor document that matches this user's ID
+        const doctorDoc = doctors.find(d => d.userId === currentUser.id);
+        if (doctorDoc && !selectedDoctor) {
+          console.log('Auto-selecting doctor:', doctorDoc.id, doctorDoc.user?.name);
+          setSelectedDoctor(doctorDoc.id);
+        }
+        
+        // Auto-select today's date if not selected
+        if (!selectedDate) {
+          const today = new Date().toISOString().split('T')[0];
+          console.log('Auto-selecting today\'s date:', today);
+          setSelectedDate(today);
+        }
+      }
+    }
+  }, [isAuthenticated, currentUser, doctors, selectedDoctor, selectedDate]);
+
+  // Update current time every minute
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(timer);
+  }, []);
+
   // Filter doctors based on user role
   const getFilteredDoctors = () => {
     if (!isAuthenticated || !currentUser) return doctors;
     
     if (currentUser.role === 'doctor') {
-      // Doctor sees only themselves
       return doctors.filter(doctor => doctor.userId === currentUser.id);
     } else if (currentUser.role === 'assistant') {
-      // Assistant sees only their assigned doctors
       const assistant = assistants.find(a => a.userId === currentUser.id);
       if (assistant && assistant.assignedDoctors) {
         return doctors.filter(doctor => assistant.assignedDoctors.includes(doctor.id));
       }
-      return []; // No assigned doctors
+      return [];
     }
     
-    // Admin sees all doctors
     return doctors;
+  };
+
+  // Check if current time is before 2 PM
+  const isMorningSession = () => {
+    return currentTime.getHours() < 14; // 2 PM is hour 14
   };
 
   // Apply role-based filtering to appointments
   useEffect(() => {
+    // For doctors, require at least date selection (doctor is auto-selected)
+    // For admins/assistants, require both doctor and date
+    const isDoctorRole = currentUser?.role === 'doctor';
+    const requiresDoctorFilter = !isDoctorRole;
+    const requiresDateFilter = true;
+
+    if ((requiresDoctorFilter && !selectedDoctor) || !selectedDate) {
+      setFilteredAppointments([]);
+      setMorningAppointments([]);
+      setEveningAppointments([]);
+      return;
+    }
+
     let roleFilteredAppointments = [...appointments];
 
     if (isAuthenticated && currentUser) {
       if (currentUser.role === 'doctor') {
-        // Doctor sees only their own appointments
-        roleFilteredAppointments = appointments.filter(apt => apt.doctorId === currentUser.id);
+        // Find the doctor document ID for this user
+        const doctorDoc = doctors.find(d => d.userId === currentUser.id);
+        if (doctorDoc) {
+          // Filter appointments by the doctor's document ID
+          roleFilteredAppointments = appointments.filter(apt => apt.doctorId === doctorDoc.id);
+          console.log(`Doctor filtering: Found ${roleFilteredAppointments.length} appointments for doctor ${doctorDoc.id}`);
+        } else {
+          console.log('Doctor document not found for user:', currentUser.id);
+          roleFilteredAppointments = [];
+        }
       } else if (currentUser.role === 'assistant') {
-        // Assistant sees appointments for their assigned doctors
         const assistant = assistants.find(a => a.userId === currentUser.id);
         if (assistant && assistant.assignedDoctors) {
           roleFilteredAppointments = appointments.filter(apt => 
             assistant.assignedDoctors.includes(apt.doctorId)
           );
         } else {
-          roleFilteredAppointments = []; // No assigned doctors
+          roleFilteredAppointments = [];
         }
       }
-      // Admin sees all appointments (no filtering)
     }
 
     // Apply date and doctor filters
     const finalFiltered = roleFilteredAppointments.filter(appointment => {
       const matchesDate = appointment.appointmentDate === selectedDate;
-      const matchesDoctor = !selectedDoctor || appointment.doctorId === selectedDoctor;
+      // For doctors, we already filtered by their doctor ID above
+      // For others, check the selectedDoctor filter
+      const matchesDoctor = isDoctorRole || appointment.doctorId === selectedDoctor;
       return matchesDate && matchesDoctor;
     });
 
     // Sort appointments to show newest first (recently added at top)
     const sortedAppointments = finalFiltered.sort((a, b) => {
-      // Sort by creation timestamp in descending order (newest first)
       const timestampA = a.createdAt;
       const timestampB = b.createdAt;
       
-      // Handle Firebase Timestamp objects
       if (timestampA && timestampB) {
         const dateA = timestampA.toDate ? timestampA.toDate() : new Date(timestampA);
         const dateB = timestampB.toDate ? timestampB.toDate() : new Date(timestampB);
         return dateB.getTime() - dateA.getTime();
       }
       
-      // Fallback to appointment date/time if createdAt is not available
       const dateA = new Date(`${a.appointmentDate}T${a.appointmentTime}`);
       const dateB = new Date(`${b.appointmentDate}T${b.appointmentTime}`);
       return dateB.getTime() - dateA.getTime();
     });
 
     setFilteredAppointments(sortedAppointments);
-    // Reset to first page when filters change
+    
+    // Split appointments into morning and evening sessions
+    const morning = sortedAppointments.filter(apt => {
+      const appointmentTime = new Date(`${apt.appointmentDate}T${apt.appointmentTime}`);
+      return appointmentTime.getHours() < 14; // Before 2 PM
+    });
+    
+    const evening = sortedAppointments.filter(apt => {
+      const appointmentTime = new Date(`${apt.appointmentDate}T${apt.appointmentTime}`);
+      return appointmentTime.getHours() >= 14; // 2 PM and after
+    });
+    
+    setMorningAppointments(morning);
+    setEveningAppointments(evening);
     setCurrentPage(1);
-  }, [appointments, currentUser, isAuthenticated, assistants, selectedDate, selectedDoctor]);
+  }, [appointments, currentUser, isAuthenticated, assistants, selectedDate, selectedDoctor, doctors]);
 
-  // Filter appointments by selected date and doctor (legacy - now handled in useEffect above)
-  const legacyFilteredAppointments = appointments.filter(appointment => {
-    const matchesDate = appointment.appointmentDate === selectedDate;
-    const matchesDoctor = !selectedDoctor || appointment.doctorId === selectedDoctor;
-    return matchesDate && matchesDoctor;
-  });
+  // Get appointments to display based on current time
+  const getAppointmentsToDisplay = () => {
+    if (isMorningSession()) {
+      return morningAppointments;
+    } else {
+      return eveningAppointments;
+    }
+  };
 
-  // Debug: Log doctors and appointments when they change
+  const appointmentsToDisplay = getAppointmentsToDisplay();
+  const totalPages = Math.ceil(appointmentsToDisplay.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedAppointments = appointmentsToDisplay.slice(startIndex, endIndex);
+
   useEffect(() => {
     console.log('Appointments page - doctors:', doctors);
     console.log('Appointments page - appointments:', appointments);
     console.log('Appointments page - patients:', patients);
   }, [doctors, appointments, patients]);
 
-  // Close date filter when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (showDateFilter) {
@@ -168,111 +230,6 @@ export default function AppointmentsPage() {
     };
   }, [showDateFilter, showDoctorFilter]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async () => {
-    console.log('handleSubmit: Starting...', formData);
-    
-    // Validate required fields
-    const requiredFields = {
-      patientName: formData.patientName?.trim(),
-      phone: formData.phone?.trim(),
-      doctor: formData.doctor,
-      date: formData.date,
-      time: formData.time
-    };
-    
-    const missingFields = Object.entries(requiredFields)
-      .filter(([key, value]) => !value)
-      .map(([key]) => key);
-    
-    if (missingFields.length > 0) {
-      toast.error(`Please fill in: ${missingFields.join(', ')}`);
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      // First, create or find patient
-      let patientId = patients.find(p => p.phone === formData.phone)?.id;
-      console.log('Existing patient ID:', patientId);
-      
-      if (!patientId) {
-        console.log('Creating new patient...');
-        // Create new patient - this returns the new patient's ID
-        const newPatientData = {
-          name: formData.patientName,
-          phone: formData.phone,
-          email: formData.email || undefined,
-          dateOfBirth: '1990-01-01', // Default date
-          gender: 'other' as const, // Default gender
-        };
-        
-        const newPatientId = await createPatient(newPatientData);
-        console.log('Patient created with ID:', newPatientId);
-        
-        if (!newPatientId) {
-          toast.error('Failed to create patient');
-          setActionLoading(false);
-          return;
-        }
-        
-        patientId = newPatientId;
-      }
-
-      console.log('Creating appointment with patientId:', patientId);
-
-      // Create appointment
-      const success = await createAppointment({
-        patientId: patientId,
-        patientName: formData.patientName, // Store patient name directly
-        patientPhone: formData.phone, // Store patient phone directly
-        doctorId: formData.doctor,
-        appointmentDate: formData.date,
-        appointmentTime: formData.time,
-        notes: formData.notes,
-        source: formData.source as 'web' | 'assistant' | 'walk_in' | 'phone',
-      });
-
-      console.log('Appointment creation result:', success);
-
-      if (success) {
-        toast.success(`Appointment created successfully for ${formData.patientName} with Dr. ${doctors.find(d => d.id === formData.doctor)?.user?.name || 'Unknown Doctor'}`, {
-          duration: 4000,
-        });
-        setIsDialogOpen(false);
-        resetForm();
-        // Reset to first page to show the new appointment at the top
-        setCurrentPage(1);
-        // Refresh the appointments list to show the new appointment
-        await refreshAppointments();
-      } else {
-        toast.error('Failed to create appointment. Please try again.');
-      }
-    } catch (err: unknown) {
-      console.error('Error creating appointment:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to create appointment');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      patientName: '',
-      phone: '',
-      email: '',
-      doctor: '',
-      date: '',
-      time: '',
-      source: 'assistant',
-      notes: '',
-    });
-  };
-
   const handleMigrateTokens = async () => {
     setIsMigrating(true);
     try {
@@ -281,7 +238,6 @@ export default function AppointmentsPage() {
       
       if (result.success) {
         toast.success(`Token migration completed! Updated: ${result.updated}, Skipped: ${result.skipped}`);
-        // Refresh appointments to show updated tokens
         await refreshAppointments();
       } else {
         toast.error(`Migration failed: ${result.error}`);
@@ -294,7 +250,6 @@ export default function AppointmentsPage() {
     }
   };
 
-
   const handleAppointmentAction = async (appointmentId: string, action: string) => {
     setActionLoading(true);
     try {
@@ -302,7 +257,6 @@ export default function AppointmentsPage() {
       console.log('Appointment ID:', appointmentId);
       console.log('Action:', action);
       
-      // Get appointment details for logging
       const appointment = appointments.find(apt => apt.id === appointmentId);
       if (appointment) {
         console.log('Appointment Details:', {
@@ -353,7 +307,6 @@ export default function AppointmentsPage() {
           'no-show': 'marked as no-show'
         };
         toast.success(`Appointment ${actionMessages[action] || action + 'ed'} successfully`);
-        // Refresh the appointments list to show updated data
         await refreshAppointments();
         console.log('Appointments refreshed');
       } else {
@@ -400,6 +353,7 @@ export default function AppointmentsPage() {
   };
 
   const formatTime = (timeString: string) => {
+    if (!timeString) return 'N/A';
     const [hours, minutes] = timeString.split(':');
     const hour = parseInt(hours);
     const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -410,7 +364,6 @@ export default function AppointmentsPage() {
   const formatTimestamp = (timestamp: unknown) => {
     if (!timestamp) return '';
     
-    // Handle Firebase Timestamp objects
     if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof (timestamp as any).toDate === 'function') {
       const date = (timestamp as any).toDate();
       return date.toLocaleTimeString('en-US', { 
@@ -420,7 +373,6 @@ export default function AppointmentsPage() {
       });
     }
     
-    // Handle regular Date objects or date strings
     try {
       const date = new Date(timestamp as string | number | Date);
       if (isNaN(date.getTime())) return '';
@@ -434,38 +386,9 @@ export default function AppointmentsPage() {
     }
   };
 
-  // Pagination logic
-  const totalPages = Math.ceil(filteredAppointments.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedAppointments = filteredAppointments.slice(startIndex, endIndex);
-
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
-
-  // Debug pagination info
-  console.log('=== PAGINATION DEBUG ===');
-  console.log('filteredAppointments.length:', filteredAppointments.length);
-  console.log('itemsPerPage:', itemsPerPage);
-  console.log('totalPages:', totalPages);
-  console.log('currentPage:', currentPage);
-  console.log('startIndex:', startIndex);
-  console.log('endIndex:', endIndex);
-  console.log('paginatedAppointments.length:', paginatedAppointments.length);
-  console.log('========================');
-
-  // Debug sorting info
-  console.log('=== SORTING DEBUG ===');
-  if (filteredAppointments.length > 0) {
-    console.log('First appointment createdAt:', filteredAppointments[0].createdAt);
-    console.log('First appointment patient:', filteredAppointments[0].patientName);
-    if (filteredAppointments.length > 1) {
-      console.log('Second appointment createdAt:', filteredAppointments[1].createdAt);
-      console.log('Second appointment patient:', filteredAppointments[1].patientName);
-    }
-  }
-  console.log('========================');
 
   if (loading) {
     return (
@@ -480,7 +403,6 @@ export default function AppointmentsPage() {
 
   return (
     <div className="w-full">
-      {/* Error Message */}
       {error && (
         <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
           <AlertCircle className="w-5 h-5" />
@@ -488,7 +410,6 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* Page Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
@@ -507,7 +428,6 @@ export default function AppointmentsPage() {
               : 'Manage and track all patient appointments'
             }
           </p>
-          {/* User context indicator */}
           {currentUser && (
             <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
               {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
@@ -515,38 +435,32 @@ export default function AppointmentsPage() {
               {currentUser.role === 'admin' && '👨‍💼 Admin View'}
             </div>
           )}
-          {/* Debug info */}
-          <div className="mt-2 text-xs text-gray-400">
-            Debug: {filteredAppointments.length} appointments for {selectedDate === new Date().toISOString().split('T')[0] ? 'today' : selectedDate}
-            {selectedDoctor && (
-              <span> | Doctor: {doctors.find(d => d.id === selectedDoctor)?.user?.name || 'Unknown'}</span>
-            )}
-            {filteredAppointments.length > 0 && (
-              <span> | First: {filteredAppointments[0].patientName || 'No name'}</span>
-            )}
-            {filteredAppointments.length > itemsPerPage && (
-              <span> | Page {currentPage} of {totalPages}</span>
-            )}
+          
+          {/* Session Indicator */}
+          <div className="mt-3 flex items-center gap-4">
+            <div className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold ${
+              isMorningSession() 
+                ? 'bg-blue-100 text-blue-800 border border-blue-300' 
+                : 'bg-orange-100 text-orange-800 border border-orange-300'
+            }`}>
+              <Clock className="w-4 h-4 mr-2" />
+              {isMorningSession() ? ' Morning Session' : ' Evening Session'}
+            </div>
+            <div className="text-sm text-gray-500">
+              Current Time: {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
           </div>
+
+          {currentUser?.role === 'doctor' && (
+            <div className="mt-2 text-xs text-gray-400">
+              Showing {appointmentsToDisplay.length} appointments for {selectedDate || 'selected date'}
+              {appointmentsToDisplay.length > itemsPerPage && (
+                <span> | Page {currentPage} of {totalPages}</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
-          {/* <button 
-            onClick={handleMigrateTokens}
-            disabled={isMigrating || actionLoading}
-            className="flex items-center gap-2 bg-orange-500 text-white px-4 py-3 rounded-lg hover:bg-orange-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isMigrating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Migrating...
-              </>
-            ) : (
-              <>
-                <RotateCcw className="w-4 h-4" />
-                Fix Tokens
-              </>
-            )}
-          </button> */}
           <button 
             onClick={() => setIsDialogOpen(true)}
             disabled={actionLoading}
@@ -558,9 +472,7 @@ export default function AppointmentsPage() {
         </div>
       </div>
 
-      {/* Search and Filters */}
       <div className="flex items-center gap-4 mb-6">
-        {/* Search Bar */}
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
@@ -570,17 +482,17 @@ export default function AppointmentsPage() {
           />
         </div>
 
-        {/* Filter Buttons */}
         <div className="relative date-filter-container">
           <button 
             onClick={() => setShowDateFilter(!showDateFilter)}
             className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white"
           >
             <Calendar className="w-4 h-4" />
-            <span className="font-medium text-gray-700">Filter by Date</span>
+            <span className="font-medium text-gray-700">
+              {selectedDate ? `Date: ${formatDate(selectedDate)}` : 'Filter by Date'}
+            </span>
           </button>
           
-          {/* Date Filter Dropdown */}
           {showDateFilter && (
             <div className="absolute top-full right-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-10">
               <div className="flex items-center gap-3">
@@ -605,60 +517,80 @@ export default function AppointmentsPage() {
             </div>
           )}
         </div>
-        {/* Doctor Filter */}
-        <div className="relative doctor-filter-container">
-          <button 
-            onClick={() => setShowDoctorFilter(!showDoctorFilter)}
-            className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white"
-          >
-            <User className="w-4 h-4" />
-            <span className="font-medium text-gray-700">
-              {selectedDoctor ? doctors.find(d => d.id === selectedDoctor)?.user?.name || 'Filter by Doctor' : 'Filter by Doctor'}
-            </span>
-          </button>
-          
-          {/* Doctor Filter Dropdown */}
-          {showDoctorFilter && (
-            <div className="absolute top-full right-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-10 min-w-[200px]">
-              <div className="space-y-2">
-                <button
-                  onClick={() => {
-                    setSelectedDoctor('');
-                    setShowDoctorFilter(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                    !selectedDoctor 
-                      ? 'bg-teal-100 text-teal-700 font-medium' 
-                      : 'hover:bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  All Doctors
-                </button>
-                {getFilteredDoctors().map((doctor) => (
+
+        {/* Hide doctor filter for doctors since they can only see their own appointments */}
+        {currentUser?.role !== 'doctor' && (
+          <div className="relative doctor-filter-container">
+            <button 
+              onClick={() => setShowDoctorFilter(!showDoctorFilter)}
+              className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white"
+            >
+              <User className="w-4 h-4" />
+              <span className="font-medium text-gray-700">
+                {selectedDoctor ? doctors.find(d => d.id === selectedDoctor)?.user?.name || 'Filter by Doctor' : 'Filter by Doctor'}
+              </span>
+            </button>
+            
+            {showDoctorFilter && (
+              <div className="absolute top-full right-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-10 min-w-[200px]">
+                <div className="space-y-2">
                   <button
-                    key={doctor.id}
                     onClick={() => {
-                      setSelectedDoctor(doctor.id);
+                      setSelectedDoctor('');
                       setShowDoctorFilter(false);
                     }}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      selectedDoctor === doctor.id 
+                      !selectedDoctor 
                         ? 'bg-teal-100 text-teal-700 font-medium' 
                         : 'hover:bg-gray-100 text-gray-700'
                     }`}
                   >
-                    {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                    All Doctors
                   </button>
-                ))}
+                  {getFilteredDoctors().map((doctor) => (
+                    <button
+                      key={doctor.id}
+                      onClick={() => {
+                        setSelectedDoctor(doctor.id);
+                        setShowDoctorFilter(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                        selectedDoctor === doctor.id 
+                          ? 'bg-teal-100 text-teal-700 font-medium' 
+                          : 'hover:bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Appointments Table */}
+      {/* Session Statistics - Show for doctors with date, for others require both date and doctor */}
+      {selectedDate && (currentUser?.role === 'doctor' || selectedDoctor) && (
+        <div className="mb-6 grid grid-cols-3 gap-4">
+          <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+            <div className="text-sm text-gray-500 font-medium">Total Appointments</div>
+            <div className="text-2xl font-bold text-gray-900">{filteredAppointments.length}</div>
+          </div>
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 shadow-sm">
+            <div className="text-sm text-blue-600 font-medium">Morning Session</div>
+            <div className="text-2xl font-bold text-blue-800">{morningAppointments.length}</div>
+            <div className="text-xs text-blue-500">(Before 2 PM)</div>
+          </div>
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 shadow-sm">
+            <div className="text-sm text-orange-600 font-medium">Evening Session</div>
+            <div className="text-2xl font-bold text-orange-800">{eveningAppointments.length}</div>
+            <div className="text-xs text-orange-500">(2 PM and after)</div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        {/* Table Header */}
         <div className="grid grid-cols-11 gap-4 px-6 py-4 bg-gray-50 border-b border-gray-200">
           <div className="col-span-1 text-sm font-semibold text-gray-600">Token</div>
           <div className="col-span-2 text-sm font-semibold text-gray-600">Patient</div>
@@ -668,35 +600,22 @@ export default function AppointmentsPage() {
           <div className="col-span-2 text-sm font-semibold text-gray-600">Actions</div>
         </div>
 
-        {/* Table Body */}
         {paginatedAppointments.length > 0 ? (
           paginatedAppointments.map((appointment) => {
             const patient = patients.find(p => p.id === appointment.patientId);
             const doctor = doctors.find(d => d.id === appointment.doctorId);
-            
-            // Debug logging
-            console.log('=== APPOINTMENT DEBUG ===');
-            console.log('Appointment ID:', appointment.id);
-            console.log('Patient ID:', appointment.patientId);
-            console.log('Appointment patientName:', appointment.patientName);
-            console.log('Appointment patientPhone:', appointment.patientPhone);
-            console.log('Found patient from lookup:', patient);
-            console.log('All patients count:', patients.length);
-            console.log('========================');
             
             return (
               <div
                 key={appointment.id}
                 className="grid grid-cols-11 gap-4 px-6 py-5 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center"
               >
-                {/* Token */}
                 <div className="col-span-1">
                   <span className="text-2xl font-bold text-teal-500">
                     {appointment.tokenNumber || 'N/A'}
                   </span>
                 </div>
 
-                {/* Patient */}
                 <div className="col-span-2">
                   <div className="font-semibold text-gray-900">
                     {appointment.patientName || patient?.name || 'Unknown Patient'}
@@ -712,7 +631,6 @@ export default function AppointmentsPage() {
                   )}
                 </div>
 
-                {/* Doctor */}
                 <div className="col-span-2">
                   <span className="text-gray-900 font-medium">
                     {doctor?.user?.name || 'Loading...'}
@@ -725,7 +643,6 @@ export default function AppointmentsPage() {
                   </div>
                 </div>
 
-                {/* Date & Time */}
                 <div className="col-span-2">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-gray-400" />
@@ -741,7 +658,6 @@ export default function AppointmentsPage() {
                   </div>
                 </div>
 
-                {/* Status */}
                 <div className="col-span-2">
                   <div className="flex flex-col gap-1">
                     <span
@@ -749,21 +665,7 @@ export default function AppointmentsPage() {
                     >
                       {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
                     </span>
-                    {appointment.acceptanceStatus && appointment.status !== 'approved' && (
-                      <span
-                        className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                          appointment.acceptanceStatus === 'accepted' 
-                            ? 'bg-teal-100 text-teal-700' 
-                            : appointment.acceptanceStatus === 'rejected'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
-                        }`}
-                      >
-                        {appointment.acceptanceStatus === 'accepted' ? '✓ Accepted' : 
-                         appointment.acceptanceStatus === 'rejected' ? '✕ Rejected' : 
-                         '⏳ Pending'}
-                      </span>
-                    )}
+                    
                     {appointment.checkedInAt && (
                       <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                         <UserCheck className="w-3 h-3" />
@@ -773,9 +675,7 @@ export default function AppointmentsPage() {
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="col-span-2 flex items-center gap-2 flex-wrap">
-                  {/* Check-in button - show for all appointments that are not already checked in */}
                   {!appointment.checkedInAt && (
                     <button 
                       onClick={() => handleAppointmentAction(appointment.id, 'check-in')}
@@ -787,7 +687,6 @@ export default function AppointmentsPage() {
                     </button>
                   )}
                   
-                  {/* Show "Already Checked In" for appointments that are already checked in */}
                   {appointment.checkedInAt && (
                     <span className="text-gray-400 text-sm">Already Checked In</span>
                   )}
@@ -800,23 +699,29 @@ export default function AppointmentsPage() {
             <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 text-lg font-medium">No appointments found</p>
             <p className="text-gray-400 text-sm mt-2">
-              {loading ? 'Loading appointments...' : 
-               selectedDate === new Date().toISOString().split('T')[0] && !selectedDoctor ? 
-               'No appointments for today. Create your first appointment to get started.' :
-               selectedDoctor ? 
-               `No appointments found for ${doctors.find(d => d.id === selectedDoctor)?.user?.name || 'selected doctor'} on ${selectedDate}. Try selecting a different doctor or date.` :
-               `No appointments found for ${selectedDate}. Try selecting a different date.`}
+              {currentUser?.role === 'doctor' ? (
+                !selectedDate 
+                  ? 'Please select a date to view your appointments.'
+                  : `No ${isMorningSession() ? 'morning' : 'evening'} session appointments found for you on ${formatDate(selectedDate)}.`
+              ) : (
+                !selectedDoctor && !selectedDate ? 
+                  'Please select a doctor and date to view appointments.' :
+                  !selectedDoctor ?
+                  'Please select a doctor to view appointments.' :
+                  !selectedDate ?
+                  'Please select a date to view appointments.' :
+                  `No ${isMorningSession() ? 'morning' : 'evening'} session appointments found for ${doctors.find(d => d.id === selectedDoctor)?.user?.name || 'selected doctor'} on ${formatDate(selectedDate)}.`
+              )}
             </p>
           </div>
         )}
       </div>
 
-      {/* Pagination Controls - Right Corner */}
-      {filteredAppointments.length > 0 && (
+      {appointmentsToDisplay.length > 0 && (
         <div className="mt-6 flex justify-end">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 mr-4">
-              Showing {startIndex + 1}-{Math.min(endIndex, filteredAppointments.length)} of {filteredAppointments.length}
+              Showing {startIndex + 1}-{Math.min(endIndex, appointmentsToDisplay.length)} of {appointmentsToDisplay.length}
             </span>
             
             <button
@@ -827,7 +732,6 @@ export default function AppointmentsPage() {
               ←
             </button>
             
-            {/* Page Numbers */}
             <div className="flex items-center gap-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                 <button
@@ -855,15 +759,14 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {/* Dialog/Modal */}
       <NewAppointmentDialog
         isOpen={isDialogOpen}
         onCloseAction={() => setIsDialogOpen(false)}
-        formData={formData}
-        onInputChangeAction={handleInputChange}
-        onSubmitAction={handleSubmit}
-        actionLoading={actionLoading}
         doctors={getFilteredDoctors()}
+        onAppointmentCreated={() => {
+          refreshAppointments();
+          console.log('✅ Appointment created callback triggered');
+        }}
       />
     </div>
   );

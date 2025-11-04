@@ -1,19 +1,10 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { X, User, Phone, Mail, Calendar, Clock, Loader2, ChevronDown } from 'lucide-react';
+import { X, User, Phone, Mail, Calendar, Clock, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-
-interface FormData {
-  patientName: string;
-  phone: string;
-  email: string;
-  doctor: string;
-  date: string;
-  time: string;
-  source: string;
-  notes: string;
-}
+import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
 
 interface Doctor {
   id: string;
@@ -21,105 +12,155 @@ interface Doctor {
     name: string;
   };
   specialty: string;
+  morningTime?: string;
+  eveningTime?: string;
 }
 
 interface NewAppointmentDialogProps {
   isOpen: boolean;
   onCloseAction: () => void;
-  formData: FormData;
-  onInputChangeAction: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
-  onSubmitAction: () => void;
-  actionLoading: boolean;
   doctors: Doctor[];
+  onAppointmentCreated?: () => void;
 }
 
 export default function NewAppointmentDialog({
   isOpen,
   onCloseAction,
-  formData,
-  onInputChangeAction,
-  onSubmitAction,
-  actionLoading,
-  doctors
+  doctors,
+  onAppointmentCreated
 }: NewAppointmentDialogProps) {
-  // Time picker state - MUST be called before any conditional returns
-  const [hour, setHour] = useState('12');
-  const [minute, setMinute] = useState('00');
-  const [period, setPeriod] = useState('AM');
-  const [showHourDropdown, setShowHourDropdown] = useState(false);
-  const [showMinuteDropdown, setShowMinuteDropdown] = useState(false);
+  const [formData, setFormData] = useState({
+    patientName: '',
+    phone: '+91 ',
+    email: '',
+    doctor: '',
+    date: '',
+    session: '',
+    reason: ''
+  });
+
+  const [actionLoading, setActionLoading] = useState(false);
   const [emailErrorShown, setEmailErrorShown] = useState(false);
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [sessionTime, setSessionTime] = useState('');
 
-  // Parse existing time when formData.time changes
+  // Update selected doctor when doctor changes
   useEffect(() => {
-    if (formData.time) {
-      const [hours, mins] = formData.time.split(':');
-      const hourNum = parseInt(hours);
-      
-      if (hourNum === 0) {
-        setHour('12');
-        setPeriod('AM');
-      } else if (hourNum < 12) {
-        setHour(hourNum.toString().padStart(2, '0'));
-        setPeriod('AM');
-      } else if (hourNum === 12) {
-        setHour('12');
-        setPeriod('PM');
-      } else {
-        setHour((hourNum - 12).toString().padStart(2, '0'));
-        setPeriod('PM');
+    if (formData.doctor) {
+      const doctor = doctors.find(d => d.id === formData.doctor);
+      if (doctor) {
+        setSelectedDoctor(doctor);
       }
-      
-      setMinute(mins);
+    } else {
+      setSelectedDoctor(null);
+      setSessionTime('');
     }
-  }, [formData.time]);
+  }, [formData.doctor, doctors]);
 
-  // Close dropdowns when clicking outside
+  // Update session time display when session changes
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.hour-dropdown-container')) {
-        setShowHourDropdown(false);
+    if (selectedDoctor && formData.session) {
+      if (formData.session === 'morning') {
+        setSessionTime(selectedDoctor.morningTime || '9:00 AM - 1:00 PM');
+      } else if (formData.session === 'evening') {
+        setSessionTime(selectedDoctor.eveningTime || '2:00 PM - 5:00 PM');
       }
-      if (!target.closest('.minute-dropdown-container')) {
-        setShowMinuteDropdown(false);
-      }
-    };
-
-    if (showHourDropdown || showMinuteDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+    } else {
+      setSessionTime('');
     }
-  }, [showHourDropdown, showMinuteDropdown]);
+  }, [formData.session, selectedDoctor]);
+
+  // Reset form
+  const resetForm = () => {
+    setFormData({
+      patientName: '',
+      phone: '+91 ',
+      email: '',
+      doctor: '',
+      date: '',
+      session: '',
+      reason: ''
+    });
+    setEmailErrorShown(false);
+    setSelectedDoctor(null);
+    setSessionTime('');
+  };
 
   // Early return after all hooks
   if (!isOpen) return null;
 
-  // Convert 12-hour format to 24-hour format and update formData
-  const handleTimeChange = (newHour?: string, newMinute?: string, newPeriod?: string) => {
-    const h = newHour || hour;
-    const m = newMinute || minute;
-    const p = newPeriod || period;
+  // Check if session should be available based on selected date and current time
+  const isSessionAvailable = (session: 'morning' | 'evening') => {
+    if (!formData.date) return true; // If no date selected, show all options
     
-    let hour24 = parseInt(h);
+    const selectedDate = new Date(formData.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    selectedDate.setHours(0, 0, 0, 0);
     
-    if (p === 'AM') {
-      if (hour24 === 12) hour24 = 0;
-    } else {
-      if (hour24 !== 12) hour24 += 12;
+    // If selected date is in the future, all sessions are available
+    if (selectedDate > today) {
+      return true;
     }
     
-    const time24 = `${hour24.toString().padStart(2, '0')}:${m}`;
-    
-    // Create a synthetic event to trigger the parent's onChange
-    const event = {
-      target: {
-        name: 'time',
-        value: time24
+    // If selected date is today, check current time
+    if (selectedDate.getTime() === today.getTime()) {
+      const currentHour = new Date().getHours();
+      const currentMinute = new Date().getMinutes();
+      
+      if (session === 'morning') {
+        // Morning session available only before 1:00 PM (13:00)
+        return currentHour < 13;
+      } else if (session === 'evening') {
+        // Evening session available from 11:00 AM (3 hours before 2:00 PM)
+        return currentHour >= 11;
       }
-    } as React.ChangeEvent<HTMLInputElement>;
+    }
     
-    onInputChangeAction(event);
+    // For past dates, don't allow any bookings
+    return false;
+  };
+
+  // Get helper text for disabled sessions
+  const getSessionHelperText = () => {
+    if (!formData.date) return null;
+    
+    const selectedDate = new Date(formData.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    selectedDate.setHours(0, 0, 0, 0);
+    
+    if (selectedDate.getTime() === today.getTime()) {
+      const currentHour = new Date().getHours();
+      
+      if (currentHour < 11) {
+        return "Morning session available now. Evening session opens at 11:00 AM (3 hours before session)";
+      } else if (currentHour >= 11 && currentHour < 13) {
+        return "Both sessions available now";
+      } else if (currentHour >= 13 && currentHour < 14) {
+        return "Currently between sessions. Evening session starts at 2:00 PM";
+      } else {
+        return "Evening session available now";
+      }
+    }
+    
+    return null;
+  };
+
+  // Handle input changes
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    
+    // If date changes, reset session if it's no longer available
+    if (name === 'date' && formData.session) {
+      const sessionStillAvailable = isSessionAvailable(formData.session as 'morning' | 'evening');
+      if (!sessionStillAvailable) {
+        setFormData(prev => ({ ...prev, [name]: value, session: '' }));
+        return;
+      }
+    }
+    
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   // Email validation function
@@ -145,48 +186,40 @@ export default function NewAppointmentDialog({
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
     
-    // Always ensure +91 prefix
     if (!value.startsWith('+91 ')) {
       value = '+91 ';
     }
     
-    // Extract only the number part after +91 
     const numberPart = value.slice(4).replace(/\D/g, '');
-    
-    // Limit to 10 digits
     const limitedNumber = numberPart.slice(0, 10);
-    
-    // Format as +91 XXXXXXXXXX
     const formattedValue = '+91 ' + limitedNumber;
     
-    // Update the input value
-    e.target.value = formattedValue;
-    onInputChangeAction(e);
+    setFormData(prev => ({ ...prev, phone: formattedValue }));
   };
 
-  // Handle email input with validation
-  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const email = e.target.value;
-    
-    // Only validate if email is not empty
-    if (email) {
-      if (!validateEmail(email) || !isValidDomain(email)) {
-        if (!emailErrorShown) {
-          toast.error("Please enter a valid email");
-          setEmailErrorShown(true);
-        }
-      } else {
-        // Valid email entered, reset error state
-        setEmailErrorShown(false);
-      }
-    } else {
-      // Empty email, reset error state
-      setEmailErrorShown(false);
+ // Handle email input with validation
+const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const email = e.target.value.trim();
+
+  // If empty, clear error and skip validation
+  if (email === '') {
+    setEmailErrorShown(false);
+    setFormData(prev => ({ ...prev, email }));
+    return;
+  }
+
+  // Only validate when user types something
+  if (!validateEmail(email) || !isValidDomain(email)) {
+    if (!emailErrorShown) {
+      toast.error("Please enter a valid email");
+      setEmailErrorShown(true);
     }
-    
-    // Call the original onChange handler
-    onInputChangeAction(e);
-  };
+  } else {
+    setEmailErrorShown(false);
+  }
+
+  setFormData(prev => ({ ...prev, email }));
+};
 
   // Validation function for required fields
   const validateRequiredFields = () => {
@@ -195,17 +228,15 @@ export default function NewAppointmentDialog({
       { field: 'phone', value: formData.phone, label: 'Phone Number' },
       { field: 'doctor', value: formData.doctor, label: 'Doctor' },
       { field: 'date', value: formData.date, label: 'Date' },
-      { field: 'time', value: formData.time, label: 'Time' }
+      { field: 'session', value: formData.session, label: 'Session' }
     ];
 
     for (const { field, value, label } of requiredFields) {
-      if (!value || value.trim() === '') {
-        console.log(`Validation failed for ${field}:`, value); // Debug log
+      if (!value || value.trim() === '' || value === '+91 ') {
         toast.error(`${label} is required`);
         return false;
       }
 
-      // Validate phone number has exactly 10 digits after +91
       if (field === 'phone') {
         const phoneNumber = value.replace('+91 ', '').replace(/\D/g, '');
         if (phoneNumber.length < 10) {
@@ -215,7 +246,6 @@ export default function NewAppointmentDialog({
       }
     }
 
-    // Validate email format only if email is provided (optional field)
     if (formData.email && formData.email.trim() !== '') {
       if (!validateEmail(formData.email)) {
         toast.error('Please enter a valid email format');
@@ -226,45 +256,224 @@ export default function NewAppointmentDialog({
         return false;
       }
     }
-
     return true;
   };
+  
+  // Generate token number for the appointment (per session)
+  const generateTokenNumber = async (date: string, doctorId: string, session: string) => {
+    try {
+      const appointmentsRef = collection(db, 'appointments');
+      const q = query(
+        appointmentsRef,
+        where('appointmentDate', '==', date),
+        where('doctorId', '==', doctorId),
+        where('session', '==', session),
+        where('status', 'in', ['scheduled', 'confirmed', 'approved'])
+      );
 
-  // Handle submit with validation
-  const handleSubmit = () => {
-    if (validateRequiredFields()) {
-      onSubmitAction();
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.size + 1;
+    } catch (error) {
+      console.error('Error generating token number:', error);
+      return 1;
+    }
+  };
+
+  // Save or update patient in patients collection
+  const savePatient = async () => {
+    try {
+      const phoneId = formData.phone.replace(/\s/g, '').replace('+', '');
+      
+      const patientData = {
+        name: formData.patientName.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email.trim() || null,
+        updatedAt: serverTimestamp()
+      };
+
+      const patientsRef = collection(db, 'patients');
+      const q = query(patientsRef, where('phone', '==', formData.phone.trim()));
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        const existingPatientDoc = querySnapshot.docs[0];
+        await setDoc(doc(db, 'patients', existingPatientDoc.id), patientData, { merge: true });
+      } else {
+        const patientRef = doc(db, 'patients', phoneId);
+        await setDoc(patientRef, {
+          ...patientData,
+          createdAt: serverTimestamp()
+        });
+      }
+    } catch (error) {
+      console.error('Error saving patient:', error);
+    }
+  };
+
+  // Check if slot is available
+  const checkSlotAvailability = async () => {
+    try {
+      const appointmentsRef = collection(db, 'appointments');
+      const q = query(
+        appointmentsRef,
+        where('doctorId', '==', formData.doctor),
+        where('appointmentDate', '==', formData.date),
+        where('session', '==', formData.session),
+        where('status', 'in', ['scheduled', 'confirmed'])
+      );
+
+      const querySnapshot = await getDocs(q);
+      const maxAppointmentsPerSession = 20;
+      
+      if (querySnapshot.size >= maxAppointmentsPerSession) {
+        toast.error(`This ${formData.session} session is fully booked. Please choose another session or date.`);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error checking slot availability:', error);
+      return true;
+    }
+  };
+
+  // Get session start time based on doctor and session
+  const getSessionStartTime = () => {
+    if (!selectedDoctor) return '09:00';
+    
+    if (formData.session === 'morning') {
+      if (selectedDoctor.morningTime) {
+        const match = selectedDoctor.morningTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (match) {
+          let hour = parseInt(match[1]);
+          const minute = match[2];
+          const period = match[3].toUpperCase();
+          
+          if (period === 'PM' && hour !== 12) hour += 12;
+          if (period === 'AM' && hour === 12) hour = 0;
+          
+          return `${hour.toString().padStart(2, '0')}:${minute}`;
+        }
+      }
+      return '09:00';
+    } else {
+      if (selectedDoctor.eveningTime) {
+        const match = selectedDoctor.eveningTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (match) {
+          let hour = parseInt(match[1]);
+          const minute = match[2];
+          const period = match[3].toUpperCase();
+          
+          if (period === 'PM' && hour !== 12) hour += 12;
+          if (period === 'AM' && hour === 12) hour = 0;
+          
+          return `${hour.toString().padStart(2, '0')}:${minute}`;
+        }
+      }
+      return '14:00';
+    }
+  };
+
+  // Handle submit with Firebase integration
+  const handleSubmit = async () => {
+    if (!validateRequiredFields()) return;
+
+    setActionLoading(true);
+
+    try {
+      const isAvailable = await checkSlotAvailability();
+      if (!isAvailable) {
+        setActionLoading(false);
+        return;
+      }
+
+      await savePatient();
+
+      // Generate token number per session
+      const tokenNumber = await generateTokenNumber(formData.date, formData.doctor, formData.session);
+      const appointmentTime = getSessionStartTime();
+
+      const doctor = doctors.find(d => d.id === formData.doctor);
+
+      const appointmentData = {
+        tokenNumber: tokenNumber,
+        patientId: '',
+        patientName: formData.patientName.trim(),
+        patientPhone: formData.phone.trim(),
+        patientEmail: formData.email.trim() || null,
+        doctorId: formData.doctor,
+        doctorName: doctor?.user?.name || 'Unknown',
+        doctorSpecialty: doctor?.specialty || '',
+        appointmentDate: formData.date,
+        session: formData.session,
+        appointmentTime: appointmentTime,
+        sessionDisplay: sessionTime,
+        reason: formData.reason.trim() || null,
+        status: 'scheduled',
+        acceptanceStatus: 'pending',
+        source: 'web',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        checkedInAt: null,
+        completedAt: null,
+        cancelledAt: null
+      };
+
+      console.log('📤 Creating appointment with data:', appointmentData);
+
+      const appointmentsRef = collection(db, 'appointments');
+      const docRef = await addDoc(appointmentsRef, appointmentData);
+
+      console.log('✅ Appointment created with ID:', docRef.id);
+
+      toast.success(
+        `Appointment created successfully! Token #${tokenNumber} for ${formData.session === 'morning' ? 'Morning' : 'Evening'} session`,
+        { duration: 5000 }
+      );
+      
+      resetForm();
+      onCloseAction();
+      
+      setTimeout(() => {
+        if (onAppointmentCreated) {
+          onAppointmentCreated();
+        }
+      }, 500);
+
+    } catch (error) {
+      console.error('❌ Error creating appointment:', error);
+      toast.error('Failed to create appointment. Please try again.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop with blur */}
       <div 
         className="absolute inset-0 bg-white/30 backdrop-blur-sm"
         onClick={onCloseAction}
       ></div>
       
-      {/* Dialog Content */}
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Dialog Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">New Appointment</h2>
             <p className="text-gray-500 text-sm mt-1">Create a new patient appointment</p>
           </div>
           <button
-            onClick={onCloseAction}
+            onClick={() => {
+              resetForm();
+              onCloseAction();
+            }}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <X className="w-6 h-6 text-gray-500" />
           </button>
         </div>
 
-        {/* Dialog Body */}
         <div className="px-6 py-6">
           <div className="space-y-5">
-            {/* Patient Name */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Patient Name <span className="text-red-500">*</span>
@@ -275,14 +484,13 @@ export default function NewAppointmentDialog({
                   type="text"
                   name="patientName"
                   value={formData.patientName}
-                  onChange={onInputChangeAction}
+                  onChange={handleInputChange}
                   placeholder="Enter patient name"
                   className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
             </div>
 
-            {/* Phone and Email */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -293,7 +501,7 @@ export default function NewAppointmentDialog({
                   <input
                     type="tel"
                     name="phone"
-                    value={formData.phone || '+91 '}
+                    value={formData.phone}
                     onChange={handlePhoneChange}
                     placeholder="+91 9876543210"
                     maxLength={14}
@@ -320,7 +528,6 @@ export default function NewAppointmentDialog({
               </div>
             </div>
 
-            {/* Doctor Selection */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Select Doctor <span className="text-red-500">*</span>
@@ -328,7 +535,7 @@ export default function NewAppointmentDialog({
               <select
                 name="doctor"
                 value={formData.doctor}
-                onChange={onInputChangeAction}
+                onChange={handleInputChange}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               >
                 <option value="">Choose a doctor</option>
@@ -340,7 +547,6 @@ export default function NewAppointmentDialog({
               </select>
             </div>
 
-            {/* Date and Time */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -352,7 +558,7 @@ export default function NewAppointmentDialog({
                     type="date"
                     name="date"
                     value={formData.date}
-                    onChange={onInputChangeAction}
+                    onChange={handleInputChange}
                     onClick={(e) => e.currentTarget.showPicker?.()}
                     min={new Date().toISOString().split('T')[0]}
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
@@ -362,124 +568,71 @@ export default function NewAppointmentDialog({
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Time <span className="text-red-500">*</span>
+                  Session <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
-                  <div className="flex gap-2">
-                    {/* Hour - Custom Dropdown */}
-                    <div className="relative flex-1 hour-dropdown-container">
-                      <button
-                        type="button"
-                        onClick={() => setShowHourDropdown(!showHourDropdown)}
-                        className="w-full pl-11 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer bg-white text-left"
-                      >
-                        {hour}
-                      </button>
-                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                      
-                      {/* Custom Dropdown Menu */}
-                      {showHourDropdown && (
-                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                          {Array.from({ length: 12 }, (_, i) => {
-                            const h = (i + 1).toString().padStart(2, '0');
-                            return (
-                              <div
-                                key={h}
-                                onClick={() => {
-                                  setHour(h);
-                                  handleTimeChange(h, minute, period);
-                                  setShowHourDropdown(false);
-                                }}
-                                className={`px-4 py-2 cursor-pointer hover:bg-teal-50 transition-colors ${
-                                  hour === h ? 'bg-teal-100 text-teal-700 font-semibold' : 'text-gray-700'
-                                }`}
-                              >
-                                {h}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Minute - Custom Dropdown */}
-                    <div className="relative flex-1 minute-dropdown-container">
-                      <button
-                        type="button"
-                        onClick={() => setShowMinuteDropdown(!showMinuteDropdown)}
-                        className="w-full px-3 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer bg-white text-left"
-                      >
-                        {minute}
-                      </button>
-                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                      
-                      {/* Custom Dropdown Menu */}
-                      {showMinuteDropdown && (
-                        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                          {Array.from({ length: 60 }, (_, i) => {
-                            const m = i.toString().padStart(2, '0');
-                            return (
-                              <div
-                                key={m}
-                                onClick={() => {
-                                  setMinute(m);
-                                  handleTimeChange(hour, m, period);
-                                  setShowMinuteDropdown(false);
-                                }}
-                                className={`px-4 py-2 cursor-pointer hover:bg-teal-50 transition-colors ${
-                                  minute === m ? 'bg-teal-100 text-teal-700 font-semibold' : 'text-gray-700'
-                                }`}
-                              >
-                                {m}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* AM/PM */}
-                    <div className="relative w-24">
-                      <select
-                        value={period}
-                        onChange={(e) => {
-                          setPeriod(e.target.value);
-                          handleTimeChange(hour, minute, e.target.value);
-                        }}
-                        className="w-full px-3 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent appearance-none cursor-pointer bg-white font-semibold"
-                      >
-                        <option value="AM">AM</option>
-                        <option value="PM">PM</option>
-                      </select>
-                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
+                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                  <select
+                    name="session"
+                    value={formData.session}
+                    onChange={handleInputChange}
+                    disabled={!formData.doctor || !formData.date}
+                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer"
+                  >
+                    <option value="">Select session</option>
+                    <option value="morning" disabled={!isSessionAvailable('morning')}>
+                      Morning (9:00 AM - 1:00 PM) {!isSessionAvailable('morning') && '- Not Available'}
+                    </option>
+                    <option value="evening" disabled={!isSessionAvailable('evening')}>
+                      Evening (2:00 PM onwards) {!isSessionAvailable('evening') && '- Not Available'}
+                    </option>
+                  </select>
                 </div>
+                {sessionTime && (
+                  <p className="text-xs text-teal-600 mt-1 ml-1 font-medium">
+                    {sessionTime}
+                  </p>
+                )}
+                {getSessionHelperText() && (
+                  <p className="text-xs text-orange-600 mt-1 ml-1">
+                    ⏰ {getSessionHelperText()}
+                  </p>
+                )}
+                {!formData.doctor && (
+                  <p className="text-xs text-gray-500 mt-1 ml-1">
+                    Please select a doctor first
+                  </p>
+                )}
+                {!formData.date && formData.doctor && (
+                  <p className="text-xs text-gray-500 mt-1 ml-1">
+                    Please select a date first
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* Notes */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Notes
+                Reason
               </label>
               <textarea
-                name="notes"
-                value={formData.notes}
-                onChange={onInputChangeAction}
-                placeholder="Enter any additional notes or comments..."
+                name="reason"
+                value={formData.reason}
+                onChange={handleInputChange}
+                placeholder="Enter any additional reason or comments..."
                 rows={3}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent resize-none"
               />
             </div>
           </div>
 
-          {/* Dialog Footer */}
           <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-200">
             <button
               type="button"
-              onClick={onCloseAction}
+              onClick={() => {
+                resetForm();
+                onCloseAction();
+              }}
               className="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium text-gray-700"
             >
               Cancel
