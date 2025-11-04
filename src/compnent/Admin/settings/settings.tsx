@@ -5,23 +5,34 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { useAssistants } from '@/lib/hooks/useAssistants';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import EditDoctorProfileDialog, { DoctorProfileData } from './EditDoctorProfileDialog';
+import EditAdminProfileDialog, { AdminProfileData } from './EditAdminProfileDialog';
+import EditAssistantProfileDialog, { AssistantProfileData } from './EditAssistantProfileDialog';
+import { updateUserProfile } from '@/lib/firebase/auth';
 import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isEditAdminDialogOpen, setIsEditAdminDialogOpen] = useState(false);
+  const [isEditAssistantDialogOpen, setIsEditAssistantDialogOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   
   const { user: currentUser, isAuthenticated, refreshUser } = useAuth();
-  const { assistants } = useAssistants();
+  const { assistants, updateAssistant, fetchAssistants } = useAssistants();
   const { doctors, updateDoctor, fetchDoctors, loading: doctorsLoading } = useDoctors();
   const isAdmin = currentUser?.role === 'admin';
   const isDoctor = currentUser?.role === 'doctor';
+  const isAssistant = currentUser?.role === 'assistant';
   
   // Get current doctor data if user is a doctor
   const currentDoctor = isDoctor 
     ? doctors.find(d => d.userId === currentUser?.id)
+    : null;
+
+  // Get current assistant data if user is an assistant
+  const currentAssistant = isAssistant
+    ? assistants.find(a => a.userId === currentUser?.id)
     : null;
   
   // Only fetch audit logs for admin users
@@ -33,6 +44,13 @@ export default function SettingsPage() {
       fetchDoctors();
     }
   }, [isDoctor, isAuthenticated, fetchDoctors]);
+
+  // Fetch assistants when component loads if user is an assistant
+  useEffect(() => {
+    if (isAssistant && isAuthenticated) {
+      fetchAssistants();
+    }
+  }, [isAssistant, isAuthenticated, fetchAssistants]);
 
   // Filter audit logs based on user role
   const getFilteredAuditLogs = () => {
@@ -80,11 +98,25 @@ export default function SettingsPage() {
   }, [apiError]);
 
   const handleEditProfile = () => {
-    if (!currentDoctor || !currentUser) {
-      toast.error('Doctor profile data not loaded yet');
-      return;
+    if (isDoctor) {
+      if (!currentDoctor || !currentUser) {
+        toast.error('Doctor profile data not loaded yet');
+        return;
+      }
+      setIsEditDialogOpen(true);
+    } else if (isAdmin) {
+      if (!currentUser) {
+        toast.error('User data not loaded yet');
+        return;
+      }
+      setIsEditAdminDialogOpen(true);
+    } else if (isAssistant) {
+      if (!currentAssistant || !currentUser) {
+        toast.error('Assistant profile data not loaded yet');
+        return;
+      }
+      setIsEditAssistantDialogOpen(true);
     }
-    setIsEditDialogOpen(true);
   };
 
   const handleSaveProfile = async (data: DoctorProfileData) => {
@@ -124,6 +156,72 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveAdminProfile = async (data: AdminProfileData) => {
+    if (!currentUser) {
+      toast.error('User data not found');
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      const updates = {
+        name: data.name.trim(),
+        email: data.email.trim(),
+        phone: data.phone.trim() || '',
+      };
+
+      await updateUserProfile(updates);
+      
+      // Refresh user data from AuthContext to show updated data
+      await refreshUser();
+      
+      toast.success('✅ Profile updated successfully');
+      setIsEditAdminDialogOpen(false);
+      setSuccessMessage('Profile updated successfully');
+    } catch (err: any) {
+      toast.error(`❌ ${err.message || 'Failed to update profile'}`);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSaveAssistantProfile = async (data: AssistantProfileData) => {
+    if (!currentAssistant) {
+      toast.error('Assistant profile not found');
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      const updates = {
+        user: {
+          name: data.name.trim(),
+          email: data.email.trim(),
+          phone: data.phone.trim() || '',
+        }
+      };
+
+      const success = await updateAssistant(currentAssistant.id, updates);
+      
+      if (success) {
+        // Refresh assistants list
+        await fetchAssistants();
+        // Refresh user data from AuthContext to show updated name, email, phone
+        await refreshUser();
+        
+        toast.success('✅ Profile updated successfully');
+        setIsEditAssistantDialogOpen(false);
+        setSuccessMessage('Profile updated successfully');
+      } else {
+        toast.error('❌ Failed to update profile');
+      }
+    } catch (err: any) {
+      toast.error(`❌ ${err.message || 'Failed to update profile'}`);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const getInitialProfileData = (): DoctorProfileData | null => {
     if (!currentDoctor || !currentUser) return null;
     
@@ -132,6 +230,52 @@ export default function SettingsPage() {
       email: currentUser.email || '',
       phone: currentUser.phone || '',
       specialty: currentDoctor.specialty || '',
+    };
+  };
+
+  const getInitialAdminProfileData = (): AdminProfileData | null => {
+    if (!currentUser) return null;
+    
+    // Ensure phone has +91 prefix
+    let phoneValue = currentUser.phone || '';
+    if (phoneValue && !phoneValue.startsWith('+91 ')) {
+      const digitsOnly = phoneValue.replace(/\D/g, '');
+      if (digitsOnly.length === 10) {
+        phoneValue = '+91 ' + digitsOnly;
+      } else {
+        phoneValue = '+91 ';
+      }
+    } else if (!phoneValue) {
+      phoneValue = '+91 ';
+    }
+    
+    return {
+      name: currentUser.name || '',
+      email: currentUser.email || '',
+      phone: phoneValue,
+    };
+  };
+
+  const getInitialAssistantProfileData = (): AssistantProfileData | null => {
+    if (!currentAssistant || !currentUser) return null;
+    
+    // Ensure phone has +91 prefix
+    let phoneValue = currentUser.phone || '';
+    if (phoneValue && !phoneValue.startsWith('+91 ')) {
+      const digitsOnly = phoneValue.replace(/\D/g, '');
+      if (digitsOnly.length === 10) {
+        phoneValue = '+91 ' + digitsOnly;
+      } else {
+        phoneValue = '+91 ';
+      }
+    } else if (!phoneValue) {
+      phoneValue = '+91 ';
+    }
+    
+    return {
+      name: currentUser.name || '',
+      email: currentUser.email || '',
+      phone: phoneValue,
     };
   };
 
@@ -193,7 +337,7 @@ export default function SettingsPage() {
               <User className="w-6 h-6 text-teal-600" />
               <h2 className="text-xl font-bold text-gray-900">Your Profile</h2>
             </div>
-            {isDoctor && currentDoctor && (
+            {(isDoctor && currentDoctor) || isAdmin || (isAssistant && currentAssistant) ? (
               <button
                 onClick={handleEditProfile}
                 className="flex items-center gap-2 px-3 py-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
@@ -202,7 +346,7 @@ export default function SettingsPage() {
                 <Edit className="w-5 h-5" />
                 <span className="text-sm font-medium">Edit</span>
               </button>
-            )}
+            ) : null}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -352,6 +496,28 @@ export default function SettingsPage() {
             onClose={() => setIsEditDialogOpen(false)}
             onSave={handleSaveProfile}
             initialData={getInitialProfileData()}
+            loading={isUpdating}
+          />
+        )}
+
+        {/* Edit Admin Profile Dialog */}
+        {isAdmin && (
+          <EditAdminProfileDialog
+            isOpen={isEditAdminDialogOpen}
+            onClose={() => setIsEditAdminDialogOpen(false)}
+            onSave={handleSaveAdminProfile}
+            initialData={getInitialAdminProfileData()}
+            loading={isUpdating}
+          />
+        )}
+
+        {/* Edit Assistant Profile Dialog */}
+        {isAssistant && currentAssistant && (
+          <EditAssistantProfileDialog
+            isOpen={isEditAssistantDialogOpen}
+            onClose={() => setIsEditAssistantDialogOpen(false)}
+            onSave={handleSaveAssistantProfile}
+            initialData={getInitialAssistantProfileData()}
             loading={isUpdating}
           />
         )}
