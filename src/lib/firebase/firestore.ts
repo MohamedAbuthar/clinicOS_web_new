@@ -204,18 +204,49 @@ export const createAppointment = async (appointmentData: any) => {
 export const createMultipleAppointments = async (appointmentsData: any[]) => {
   try {
     console.log(`📝 Creating ${appointmentsData.length} appointments in batch...`);
+    console.log('📋 Appointment data to create:', appointmentsData.map(apt => ({
+      patientName: apt.patientName,
+      doctorId: apt.doctorId,
+      appointmentDate: apt.appointmentDate,
+      appointmentTime: apt.appointmentTime,
+      tokenNumber: apt.tokenNumber,
+      status: apt.status || 'scheduled'
+    })));
     
     const appointmentsRef = collection(db, COLLECTIONS.APPOINTMENTS);
     const createdAppointments: any[] = [];
     
     // Create appointments sequentially to maintain token order
     for (const appointmentData of appointmentsData) {
+      // Ensure all required fields are present
       const newAppointment = {
-        ...appointmentData,
-        status: 'scheduled',
+        patientId: appointmentData.patientId,
+        patientName: appointmentData.patientName || '',
+        patientPhone: appointmentData.patientPhone || '',
+        doctorId: appointmentData.doctorId,
+        appointmentDate: appointmentData.appointmentDate, // Format: YYYY-MM-DD
+        appointmentTime: appointmentData.appointmentTime, // Format: HH:MM
+        session: appointmentData.session || null,
+        duration: appointmentData.duration || 30,
+        status: appointmentData.status || 'scheduled', // Ensure status is 'scheduled'
+        source: appointmentData.source || 'web',
+        notes: appointmentData.notes || '',
+        tokenNumber: appointmentData.tokenNumber || '',
+        acceptanceStatus: appointmentData.acceptanceStatus || 'pending',
+        checkedInAt: null,
+        queueOrder: null,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       };
+      
+      console.log(`📤 Creating appointment with data:`, {
+        doctorId: newAppointment.doctorId,
+        appointmentDate: newAppointment.appointmentDate,
+        appointmentTime: newAppointment.appointmentTime,
+        tokenNumber: newAppointment.tokenNumber,
+        status: newAppointment.status,
+        patientName: newAppointment.patientName
+      });
       
       const docRef = await addDoc(appointmentsRef, newAppointment);
       
@@ -229,9 +260,31 @@ export const createMultipleAppointments = async (appointmentsData: any[]) => {
         details: `Appointment created for patient ${appointmentData.patientId} (Token: ${appointmentData.tokenNumber})`
       });
       
-      createdAppointments.push({ id: docRef.id, ...newAppointment });
-      console.log(`✅ Created appointment ${createdAppointments.length}/${appointmentsData.length}: Token ${appointmentData.tokenNumber}`);
+      const createdAppointment = { 
+        id: docRef.id, 
+        ...newAppointment 
+      };
+      
+      createdAppointments.push(createdAppointment);
+      console.log(`✅ Created appointment ${createdAppointments.length}/${appointmentsData.length}:`, {
+        id: docRef.id,
+        tokenNumber: newAppointment.tokenNumber,
+        patientName: newAppointment.patientName,
+        appointmentDate: newAppointment.appointmentDate,
+        appointmentTime: newAppointment.appointmentTime,
+        doctorId: newAppointment.doctorId,
+        status: newAppointment.status
+      });
     }
+    
+    console.log(`✅ Successfully created ${createdAppointments.length} appointments`);
+    console.log('📊 Created appointments summary:', createdAppointments.map(apt => ({
+      id: apt.id,
+      tokenNumber: apt.tokenNumber,
+      patientName: apt.patientName,
+      appointmentDate: apt.appointmentDate,
+      appointmentTime: apt.appointmentTime
+    })));
     
     return {
       success: true,

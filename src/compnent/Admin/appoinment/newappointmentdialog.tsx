@@ -19,6 +19,10 @@ interface Doctor {
   morningEndTime?: string;
   eveningStartTime?: string;
   eveningEndTime?: string;
+  availableSlots?: string[];
+  startTime?: string;
+  endTime?: string;
+  consultationDuration?: number;
 }
 
 interface NewAppointmentDialogProps {
@@ -49,8 +53,20 @@ export default function NewAppointmentDialog({
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [sessionTime, setSessionTime] = useState('');
   
+  // Force re-render to update session availability based on current time
+  const [currentTime, setCurrentTime] = useState(new Date());
+  
   // Schedule overrides for checking doctor availability
   const { fetchOverrides, overrides } = useScheduleOverrides();
+
+  // Update current time every minute to refresh session availability
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Update selected doctor when doctor changes
   useEffect(() => {
@@ -234,42 +250,77 @@ export default function NewAppointmentDialog({
       return false;
     }
     
+    if (!selectedDoctor) return true; // If no doctor selected, allow (will be caught by validation)
+    
+    // Use currentTime state to ensure real-time updates
+    const now = currentTime;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDate = new Date(formData.date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    selectedDate.setHours(0, 0, 0, 0);
+    const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
     
-    // If selected date is in the future, all sessions are available
-    if (selectedDate > today) {
-      return true;
-    }
+    // Get session start time from doctor's config
+    const sessionStartTime = session === 'morning' 
+      ? normalizeTime(selectedDoctor.morningStartTime, '09:00')
+      : normalizeTime(selectedDoctor.eveningStartTime, '14:00');
     
-    // If selected date is today, check if booking is allowed (3 hours before session starts)
-    if (selectedDate.getTime() === today.getTime()) {
-      if (!selectedDoctor) return true; // If no doctor selected, allow (will be caught by validation)
+    // Parse session start time
+    const [startHours, startMinutes] = sessionStartTime.split(':').map(Number);
+    const sessionStartMinutes = startHours * 60 + startMinutes;
+    
+    // Calculate days difference between selected date and today
+    const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // If selected date is today or tomorrow, check if there are at least 3 hours before session starts
+    if (daysDiff === 0 || daysDiff === 1) {
+      const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
+      const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
       
-      // Get session start time from doctor's config
-      const sessionStartTime = session === 'morning' 
-        ? normalizeTime(selectedDoctor.morningStartTime, '09:00')
-        : normalizeTime(selectedDoctor.eveningStartTime, '14:00');
-      
-      // Parse session start time
-      const [startHours, startMinutes] = sessionStartTime.split(':').map(Number);
-      const sessionStartMinutes = startHours * 60 + startMinutes;
-      
-      // Get current time in minutes
-      const now = new Date();
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
-      const currentTimeInMinutes = currentHour * 60 + currentMinute;
-      
-      // Calculate booking cutoff (3 hours before session starts)
-      const hoursBeforeBooking = 3;
-      const hoursBeforeBookingMinutes = hoursBeforeBooking * 60;
+      // Booking cutoff: session start time - 3 hours
       const bookingCutoffMinutes = sessionStartMinutes - hoursBeforeBookingMinutes;
       
-      // Session is available if current time is before the cutoff time
-      return currentTimeInMinutes < bookingCutoffMinutes;
+      if (daysDiff === 0) {
+        // Selected date is TODAY - check current time against today's session
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeInMinutes = currentHour * 60 + currentMinute;
+        
+        // Check if current time is before the cutoff time (booking window hasn't opened yet)
+        // Session is disabled if current time is LESS than 3 hours before session start
+        if (currentTimeInMinutes < bookingCutoffMinutes) {
+          return false; // Session is disabled
+        }
+        
+        // Check if session has already started (after session start time)
+        if (currentTimeInMinutes >= sessionStartMinutes) {
+          return false; // Session has started
+        }
+        
+        // Booking is allowed (between cutoff time and session start time)
+        return true;
+      } else {
+        // Selected date is TOMORROW - check if we're before tomorrow's cutoff time
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeInMinutes = currentHour * 60 + currentMinute;
+        
+        // Calculate tomorrow's cutoff time in minutes from start of today
+        // For example, if session is at 9 AM tomorrow, cutoff is 6 AM tomorrow
+        // 6 AM tomorrow = 24 hours (1440 minutes) + 360 minutes = 1800 minutes from start of today
+        const tomorrowCutoffMinutes = (24 * 60) + bookingCutoffMinutes; // 24 hours (1440 minutes) + cutoff minutes
+        
+        // If we're still on today and haven't reached tomorrow's cutoff time, disable the session
+        if (currentTimeInMinutes < tomorrowCutoffMinutes) {
+          return false; // Session is disabled until tomorrow's cutoff time
+        }
+        
+        // Current time has reached tomorrow's cutoff time, booking is allowed
+        return true;
+      }
+    }
+    
+    // For dates beyond tomorrow (2+ days in the future), booking is available
+    if (daysDiff > 1) {
+      return true;
     }
     
     // For past dates, don't allow any bookings
@@ -280,13 +331,15 @@ export default function NewAppointmentDialog({
   const getSessionHelperText = () => {
     if (!formData.date || !selectedDoctor) return null;
     
+    const now = currentTime;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDate = new Date(formData.date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    selectedDate.setHours(0, 0, 0, 0);
+    const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
     
-    if (selectedDate.getTime() === today.getTime()) {
-      const now = new Date();
+    // Calculate days difference
+    const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDiff === 0 || daysDiff === 1) {
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
@@ -304,28 +357,58 @@ export default function NewAppointmentDialog({
       const eveningCutoffMinutes = eveningStartMinutesTotal - (3 * 60);
       
       // Format cutoff times for display
-      const formatCutoffTime = (minutes: number): string => {
-        const hour = Math.floor(minutes / 60);
+      const formatCutoffTime = (minutes: number, isTomorrow: boolean = false): string => {
+        let hour = Math.floor(minutes / 60);
         const minute = minutes % 60;
+        
+        // If it's tomorrow, adjust hour for display
+        if (isTomorrow && hour >= 24) {
+          hour = hour - 24;
+        }
+        
         const period = hour >= 12 ? 'PM' : 'AM';
         const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
         return `${displayHour}:${String(minute).padStart(2, '0')} ${period}`;
       };
       
-      const morningCutoff = formatCutoffTime(morningCutoffMinutes);
-      const eveningCutoff = formatCutoffTime(eveningCutoffMinutes);
-      
-      const morningAvailable = currentTimeInMinutes < morningCutoffMinutes;
-      const eveningAvailable = currentTimeInMinutes < eveningCutoffMinutes;
-      
-      if (morningAvailable && eveningAvailable) {
-        return `Both sessions available. Morning session closes at ${morningCutoff}, Evening session closes at ${eveningCutoff}`;
-      } else if (morningAvailable && !eveningAvailable) {
-        return `Morning session available until ${morningCutoff}. Evening session booking closed (3-hour rule)`;
-      } else if (!morningAvailable && eveningAvailable) {
-        return `Evening session available until ${eveningCutoff}. Morning session booking closed (3-hour rule)`;
+      if (daysDiff === 0) {
+        // Today's date
+        const morningCutoff = formatCutoffTime(morningCutoffMinutes);
+        const eveningCutoff = formatCutoffTime(eveningCutoffMinutes);
+        
+        const morningAvailable = currentTimeInMinutes >= morningCutoffMinutes && currentTimeInMinutes < morningStartMinutesTotal;
+        const eveningAvailable = currentTimeInMinutes >= eveningCutoffMinutes && currentTimeInMinutes < eveningStartMinutesTotal;
+        
+        if (!morningAvailable && !eveningAvailable) {
+          const morningCutoffDisplay = formatCutoffTime(morningCutoffMinutes);
+          const eveningCutoffDisplay = formatCutoffTime(eveningCutoffMinutes);
+          return `Both sessions are closed. Booking opens at ${morningCutoffDisplay} for morning and ${eveningCutoffDisplay} for evening (3 hours before session starts)`;
+        } else if (!morningAvailable && eveningAvailable) {
+          const morningCutoffDisplay = formatCutoffTime(morningCutoffMinutes);
+          return `Morning session closed. Booking opens at ${morningCutoffDisplay} (3 hours before session starts). Evening session available.`;
+        } else if (morningAvailable && !eveningAvailable) {
+          const eveningCutoffDisplay = formatCutoffTime(eveningCutoffMinutes);
+          return `Evening session closed. Booking opens at ${eveningCutoffDisplay} (3 hours before session starts). Morning session available.`;
+        }
       } else {
-        return "Both sessions are closed for today (3-hour advance booking required)";
+        // Tomorrow's date
+        const tomorrowMorningCutoffMinutes = (24 * 60) + morningCutoffMinutes;
+        const tomorrowEveningCutoffMinutes = (24 * 60) + eveningCutoffMinutes;
+        
+        const morningAvailable = currentTimeInMinutes >= tomorrowMorningCutoffMinutes;
+        const eveningAvailable = currentTimeInMinutes >= tomorrowEveningCutoffMinutes;
+        
+        const selectedDateStr = selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        const morningCutoffDisplay = formatCutoffTime(morningCutoffMinutes, true);
+        const eveningCutoffDisplay = formatCutoffTime(eveningCutoffMinutes, true);
+        
+        if (!morningAvailable && !eveningAvailable) {
+          return `Both sessions are closed. Booking opens at ${morningCutoffDisplay} on ${selectedDateStr} for morning and ${eveningCutoffDisplay} for evening (3 hours before session starts)`;
+        } else if (!morningAvailable && eveningAvailable) {
+          return `Morning session closed. Booking opens at ${morningCutoffDisplay} on ${selectedDateStr} (3 hours before session starts). Evening session available.`;
+        } else if (morningAvailable && !eveningAvailable) {
+          return `Evening session closed. Booking opens at ${eveningCutoffDisplay} on ${selectedDateStr} (3 hours before session starts). Morning session available.`;
+        }
       }
     }
     
@@ -533,6 +616,106 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   };
 
+  // Helper function to check if session can be booked (must be at least 3 hours before session starts)
+  const canBookSessionByTime = (date: string, session: 'morning' | 'evening'): { canBook: boolean; reason?: string } => {
+    if (!selectedDoctor || !date) {
+      return { canBook: true }; // If no doctor or date selected, allow (will be caught by other validation)
+    }
+
+    // Use currentTime state to ensure real-time updates
+    const now = currentTime;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const selectedDate = new Date(date);
+    const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+    
+    // Get session start time from doctor's config
+    const sessionStartTime = session === 'morning' 
+      ? normalizeTime(selectedDoctor.morningStartTime, '09:00')
+      : normalizeTime(selectedDoctor.eveningStartTime, '14:00');
+    
+    // Parse session start time
+    const [startHours, startMinutes] = sessionStartTime.split(':').map(Number);
+    const sessionStartMinutes = startHours * 60 + startMinutes;
+    
+    // Calculate days difference between selected date and today
+    const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // If selected date is today or tomorrow, check if there are at least 3 hours before session starts
+    if (daysDiff === 0 || daysDiff === 1) {
+      const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
+      const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
+      
+      // Booking cutoff: session start time - 3 hours
+      const bookingCutoffMinutes = sessionStartMinutes - hoursBeforeBookingMinutes;
+      
+      if (daysDiff === 0) {
+        // Selected date is TODAY - check current time against today's session
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeInMinutes = currentHour * 60 + currentMinute;
+        
+        // Check if current time is before the cutoff time (booking window hasn't opened yet)
+        if (currentTimeInMinutes < bookingCutoffMinutes) {
+          const cutoffHour = Math.floor(bookingCutoffMinutes / 60);
+          const cutoffMinute = bookingCutoffMinutes % 60;
+          const cutoffTime12Hour = cutoffHour > 12 ? `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM` : 
+                                   cutoffHour === 12 ? `12:${String(cutoffMinute).padStart(2, '0')} PM` :
+                                   cutoffHour === 0 ? `12:${String(cutoffMinute).padStart(2, '0')} AM` :
+                                   `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
+          
+          const sessionName = session === 'morning' ? 'Morning' : 'Evening';
+          return {
+            canBook: false,
+            reason: `⏰ Booking opens at ${cutoffTime12Hour} (3 hours before ${sessionName.toLowerCase()} session starts)`
+          };
+        }
+        
+        // Check if session has already started (after session start time)
+        if (currentTimeInMinutes >= sessionStartMinutes) {
+          const sessionName = session === 'morning' ? 'Morning' : 'Evening';
+          return {
+            canBook: false,
+            reason: `❌ ${sessionName} session has already started`
+          };
+        }
+        
+        // Booking is allowed (between cutoff time and session start time)
+        return { canBook: true };
+      } else {
+        // Selected date is TOMORROW - check if we're before tomorrow's cutoff time
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeInMinutes = currentHour * 60 + currentMinute;
+        
+        // Calculate tomorrow's cutoff time in minutes from start of today
+        const tomorrowCutoffMinutes = (24 * 60) + bookingCutoffMinutes; // 24 hours (1440 minutes) + cutoff minutes
+        
+        // If we're still on today and haven't reached tomorrow's cutoff time, disable the session
+        if (currentTimeInMinutes < tomorrowCutoffMinutes) {
+          const cutoffHour = Math.floor(bookingCutoffMinutes / 60);
+          const cutoffMinute = bookingCutoffMinutes % 60;
+          const cutoffTime12Hour = cutoffHour > 12 ? `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM` : 
+                                   cutoffHour === 12 ? `12:${String(cutoffMinute).padStart(2, '0')} PM` :
+                                   cutoffHour === 0 ? `12:${String(cutoffMinute).padStart(2, '0')} AM` :
+                                   `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
+          
+          const sessionName = session === 'morning' ? 'Morning' : 'Evening';
+          const selectedDateStr = selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+          return {
+            canBook: false,
+            reason: `⏰ Booking opens at ${cutoffTime12Hour} on ${selectedDateStr} (3 hours before ${sessionName.toLowerCase()} session starts)`
+          };
+        }
+        
+        // Current time has reached tomorrow's cutoff time, booking is allowed
+        return { canBook: true };
+      }
+    }
+    
+    // For dates beyond tomorrow (2+ days in the future), booking is available
+    return { canBook: true };
+  };
+
   // Handle submit with Firebase integration
   const handleSubmit = async () => {
     if (!validateRequiredFields()) return;
@@ -542,6 +725,15 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const leaveCheck = isDoctorOnLeave(formData.date, formData.session as 'morning' | 'evening');
       if (leaveCheck.onLeave) {
         toast.error(`❌ ${leaveCheck.reason || 'Doctor is on leave for this session'}`);
+        return;
+      }
+    }
+
+    // Check if session can be booked (must be at least 3 hours before session starts)
+    if (formData.date && formData.session) {
+      const sessionTimeCheck = canBookSessionByTime(formData.date, formData.session as 'morning' | 'evening');
+      if (!sessionTimeCheck.canBook) {
+        toast.error(`❌ ${sessionTimeCheck.reason || 'Session can only be booked at least 3 hours before it starts'}`);
         return;
       }
     }
@@ -557,11 +749,59 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
       await savePatient();
 
+      // Get doctor data for slot assignment
+      const doctor = doctors.find(d => d.id === formData.doctor);
+      if (!doctor) {
+        toast.error('❌ Doctor not found');
+        setActionLoading(false);
+        return;
+      }
+
+      // Get existing appointments to find booked slots
+      const appointmentsRef = collection(db, 'appointments');
+      const q = query(
+        appointmentsRef,
+        where('doctorId', '==', formData.doctor),
+        where('appointmentDate', '==', formData.date)
+      );
+      const snapshot = await getDocs(q);
+      const existingAppointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      
+      // Get booked slots for this session
+      const bookedSlots = existingAppointments
+        .filter((apt: any) => {
+          if (apt.appointmentDate !== formData.date) return false;
+          const aptTime = apt.appointmentTime || '';
+          const aptTime24 = aptTime.includes(':') ? aptTime : '';
+          if (!aptTime24) return false;
+          const hour = parseInt(aptTime24.split(':')[0]);
+          const aptSession = hour < 13 ? 'morning' : 'evening';
+          return aptSession === formData.session;
+        })
+        .map((apt: any) => apt.appointmentTime);
+
       // Generate token number per session
       const tokenNumber = await generateTokenNumber(formData.date, formData.doctor, formData.session);
-      const appointmentTime = getSessionStartTime();
-
-      const doctor = doctors.find(d => d.id === formData.doctor);
+      
+      // Get next available slot based on doctor's slot duration
+      const { getNextAvailableSlot } = await import('@/lib/utils/slotAssignmentHelper');
+      const doctorData = {
+        availableSlots: doctor.availableSlots || [],
+        startTime: doctor.startTime,
+        endTime: doctor.endTime,
+        consultationDuration: doctor.consultationDuration,
+        morningStartTime: doctor.morningStartTime,
+        morningEndTime: doctor.morningEndTime,
+        eveningStartTime: doctor.eveningStartTime,
+        eveningEndTime: doctor.eveningEndTime
+      };
+      
+      const appointmentTime = getNextAvailableSlot(
+        doctorData,
+        formData.date,
+        formData.session as 'morning' | 'evening',
+        bookedSlots
+      ) || getSessionStartTime(); // Fallback to session start time if no slot available
 
       const appointmentData = {
         tokenNumber: tokenNumber,
@@ -574,12 +814,13 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         doctorSpecialty: doctor?.specialty || '',
         appointmentDate: formData.date,
         session: formData.session,
-        appointmentTime: appointmentTime,
+        appointmentTime: appointmentTime, // Dynamically assigned slot (24-hour format HH:MM)
         sessionDisplay: sessionTime,
         reason: formData.reason.trim() || null,
         status: 'scheduled',
         acceptanceStatus: 'pending',
         source: 'web',
+        duration: doctor.consultationDuration || 20,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         checkedInAt: null,
@@ -589,7 +830,6 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
       console.log('📤 Creating appointment with data:', appointmentData);
 
-      const appointmentsRef = collection(db, 'appointments');
       const docRef = await addDoc(appointmentsRef, appointmentData);
 
       console.log('✅ Appointment created with ID:', docRef.id);
@@ -812,14 +1052,28 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                     value={formData.session}
                     onChange={handleInputChange}
                     disabled={!formData.doctor || !formData.date}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer"
+                    className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent appearance-none cursor-pointer ${
+                      !formData.doctor || !formData.date
+                        ? 'border-gray-300 opacity-50 cursor-not-allowed'
+                        : formData.session && !isSessionAvailable(formData.session as 'morning' | 'evening')
+                        ? 'border-red-300 bg-red-50'
+                        : 'border-gray-300'
+                    }`}
                   >
                     <option value="">Select session</option>
-                    <option value="morning" disabled={!isSessionAvailable('morning')}>
-                      Morning 
+                    <option 
+                      value="morning" 
+                      disabled={!isSessionAvailable('morning')}
+                      style={!isSessionAvailable('morning') ? { color: '#9ca3af', backgroundColor: '#f3f4f6' } : {}}
+                    >
+                      Morning {!isSessionAvailable('morning') ? '(Closed)' : ''}
                     </option>
-                    <option value="evening" disabled={!isSessionAvailable('evening')}>
-                      Evening 
+                    <option 
+                      value="evening" 
+                      disabled={!isSessionAvailable('evening')}
+                      style={!isSessionAvailable('evening') ? { color: '#9ca3af', backgroundColor: '#f3f4f6' } : {}}
+                    >
+                      Evening {!isSessionAvailable('evening') ? '(Closed)' : ''}
                     </option>
                   </select>
                 </div>
