@@ -156,6 +156,14 @@ export default function DoctorDashboard() {
     }
   }, [error]);
 
+  // Fetch assistants when component mounts or user changes (for assistant role)
+  useEffect(() => {
+    if (isAuthenticated && currentUser?.role === 'assistant') {
+      console.log('Fetching assistants for assistant user...');
+      fetchAssistants();
+    }
+  }, [isAuthenticated, currentUser, fetchAssistants]);
+
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -295,23 +303,75 @@ export default function DoctorDashboard() {
     else if (currentUser.role === 'assistant') {
       console.log('Assistant filtering doctors - currentUser:', currentUser);
       console.log('Available assistants:', assistants);
+      console.log('Assistants loading:', assistantsLoading);
+      
+      // Wait for assistants to load before filtering
+      if (assistantsLoading) {
+        console.log('Assistants are still loading, waiting...');
+        setFilteredDoctors([]);
+        return;
+      }
       
       const assistant = assistants.find(a => a.userId === currentUser.id);
       console.log('Found assistant:', assistant);
       
-      if (assistant && assistant.assignedDoctors && assistant.assignedDoctors.length > 0) {
+      if (!assistant) {
+        console.warn('Assistant not found for userId:', currentUser.id);
+        console.log('All assistants:', assistants.map(a => ({ id: a.id, userId: a.userId, name: a.user?.name })));
+        roleFiltered = [];
+      } else if (!assistant.assignedDoctors || assistant.assignedDoctors.length === 0) {
+        console.log('Assistant found but assignedDoctors is empty. Checking doctors for reverse lookup...');
+        console.log('Assistant ID:', assistant.id);
+        
+        // Fallback: Check if any doctors have this assistant in their assignedAssistants
+        // This handles legacy data where assignments might be one-way
+        const doctorsWithThisAssistant = transformedDoctors.filter(doctor => {
+          const originalDoctor = doctors.find(d => d.id === doctor.id);
+          const hasAssistant = originalDoctor?.assignedAssistants?.includes(assistant.id);
+          console.log(`Doctor ${doctor.name}: assignedAssistants=${JSON.stringify(originalDoctor?.assignedAssistants)}, hasAssistant=${hasAssistant}`);
+          return hasAssistant;
+        });
+        
+        if (doctorsWithThisAssistant.length > 0) {
+          console.log('⚠️ Found doctors via reverse lookup (doctor.assignedAssistants). This indicates data sync issue.');
+          console.log('Found doctors:', doctorsWithThisAssistant.map(d => ({ name: d.name, id: d.id })));
+          console.log('Attempting to fix assistant.assignedDoctors...');
+          
+          // Auto-fix: Update assistant's assignedDoctors array (async, but don't block rendering)
+          const doctorIds = doctorsWithThisAssistant.map(d => d.id);
+          (async () => {
+            try {
+              const { updateDoc, doc, Timestamp } = await import('firebase/firestore');
+              const { db } = await import('@/lib/firebase/config');
+              await updateDoc(doc(db, 'assistants', assistant.id), {
+                assignedDoctors: doctorIds,
+                updatedAt: Timestamp.now()
+              });
+              console.log('✅ Fixed assistant.assignedDoctors:', doctorIds);
+              // Refresh assistants to get updated data
+              await fetchAssistants();
+            } catch (error) {
+              console.error('❌ Error fixing assistant.assignedDoctors:', error);
+            }
+          })();
+          
+          // Use the fixed data immediately (don't wait for async fix)
+          roleFiltered = doctorsWithThisAssistant;
+        } else {
+          console.log('No assigned doctors found (checked both assistant.assignedDoctors and doctor.assignedAssistants)');
+          roleFiltered = [];
+        }
+      } else {
         console.log('Assistant assigned doctors:', assistant.assignedDoctors);
+        console.log('Available doctors to filter:', transformedDoctors.map(d => ({ id: d.id, name: d.name })));
         
         roleFiltered = transformedDoctors.filter(doctor => {
           const isAssigned = assistant.assignedDoctors.includes(doctor.id);
-          console.log(`Doctor ${doctor.name}: id=${doctor.id}, isAssigned=${isAssigned}`);
+          console.log(`Doctor ${doctor.name}: id=${doctor.id}, isAssigned=${isAssigned}, assignedDoctors=${JSON.stringify(assistant.assignedDoctors)}`);
           return isAssigned;
         });
         
         console.log('Filtered doctors for assistant:', roleFiltered.map(d => ({ name: d.name, id: d.id })));
-      } else {
-        console.log('No assigned doctors found, showing empty list for assistant');
-        roleFiltered = [];
       }
     }
     
@@ -321,7 +381,7 @@ export default function DoctorDashboard() {
     }
 
     setFilteredDoctors(roleFiltered);
-  }, [transformedDoctors, currentUser, isAuthenticated, assistants]);
+  }, [transformedDoctors, currentUser, isAuthenticated, assistants, assistantsLoading]);
 
   // Apply search filter to role-filtered doctors
   const searchFilteredDoctors = filteredDoctors.filter(doctor =>
@@ -418,6 +478,28 @@ export default function DoctorDashboard() {
   const handleAddDoctorSubmit = async (doctorData: any) => {
     setActionLoading(true);
     try {
+      // Validate assistant assignments: One assistant can only be assigned to ONE doctor
+      // But one doctor can have multiple assistants
+      if (doctorData.assignedAssistants && doctorData.assignedAssistants.length > 0) {
+        // Check each selected assistant to see if they're already assigned to a different doctor
+        for (const assistantId of doctorData.assignedAssistants) {
+          const assistant = assistants.find(a => a.id === assistantId);
+          if (assistant && assistant.assignedDoctors && assistant.assignedDoctors.length > 0) {
+            // Assistant is already assigned to a doctor
+            const assignedDoctorIds = assistant.assignedDoctors;
+            const assignedDoctors = assignedDoctorIds.map(docId => {
+              const doc = doctors.find(d => d.id === docId);
+              return doc?.user?.name || 'Unknown Doctor';
+            }).join(', ');
+            
+            const assistantName = assistant.user?.name || 'Unknown Assistant';
+            toast.error(`❌ ${assistantName} is already assigned to ${assignedDoctors}. One assistant can only be assigned to one doctor.`);
+            setActionLoading(false);
+            return;
+          }
+        }
+      }
+      
       const createdDoctor = await createDoctor(doctorData);
 
       if (createdDoctor) {
@@ -505,6 +587,36 @@ export default function DoctorDashboard() {
         endTime,
         slotDuration
       });
+
+      // Validate assistant assignments: One assistant can only be assigned to ONE doctor
+      // But one doctor can have multiple assistants
+      if (editAssistants.length > 0) {
+        const currentDoctorId = selectedDoctor.id;
+        
+        // Check each selected assistant to see if they're already assigned to a different doctor
+        for (const assistantId of editAssistants) {
+          const assistant = assistants.find(a => a.id === assistantId);
+          if (assistant && assistant.assignedDoctors && assistant.assignedDoctors.length > 0) {
+            // Check if assistant is assigned to a different doctor (not the current one being edited)
+            const assignedToDifferentDoctor = assistant.assignedDoctors.some(
+              doctorId => doctorId !== currentDoctorId
+            );
+            
+            if (assignedToDifferentDoctor) {
+              const otherDoctorIds = assistant.assignedDoctors.filter(docId => docId !== currentDoctorId);
+              const otherDoctors = otherDoctorIds.map(docId => {
+                const doc = doctors.find(d => d.id === docId);
+                return doc?.user?.name || 'Unknown Doctor';
+              }).join(', ');
+              
+              const assistantName = assistant.user?.name || 'Unknown Assistant';
+              toast.error(`❌ ${assistantName} is already assigned to ${otherDoctors}. One assistant can only be assigned to one doctor.`);
+              setActionLoading(false);
+              return;
+            }
+          }
+        }
+      }
 
       const updates = {
         // User fields (will be updated in users collection)
@@ -736,20 +848,25 @@ export default function DoctorDashboard() {
                   <Eye size={16} />
                   View Queue
                 </button>
-                <button 
-                  onClick={() => openEditDialog(doctor)}
-                  disabled={actionLoading}
-                  className="p-2.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                >
-                  <Edit size={16} />
-                </button>
-                <button 
-                  onClick={() => handleDeleteDoctor(doctor.id)}
-                  disabled={actionLoading}
-                  className="p-2.5 border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {/* Hide Edit and Delete buttons for assistants */}
+                {currentUser?.role !== 'assistant' && (
+                  <>
+                    <button 
+                      onClick={() => openEditDialog(doctor)}
+                      disabled={actionLoading}
+                      className="p-2.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteDoctor(doctor.id)}
+                      disabled={actionLoading}
+                      className="p-2.5 border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             ))
@@ -758,9 +875,16 @@ export default function DoctorDashboard() {
               <p className="text-gray-500">
                 {searchQuery ? 'No doctors match your search.' : 
                  currentUser?.role === 'doctor' ? 'Your profile is not available.' :
-                 currentUser?.role === 'assistant' ? 'No doctors are assigned to you.' :
+                 currentUser?.role === 'assistant' ? (
+                   assistantsLoading 
+                     ? 'Loading assigned doctors...' 
+                     : 'No doctors are assigned to you. Please contact an administrator to assign doctors to your account.'
+                 ) :
                  'No doctors found.'}
               </p>
+              {currentUser?.role === 'assistant' && assistantsLoading && (
+                <Loader2 className="w-6 h-6 animate-spin text-teal-500 mx-auto mt-4" />
+              )}
             </div>
           )}
         </div>

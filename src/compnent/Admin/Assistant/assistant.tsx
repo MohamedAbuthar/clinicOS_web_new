@@ -399,6 +399,22 @@ const AssistantsPage = () => {
       }
     }
     
+    // Validate: One assistant can only be assigned to ONE doctor
+    if (assignedDoctorsArray.length > 1) {
+      toast.error('❌ One assistant can only be assigned to one doctor. Please select only one doctor.');
+      setActionLoading(false);
+      return;
+    }
+    
+    // If assigning a doctor, check if that doctor already has this assistant assigned
+    // (This shouldn't happen on create, but check for consistency)
+    if (assignedDoctorsArray.length === 1) {
+      const doctorId = assignedDoctorsArray[0];
+      const doctor = doctors.find(d => d.id === doctorId);
+      // Note: On create, assistant doesn't exist yet, so we can't check if assistant is already assigned
+      // This check is mainly for edit, but we include it here for consistency
+    }
+    
     console.log('Assigned doctors:', assignedDoctorsArray);
     console.log('Creating assistant with email:', formData.email);
     
@@ -493,6 +509,16 @@ const AssistantsPage = () => {
           assignedDoctorsArray = [doctorRecord.id];
         }
       }
+      
+      // Validate: One assistant can only be assigned to ONE doctor
+      if (assignedDoctorsArray.length > 1) {
+        toast.error('❌ One assistant can only be assigned to one doctor. Please select only one doctor.');
+        setActionLoading(false);
+        return;
+      }
+      
+      // Note: Changing assignment is allowed - the sync logic will handle removing from old doctor
+      // and adding to new doctor. We just prevent multiple doctors at once (checked above).
       
       console.log('Updating assistant:', selectedAssistant.id, {
         assignedDoctors: assignedDoctorsArray,

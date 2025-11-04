@@ -270,61 +270,57 @@ export default function NewAppointmentDialog({
     // Calculate days difference between selected date and today
     const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     
-    // If selected date is today or tomorrow, check if there are at least 3 hours before session starts
-    if (daysDiff === 0 || daysDiff === 1) {
-      const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
-      const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
-      
-      // Booking cutoff: session start time - 3 hours
-      const bookingCutoffMinutes = sessionStartMinutes - hoursBeforeBookingMinutes;
-      
-      if (daysDiff === 0) {
-        // Selected date is TODAY - check current time against today's session
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        const currentTimeInMinutes = currentHour * 60 + currentMinute;
-        
-        // Check if current time is before the cutoff time (booking window hasn't opened yet)
-        // Session is disabled if current time is LESS than 3 hours before session start
-        if (currentTimeInMinutes < bookingCutoffMinutes) {
-          return false; // Session is disabled
-        }
-        
-        // Check if session has already started (after session start time)
-        if (currentTimeInMinutes >= sessionStartMinutes) {
-          return false; // Session has started
-        }
-        
-        // Booking is allowed (between cutoff time and session start time)
-        return true;
-      } else {
-        // Selected date is TOMORROW - check if we're before tomorrow's cutoff time
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        const currentTimeInMinutes = currentHour * 60 + currentMinute;
-        
-        // Calculate tomorrow's cutoff time in minutes from start of today
-        // For example, if session is at 9 AM tomorrow, cutoff is 6 AM tomorrow
-        // 6 AM tomorrow = 24 hours (1440 minutes) + 360 minutes = 1800 minutes from start of today
-        const tomorrowCutoffMinutes = (24 * 60) + bookingCutoffMinutes; // 24 hours (1440 minutes) + cutoff minutes
-        
-        // If we're still on today and haven't reached tomorrow's cutoff time, disable the session
-        if (currentTimeInMinutes < tomorrowCutoffMinutes) {
-          return false; // Session is disabled until tomorrow's cutoff time
-        }
-        
-        // Current time has reached tomorrow's cutoff time, booking is allowed
-        return true;
-      }
+    // For past dates, don't allow any bookings
+    if (daysDiff < 0) {
+      return false;
     }
     
-    // For dates beyond tomorrow (2+ days in the future), booking is available
-    if (daysDiff > 1) {
+    const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
+    const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
+    const bookingCutoffMinutes = sessionStartMinutes - hoursBeforeBookingMinutes;
+    
+    if (daysDiff === 0) {
+      // Selected date is TODAY - check current time against today's session
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+      
+      // Check if current time is before the cutoff time (booking window hasn't opened yet)
+      if (currentTimeInMinutes < bookingCutoffMinutes) {
+        return false; // Session is disabled
+      }
+      
+      // Check if session has already started (after session start time)
+      if (currentTimeInMinutes >= sessionStartMinutes) {
+        return false; // Session has started
+      }
+      
+      // Booking is allowed (between cutoff time and session start time)
+      return true;
+    } else {
+      // Selected date is in the FUTURE (tomorrow or later)
+      // Calculate the cutoff time on the selected date
+      const cutoffDateTime = new Date(selectedDay);
+      cutoffDateTime.setHours(Math.floor(bookingCutoffMinutes / 60), bookingCutoffMinutes % 60, 0, 0);
+      
+      // Check if current date/time is before the cutoff time on the selected date
+      if (now < cutoffDateTime) {
+        // Booking hasn't opened yet - session is disabled
+        return false;
+      }
+      
+      // Check if session has already started on the selected date
+      const sessionDateTime = new Date(selectedDay);
+      sessionDateTime.setHours(startHours, startMinutes, 0, 0);
+      
+      if (now >= sessionDateTime) {
+        // Session has started or passed - don't allow booking
+        return false;
+      }
+      
+      // Current time is after the cutoff time on the selected date, booking is allowed
       return true;
     }
-    
-    // For past dates, don't allow any bookings
-    return false;
   };
 
   // Get helper text for disabled sessions
@@ -339,76 +335,80 @@ export default function NewAppointmentDialog({
     // Calculate days difference
     const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     
-    if (daysDiff === 0 || daysDiff === 1) {
+    // Only show helper text for today and future dates
+    if (daysDiff < 0) {
+      return null;
+    }
+    
+    // Get morning session start time
+    const morningStartTime = normalizeTime(selectedDoctor.morningStartTime, '09:00');
+    const [morningStartHours, morningStartMinutes] = morningStartTime.split(':').map(Number);
+    const morningStartMinutesTotal = morningStartHours * 60 + morningStartMinutes;
+    const morningCutoffMinutes = morningStartMinutesTotal - (3 * 60);
+    
+    // Get evening session start time
+    const eveningStartTime = normalizeTime(selectedDoctor.eveningStartTime, '14:00');
+    const [eveningStartHours, eveningStartMinutes] = eveningStartTime.split(':').map(Number);
+    const eveningStartMinutesTotal = eveningStartHours * 60 + eveningStartMinutes;
+    const eveningCutoffMinutes = eveningStartMinutesTotal - (3 * 60);
+    
+    // Format cutoff time for display (12-hour format)
+    const formatCutoffTime = (minutes: number): string => {
+      const hour = minutes % (24 * 60); // Handle hours > 24
+      const cutoffHour = Math.floor(hour / 60);
+      const cutoffMinute = hour % 60;
+      
+      const period = cutoffHour >= 12 ? 'PM' : 'AM';
+      const displayHour = cutoffHour > 12 ? cutoffHour - 12 : cutoffHour === 0 ? 12 : cutoffHour;
+      return `${displayHour}:${String(cutoffMinute).padStart(2, '0')} ${period}`;
+    };
+    
+    const selectedDateStr = selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const morningCutoffDisplay = formatCutoffTime(morningCutoffMinutes);
+    const eveningCutoffDisplay = formatCutoffTime(eveningCutoffMinutes);
+    
+    // Check availability for both sessions
+    let morningAvailable = false;
+    let eveningAvailable = false;
+    
+    if (daysDiff === 0) {
+      // Today's date
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
       
-      // Get morning session start time
-      const morningStartTime = normalizeTime(selectedDoctor.morningStartTime, '09:00');
-      const [morningStartHours, morningStartMinutes] = morningStartTime.split(':').map(Number);
-      const morningStartMinutesTotal = morningStartHours * 60 + morningStartMinutes;
-      const morningCutoffMinutes = morningStartMinutesTotal - (3 * 60);
+      morningAvailable = currentTimeInMinutes >= morningCutoffMinutes && currentTimeInMinutes < morningStartMinutesTotal;
+      eveningAvailable = currentTimeInMinutes >= eveningCutoffMinutes && currentTimeInMinutes < eveningStartMinutesTotal;
+    } else {
+      // Future date (tomorrow or later)
+      const morningCutoffDateTime = new Date(selectedDay);
+      morningCutoffDateTime.setHours(Math.floor(morningCutoffMinutes / 60), morningCutoffMinutes % 60, 0, 0);
       
-      // Get evening session start time
-      const eveningStartTime = normalizeTime(selectedDoctor.eveningStartTime, '14:00');
-      const [eveningStartHours, eveningStartMinutes] = eveningStartTime.split(':').map(Number);
-      const eveningStartMinutesTotal = eveningStartHours * 60 + eveningStartMinutes;
-      const eveningCutoffMinutes = eveningStartMinutesTotal - (3 * 60);
+      const eveningCutoffDateTime = new Date(selectedDay);
+      eveningCutoffDateTime.setHours(Math.floor(eveningCutoffMinutes / 60), eveningCutoffMinutes % 60, 0, 0);
       
-      // Format cutoff times for display
-      const formatCutoffTime = (minutes: number, isTomorrow: boolean = false): string => {
-        let hour = Math.floor(minutes / 60);
-        const minute = minutes % 60;
-        
-        // If it's tomorrow, adjust hour for display
-        if (isTomorrow && hour >= 24) {
-          hour = hour - 24;
-        }
-        
-        const period = hour >= 12 ? 'PM' : 'AM';
-        const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-        return `${displayHour}:${String(minute).padStart(2, '0')} ${period}`;
-      };
-      
+      morningAvailable = now >= morningCutoffDateTime;
+      eveningAvailable = now >= eveningCutoffDateTime;
+    }
+    
+    // Generate helper text based on availability
+    if (!morningAvailable && !eveningAvailable) {
       if (daysDiff === 0) {
-        // Today's date
-        const morningCutoff = formatCutoffTime(morningCutoffMinutes);
-        const eveningCutoff = formatCutoffTime(eveningCutoffMinutes);
-        
-        const morningAvailable = currentTimeInMinutes >= morningCutoffMinutes && currentTimeInMinutes < morningStartMinutesTotal;
-        const eveningAvailable = currentTimeInMinutes >= eveningCutoffMinutes && currentTimeInMinutes < eveningStartMinutesTotal;
-        
-        if (!morningAvailable && !eveningAvailable) {
-          const morningCutoffDisplay = formatCutoffTime(morningCutoffMinutes);
-          const eveningCutoffDisplay = formatCutoffTime(eveningCutoffMinutes);
-          return `Both sessions are closed. Booking opens at ${morningCutoffDisplay} for morning and ${eveningCutoffDisplay} for evening (3 hours before session starts)`;
-        } else if (!morningAvailable && eveningAvailable) {
-          const morningCutoffDisplay = formatCutoffTime(morningCutoffMinutes);
-          return `Morning session closed. Booking opens at ${morningCutoffDisplay} (3 hours before session starts). Evening session available.`;
-        } else if (morningAvailable && !eveningAvailable) {
-          const eveningCutoffDisplay = formatCutoffTime(eveningCutoffMinutes);
-          return `Evening session closed. Booking opens at ${eveningCutoffDisplay} (3 hours before session starts). Morning session available.`;
-        }
+        return `Both sessions are closed. Booking opens at ${morningCutoffDisplay} for morning and ${eveningCutoffDisplay} for evening (3 hours before session starts)`;
       } else {
-        // Tomorrow's date
-        const tomorrowMorningCutoffMinutes = (24 * 60) + morningCutoffMinutes;
-        const tomorrowEveningCutoffMinutes = (24 * 60) + eveningCutoffMinutes;
-        
-        const morningAvailable = currentTimeInMinutes >= tomorrowMorningCutoffMinutes;
-        const eveningAvailable = currentTimeInMinutes >= tomorrowEveningCutoffMinutes;
-        
-        const selectedDateStr = selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-        const morningCutoffDisplay = formatCutoffTime(morningCutoffMinutes, true);
-        const eveningCutoffDisplay = formatCutoffTime(eveningCutoffMinutes, true);
-        
-        if (!morningAvailable && !eveningAvailable) {
-          return `Both sessions are closed. Booking opens at ${morningCutoffDisplay} on ${selectedDateStr} for morning and ${eveningCutoffDisplay} for evening (3 hours before session starts)`;
-        } else if (!morningAvailable && eveningAvailable) {
-          return `Morning session closed. Booking opens at ${morningCutoffDisplay} on ${selectedDateStr} (3 hours before session starts). Evening session available.`;
-        } else if (morningAvailable && !eveningAvailable) {
-          return `Evening session closed. Booking opens at ${eveningCutoffDisplay} on ${selectedDateStr} (3 hours before session starts). Morning session available.`;
-        }
+        return `Both sessions are closed. Booking opens at ${morningCutoffDisplay} on ${selectedDateStr} for morning and ${eveningCutoffDisplay} for evening (3 hours before session starts)`;
+      }
+    } else if (!morningAvailable && eveningAvailable) {
+      if (daysDiff === 0) {
+        return `Morning session closed. Booking opens at ${morningCutoffDisplay} (3 hours before session starts). Evening session available.`;
+      } else {
+        return `Morning session closed. Booking opens at ${morningCutoffDisplay} on ${selectedDateStr} (3 hours before session starts). Evening session available.`;
+      }
+    } else if (morningAvailable && !eveningAvailable) {
+      if (daysDiff === 0) {
+        return `Evening session closed. Booking opens at ${eveningCutoffDisplay} (3 hours before session starts). Morning session available.`;
+      } else {
+        return `Evening session closed. Booking opens at ${eveningCutoffDisplay} on ${selectedDateStr} (3 hours before session starts). Morning session available.`;
       }
     }
     
@@ -640,80 +640,95 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Calculate days difference between selected date and today
     const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     
-    // If selected date is today or tomorrow, check if there are at least 3 hours before session starts
-    if (daysDiff === 0 || daysDiff === 1) {
-      const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
-      const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
+    // For past dates, don't allow booking
+    if (daysDiff < 0) {
+      return {
+        canBook: false,
+        reason: 'Cannot book appointments for past dates'
+      };
+    }
+    
+    const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
+    const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
+    const bookingCutoffMinutes = sessionStartMinutes - hoursBeforeBookingMinutes;
+    
+    // Format time for display (12-hour format)
+    const formatTime12Hour = (minutes: number): string => {
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      const cutoffHour = hours % 24;
+      const cutoffMinute = mins;
       
-      // Booking cutoff: session start time - 3 hours
-      const bookingCutoffMinutes = sessionStartMinutes - hoursBeforeBookingMinutes;
+      if (cutoffHour > 12) return `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM`;
+      if (cutoffHour === 12) return `12:${String(cutoffMinute).padStart(2, '0')} PM`;
+      if (cutoffHour === 0) return `12:${String(cutoffMinute).padStart(2, '0')} AM`;
+      return `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
+    };
+    
+    const sessionName = session === 'morning' ? 'Morning' : 'Evening';
+    const selectedDateStr = selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const cutoffTime12Hour = formatTime12Hour(bookingCutoffMinutes);
+    
+    if (daysDiff === 0) {
+      // Selected date is TODAY - check current time against today's session
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
       
-      if (daysDiff === 0) {
-        // Selected date is TODAY - check current time against today's session
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        const currentTimeInMinutes = currentHour * 60 + currentMinute;
-        
-        // Check if current time is before the cutoff time (booking window hasn't opened yet)
-        if (currentTimeInMinutes < bookingCutoffMinutes) {
-          const cutoffHour = Math.floor(bookingCutoffMinutes / 60);
-          const cutoffMinute = bookingCutoffMinutes % 60;
-          const cutoffTime12Hour = cutoffHour > 12 ? `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM` : 
-                                   cutoffHour === 12 ? `12:${String(cutoffMinute).padStart(2, '0')} PM` :
-                                   cutoffHour === 0 ? `12:${String(cutoffMinute).padStart(2, '0')} AM` :
-                                   `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
-          
-          const sessionName = session === 'morning' ? 'Morning' : 'Evening';
-          return {
-            canBook: false,
-            reason: `⏰ Booking opens at ${cutoffTime12Hour} (3 hours before ${sessionName.toLowerCase()} session starts)`
-          };
-        }
-        
-        // Check if session has already started (after session start time)
-        if (currentTimeInMinutes >= sessionStartMinutes) {
-          const sessionName = session === 'morning' ? 'Morning' : 'Evening';
+      // Check if current time is before the cutoff time (booking window hasn't opened yet)
+      if (currentTimeInMinutes < bookingCutoffMinutes) {
+        return {
+          canBook: false,
+          reason: `⏰ Booking opens at ${cutoffTime12Hour} (3 hours before ${sessionName.toLowerCase()} session starts)`
+        };
+      }
+      
+      // Check if session has already started (after session start time)
+      if (currentTimeInMinutes >= sessionStartMinutes) {
+        return {
+          canBook: false,
+          reason: `❌ ${sessionName} session has already started`
+        };
+      }
+      
+      // Booking is allowed (between cutoff time and session start time)
+      return { canBook: true };
+    } else {
+      // Selected date is in the FUTURE (tomorrow or later)
+      // Calculate the cutoff time on the selected date
+      const cutoffDateTime = new Date(selectedDay);
+      cutoffDateTime.setHours(Math.floor(bookingCutoffMinutes / 60), bookingCutoffMinutes % 60, 0, 0);
+      
+      // Check if current date/time is before the cutoff time on the selected date
+      if (now < cutoffDateTime) {
+        // Booking hasn't opened yet
+        return {
+          canBook: false,
+          reason: `⏰ Booking opens at ${cutoffTime12Hour} on ${selectedDateStr} (3 hours before ${sessionName.toLowerCase()} session starts)`
+        };
+      }
+      
+      // Check if session has already started on the selected date
+      const sessionDateTime = new Date(selectedDay);
+      sessionDateTime.setHours(startHours, startMinutes, 0, 0);
+      
+      if (now >= sessionDateTime) {
+        // Session has started or passed
+        if (daysDiff === 0) {
           return {
             canBook: false,
             reason: `❌ ${sessionName} session has already started`
           };
         }
-        
-        // Booking is allowed (between cutoff time and session start time)
-        return { canBook: true };
-      } else {
-        // Selected date is TOMORROW - check if we're before tomorrow's cutoff time
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        const currentTimeInMinutes = currentHour * 60 + currentMinute;
-        
-        // Calculate tomorrow's cutoff time in minutes from start of today
-        const tomorrowCutoffMinutes = (24 * 60) + bookingCutoffMinutes; // 24 hours (1440 minutes) + cutoff minutes
-        
-        // If we're still on today and haven't reached tomorrow's cutoff time, disable the session
-        if (currentTimeInMinutes < tomorrowCutoffMinutes) {
-          const cutoffHour = Math.floor(bookingCutoffMinutes / 60);
-          const cutoffMinute = bookingCutoffMinutes % 60;
-          const cutoffTime12Hour = cutoffHour > 12 ? `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM` : 
-                                   cutoffHour === 12 ? `12:${String(cutoffMinute).padStart(2, '0')} PM` :
-                                   cutoffHour === 0 ? `12:${String(cutoffMinute).padStart(2, '0')} AM` :
-                                   `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
-          
-          const sessionName = session === 'morning' ? 'Morning' : 'Evening';
-          const selectedDateStr = selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-          return {
-            canBook: false,
-            reason: `⏰ Booking opens at ${cutoffTime12Hour} on ${selectedDateStr} (3 hours before ${sessionName.toLowerCase()} session starts)`
-          };
-        }
-        
-        // Current time has reached tomorrow's cutoff time, booking is allowed
-        return { canBook: true };
+        return {
+          canBook: false,
+          reason: `❌ ${sessionName} session has already passed`
+        };
       }
+      
+      // Current time is after the cutoff time on the selected date, booking is allowed
+      return { canBook: true };
     }
-    
-    // For dates beyond tomorrow (2+ days in the future), booking is available
-    return { canBook: true };
   };
 
   // Handle submit with Firebase integration

@@ -260,6 +260,67 @@ export const useAssistants = (): UseAssistantsReturn => {
       if (data.assignedDoctors !== undefined) assistantFields.assignedDoctors = data.assignedDoctors;
       if (data.isActive !== undefined) assistantFields.isActive = data.isActive;
       
+      // Sync doctor documents when assignedDoctors changes
+      if (data.assignedDoctors !== undefined && Array.isArray(data.assignedDoctors)) {
+        const oldAssignedDoctors = (assistantData.assignedDoctors || []) as string[];
+        const newAssignedDoctors = data.assignedDoctors as string[];
+        
+        // Find doctors that were removed (in old but not in new)
+        const removedDoctors = oldAssignedDoctors.filter(docId => !newAssignedDoctors.includes(docId));
+        // Find doctors that were added (in new but not in old)
+        const addedDoctors = newAssignedDoctors.filter(docId => !oldAssignedDoctors.includes(docId));
+        
+        console.log('🔄 Syncing doctor documents:', {
+          removed: removedDoctors,
+          added: addedDoctors,
+          assistantId: id
+        });
+        
+        // Update removed doctors: remove this assistant from their assignedAssistants
+        for (const doctorId of removedDoctors) {
+          try {
+            const doctorDoc = await getDoc(doc(db, 'doctors', doctorId));
+            if (doctorDoc.exists()) {
+              const doctorDocData = doctorDoc.data();
+              const currentAssignedAssistants = (doctorDocData.assignedAssistants || []) as string[];
+              const updatedAssignedAssistants = currentAssignedAssistants.filter(aid => aid !== id);
+              
+              await updateDoc(doc(db, 'doctors', doctorId), {
+                assignedAssistants: updatedAssignedAssistants,
+                updatedAt: Timestamp.now()
+              });
+              console.log(`✅ Removed assistant ${id} from doctor ${doctorId}`);
+            }
+          } catch (error) {
+            console.error(`❌ Error updating doctor ${doctorId}:`, error);
+          }
+        }
+        
+        // Update added doctors: add this assistant to their assignedAssistants
+        for (const doctorId of addedDoctors) {
+          try {
+            const doctorDoc = await getDoc(doc(db, 'doctors', doctorId));
+            if (doctorDoc.exists()) {
+              const doctorDocData = doctorDoc.data();
+              const currentAssignedAssistants = (doctorDocData.assignedAssistants || []) as string[];
+              
+              // Only add if not already present
+              if (!currentAssignedAssistants.includes(id)) {
+                const updatedAssignedAssistants = [...currentAssignedAssistants, id];
+                
+                await updateDoc(doc(db, 'doctors', doctorId), {
+                  assignedAssistants: updatedAssignedAssistants,
+                  updatedAt: Timestamp.now()
+                });
+                console.log(`✅ Added assistant ${id} to doctor ${doctorId}`);
+              }
+            }
+          } catch (error) {
+            console.error(`❌ Error updating doctor ${doctorId}:`, error);
+          }
+        }
+      }
+      
       console.log('User fields to update:', userFields);
       console.log('Assistant fields to update:', assistantFields);
       
