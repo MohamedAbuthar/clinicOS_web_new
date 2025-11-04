@@ -1,10 +1,11 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { X, User, Phone, Mail, Calendar, Clock, Loader2 } from 'lucide-react';
+import { X, User, Phone, Mail, Calendar, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
+import { useScheduleOverrides } from '@/lib/hooks/useScheduleOverrides';
 
 interface Doctor {
   id: string;
@@ -43,6 +44,9 @@ export default function NewAppointmentDialog({
   const [emailErrorShown, setEmailErrorShown] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [sessionTime, setSessionTime] = useState('');
+  
+  // Schedule overrides for checking doctor availability
+  const { fetchOverrides, overrides } = useScheduleOverrides();
 
   // Update selected doctor when doctor changes
   useEffect(() => {
@@ -50,12 +54,14 @@ export default function NewAppointmentDialog({
       const doctor = doctors.find(d => d.id === formData.doctor);
       if (doctor) {
         setSelectedDoctor(doctor);
+        // Fetch schedule overrides for this doctor
+        fetchOverrides(formData.doctor);
       }
     } else {
       setSelectedDoctor(null);
       setSessionTime('');
     }
-  }, [formData.doctor, doctors]);
+  }, [formData.doctor, doctors, fetchOverrides]);
 
   // Update session time display when session changes
   useEffect(() => {
@@ -69,6 +75,80 @@ export default function NewAppointmentDialog({
       setSessionTime('');
     }
   }, [formData.session, selectedDoctor]);
+
+  // Helper function to format date as YYYY-MM-DD
+  const formatDateForAPI = (dateString: string): string => {
+    const date = new Date(dateString);
+    return date.getFullYear() + '-' + 
+      String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(date.getDate()).padStart(2, '0');
+  };
+
+  // Helper function to check if doctor is on leave for a specific date and session
+  const isDoctorOnLeave = (date: string, session: 'morning' | 'evening'): { onLeave: boolean; reason?: string } => {
+    if (!formData.doctor || !overrides.length || !date) {
+      return { onLeave: false };
+    }
+
+    const dateStr = formatDateForAPI(date);
+    
+    // Check for schedule overrides on this date
+    const dateOverrides = overrides.filter(override => {
+      const overrideDate = override.date.includes('T') 
+        ? override.date.split('T')[0] 
+        : override.date;
+      
+      const normalizedOverrideDate = overrideDate.substring(0, 10);
+      const normalizedSelectedDate = dateStr.substring(0, 10);
+      
+      // Check if it's a holiday (either by type or displayType)
+      const isHoliday = override.type === 'holiday' || 
+                       (override as any).displayType === 'holiday' ||
+                       (override as any).displayType === 'special-event';
+      
+      return normalizedOverrideDate === normalizedSelectedDate && isHoliday;
+    });
+
+    if (dateOverrides.length === 0) {
+      return { onLeave: false };
+    }
+
+    // Check if any override affects this session
+    for (const override of dateOverrides) {
+      // If no startTime/endTime, it's a full day leave (affects both sessions)
+      if (!override.startTime || !override.endTime) {
+        return { 
+          onLeave: true, 
+          reason: `Doctor is on leave: ${override.reason}` 
+        };
+      }
+
+      // Check if this session is affected by the override time range
+      // Morning session: 09:00-12:00, Evening session: 14:00-18:00
+      const overrideStartHour = parseInt(override.startTime.split(':')[0]);
+      const overrideEndHour = parseInt(override.endTime.split(':')[0]);
+      
+      if (session === 'morning') {
+        // Morning session is 09:00-12:00
+        if (overrideStartHour === 9 && overrideEndHour === 12) {
+          return { 
+            onLeave: true, 
+            reason: `Doctor is on leave: ${override.reason}` 
+          };
+        }
+      } else if (session === 'evening') {
+        // Evening session is 14:00-18:00
+        if (overrideStartHour === 14 && overrideEndHour === 18) {
+          return { 
+            onLeave: true, 
+            reason: `Doctor is on leave: ${override.reason}` 
+          };
+        }
+      }
+    }
+
+    return { onLeave: false };
+  };
 
   // Reset form
   const resetForm = () => {
@@ -92,6 +172,12 @@ export default function NewAppointmentDialog({
   // Check if session should be available based on selected date and current time
   const isSessionAvailable = (session: 'morning' | 'evening') => {
     if (!formData.date) return true; // If no date selected, show all options
+    
+    // Check if doctor is on leave first
+    const leaveCheck = isDoctorOnLeave(formData.date, session);
+    if (leaveCheck.onLeave) {
+      return false;
+    }
     
     const selectedDate = new Date(formData.date);
     const today = new Date();
@@ -378,6 +464,15 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const handleSubmit = async () => {
     if (!validateRequiredFields()) return;
 
+    // Check if doctor is on leave for this date and session
+    if (formData.date && formData.session) {
+      const leaveCheck = isDoctorOnLeave(formData.date, formData.session as 'morning' | 'evening');
+      if (leaveCheck.onLeave) {
+        toast.error(`❌ ${leaveCheck.reason || 'Doctor is on leave for this session'}`);
+        return;
+      }
+    }
+
     setActionLoading(true);
 
     try {
@@ -545,6 +640,73 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                   </option>
                 ))}
               </select>
+              
+              {/* Show upcoming leave dates for selected doctor */}
+              {formData.doctor && overrides.length > 0 && (() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                const upcomingLeaves = overrides
+                  .filter(override => {
+                    const overrideDate = override.date.includes('T') 
+                      ? override.date.split('T')[0] 
+                      : override.date;
+                    const leaveDate = new Date(overrideDate);
+                    leaveDate.setHours(0, 0, 0, 0);
+                    
+                    const isHoliday = override.type === 'holiday' || 
+                                     (override as any).displayType === 'holiday' ||
+                                     (override as any).displayType === 'special-event';
+                    
+                    return isHoliday && leaveDate >= today;
+                  })
+                  .sort((a, b) => {
+                    const dateA = new Date(a.date.includes('T') ? a.date.split('T')[0] : a.date);
+                    const dateB = new Date(b.date.includes('T') ? b.date.split('T')[0] : b.date);
+                    return dateA.getTime() - dateB.getTime();
+                  })
+                  .slice(0, 5); // Show up to 5 upcoming leaves
+                
+                if (upcomingLeaves.length > 0) {
+                  return (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold text-amber-900 mb-1">
+                            Upcoming Leave Dates:
+                          </p>
+                          <div className="space-y-1">
+                            {upcomingLeaves.map((leave, index) => {
+                              const leaveDate = leave.date.includes('T') 
+                                ? leave.date.split('T')[0] 
+                                : leave.date;
+                              const dateObj = new Date(leaveDate);
+                              const formattedDate = dateObj.toLocaleDateString('en-US', { 
+                                weekday: 'short',
+                                month: 'short', 
+                                day: 'numeric',
+                                year: 'numeric'
+                              });
+                              
+                              const sessionInfo = leave.startTime && leave.endTime
+                                ? ` (${leave.startTime} - ${leave.endTime})`
+                                : ' (Full Day)';
+                              
+                              return (
+                                <p key={index} className="text-xs text-amber-800">
+                                  📅 {formattedDate}{sessionInfo} - {leave.reason}
+                                </p>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -581,10 +743,10 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                   >
                     <option value="">Select session</option>
                     <option value="morning" disabled={!isSessionAvailable('morning')}>
-                      Morning (9:00 AM - 1:00 PM) {!isSessionAvailable('morning') && '- Not Available'}
+                      Morning 
                     </option>
                     <option value="evening" disabled={!isSessionAvailable('evening')}>
-                      Evening (2:00 PM onwards) {!isSessionAvailable('evening') && '- Not Available'}
+                      Evening 
                     </option>
                   </select>
                 </div>
@@ -593,7 +755,19 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                     {sessionTime}
                   </p>
                 )}
-                {getSessionHelperText() && (
+                {formData.date && formData.session && (() => {
+                  const leaveCheck = isDoctorOnLeave(formData.date, formData.session as 'morning' | 'evening');
+                  if (leaveCheck.onLeave) {
+                    return (
+                      <p className="text-xs text-red-600 mt-1 ml-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        ⚠️ {leaveCheck.reason}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
+                {getSessionHelperText() && formData.date && formData.session && !isDoctorOnLeave(formData.date, formData.session as 'morning' | 'evening').onLeave && (
                   <p className="text-xs text-orange-600 mt-1 ml-1">
                     ⏰ {getSessionHelperText()}
                   </p>

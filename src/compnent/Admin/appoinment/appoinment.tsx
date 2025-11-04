@@ -19,7 +19,10 @@ export default function AppointmentsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    // Default to today's date
+    return new Date().toISOString().split('T')[0];
+  });
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<string>('');
   const [showDoctorFilter, setShowDoctorFilter] = useState(false);
@@ -48,7 +51,7 @@ export default function AppointmentsPage() {
   const { patients, createPatient } = usePatients();
   const { assistants } = useAssistants();
 
-  // Auto-select doctor and date when doctor logs in
+  // Auto-select doctor when doctor logs in
   useEffect(() => {
     if (isAuthenticated && currentUser && doctors.length > 0) {
       if (currentUser.role === 'doctor') {
@@ -58,16 +61,9 @@ export default function AppointmentsPage() {
           console.log('Auto-selecting doctor:', doctorDoc.id, doctorDoc.user?.name);
           setSelectedDoctor(doctorDoc.id);
         }
-        
-        // Auto-select today's date if not selected
-        if (!selectedDate) {
-          const today = new Date().toISOString().split('T')[0];
-          console.log('Auto-selecting today\'s date:', today);
-          setSelectedDate(today);
-        }
       }
     }
-  }, [isAuthenticated, currentUser, doctors, selectedDoctor, selectedDate]);
+  }, [isAuthenticated, currentUser, doctors, selectedDoctor]);
 
   // Update current time every minute
   useEffect(() => {

@@ -76,7 +76,11 @@ const AssistantCard = ({ assistant, onEdit, onDelete, loading }: AssistantCardPr
         </div>
         <div>
           <p className="text-gray-500">Assigned Doctors</p>
-          <p className="text-gray-900 mt-1">{assignedDoctorNames.join(', ') || 'None'}</p>
+          <p className="text-gray-900 mt-1">
+            {assignedDoctorNames && assignedDoctorNames.length > 0 
+              ? assignedDoctorNames.join(', ') 
+              : 'None'}
+          </p>
         </div>
       </div>
     </div>
@@ -204,13 +208,17 @@ const AssistantsPage = () => {
 
   const handleEdit = (assistant: AssistantWithUser) => {
     setSelectedAssistant(assistant);
+    // Ensure assignedDoctors is properly formatted
+    const assignedDoctorsValue = assistant.assignedDoctors && assistant.assignedDoctors.length > 0
+      ? assistant.assignedDoctors.join(',')
+      : '';
     setFormData({
       name: assistant.user.name,
       email: assistant.user.email,
       phone: assistant.user.phone || '+91 ',
       password: '',
       role: 'assistant',
-      assignedDoctors: assistant.assignedDoctors.join(','),
+      assignedDoctors: assignedDoctorsValue,
       status: assistant.isActive ? 'active' : 'inactive'
     });
     setShowEditDialog(true);
@@ -242,6 +250,24 @@ const AssistantsPage = () => {
   };
 
   const handleAddAssistant = () => {
+    // Auto-assign logged-in doctor if user is a doctor
+    let initialAssignedDoctors = '';
+    if (currentUser?.role === 'doctor') {
+      const doctorRecord = doctors.find(d => d.userId === currentUser.id);
+      if (doctorRecord) {
+        initialAssignedDoctors = doctorRecord.id;
+      }
+    }
+    
+    setFormData({
+      name: '',
+      email: '',
+      phone: '+91 ',
+      password: '',
+      role: 'assistant',
+      assignedDoctors: initialAssignedDoctors,
+      status: 'active'
+    });
     setShowAddDialog(true);
   };
 
@@ -265,6 +291,9 @@ const AssistantsPage = () => {
   };
 
   const getSelectedDoctors = () => {
+    if (!formData.assignedDoctors || formData.assignedDoctors.trim() === '') {
+      return [];
+    }
     return formData.assignedDoctors.split(',').map(d => d.trim()).filter(d => d);
   };
 
@@ -451,10 +480,19 @@ const AssistantsPage = () => {
     }
     
     try {
-      const assignedDoctorsArray = formData.assignedDoctors
+      // Get assigned doctors array
+      let assignedDoctorsArray = formData.assignedDoctors
         .split(',')
         .map(doctor => doctor.trim())
         .filter(doctor => doctor.length > 0);
+      
+      // If doctor is logged in, automatically assign them
+      if (currentUser?.role === 'doctor') {
+        const doctorRecord = doctors.find(d => d.userId === currentUser.id);
+        if (doctorRecord) {
+          assignedDoctorsArray = [doctorRecord.id];
+        }
+      }
       
       console.log('Updating assistant:', selectedAssistant.id, {
         assignedDoctors: assignedDoctorsArray,
@@ -999,76 +1037,98 @@ const AssistantsPage = () => {
                     <Users className="inline w-4 h-4 mr-1" />
                     Assigned Doctors
                   </label>
-                  <div className="relative doctor-dropdown-container">
-                    <div
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white cursor-pointer min-h-[42px] flex items-center"
-                      onClick={() => setShowDoctorDropdown(!showDoctorDropdown)}
-                    >
-                      <div className="flex-1">
-                        {getSelectedDoctorNames().length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {getSelectedDoctorNames().map((name, index) => (
-                              <span
-                                key={index}
-                                className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-teal-100 text-teal-800"
-                              >
-                                {name}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const doctorId = getSelectedDoctors()[index];
-                                    toggleDoctorSelection(doctorId);
-                                  }}
-                                  className="ml-1 text-teal-600 hover:text-teal-800"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-gray-500">
-                            {doctorsLoading ? 'Loading doctors...' : 'Select doctors...'}
-                          </span>
-                        )}
-                      </div>
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                  
+                  {currentUser?.role === 'doctor' ? (
+                    // For doctor: Show only their name (non-editable)
+                    <div>
+                      <input
+                        type="text"
+                        value={(() => {
+                          const doctorRecord = doctors.find(d => d.userId === currentUser.id);
+                          return doctorRecord 
+                            ? `${doctorRecord.user?.name || 'Unknown'} - ${doctorRecord.specialty}` 
+                            : 'Loading...';
+                        })()}
+                        disabled
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        You can only assign assistants to yourself
+                      </p>
                     </div>
-                    
-                    {showDoctorDropdown && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
-                        {doctorsLoading ? (
-                          <div className="px-4 py-2 text-gray-500 text-sm">Loading doctors...</div>
-                        ) : doctors.length === 0 ? (
-                          <div className="px-4 py-2 text-gray-500 text-sm">No doctors available</div>
-                        ) : (
-                          doctors.map((doctor) => (
-                            <div
-                              key={doctor.id}
-                              className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${
-                                isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
-                              }`}
-                              onClick={() => toggleDoctorSelection(doctor.id)}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isDoctorSelected(doctor.id)}
-                                onChange={() => {}}
-                                className="mr-3 text-teal-600 focus:ring-teal-500"
-                              />
-                              <span className="text-sm">
-                                {doctor.user?.name || 'Unknown'} - {doctor.specialty}
-                              </span>
+                  ) : (
+                    // For admin: Show multi-select dropdown
+                    <div className="relative doctor-dropdown-container">
+                      <div
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white cursor-pointer min-h-[42px] flex items-center"
+                        onClick={() => setShowDoctorDropdown(!showDoctorDropdown)}
+                      >
+                        <div className="flex-1">
+                          {getSelectedDoctorNames().length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {getSelectedDoctorNames().map((name, index) => (
+                                <span
+                                  key={index}
+                                  className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-teal-100 text-teal-800"
+                                >
+                                  {name}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const doctorId = getSelectedDoctors()[index];
+                                      toggleDoctorSelection(doctorId);
+                                    }}
+                                    className="ml-1 text-teal-600 hover:text-teal-800"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </span>
+                              ))}
                             </div>
-                          ))
-                        )}
+                          ) : (
+                            <span className="text-gray-500">
+                              {doctorsLoading ? 'Loading doctors...' : 'Select doctors...'}
+                            </span>
+                          )}
+                        </div>
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
                       </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">Click to select multiple doctors</p>
+                      
+                      {showDoctorDropdown && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                          {doctorsLoading ? (
+                            <div className="px-4 py-2 text-gray-500 text-sm">Loading doctors...</div>
+                          ) : doctors.length === 0 ? (
+                            <div className="px-4 py-2 text-gray-500 text-sm">No doctors available</div>
+                          ) : (
+                            doctors.map((doctor) => (
+                              <div
+                                key={doctor.id}
+                                className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${
+                                  isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
+                                }`}
+                                onClick={() => toggleDoctorSelection(doctor.id)}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isDoctorSelected(doctor.id)}
+                                  onChange={() => {}}
+                                  className="mr-3 text-teal-600 focus:ring-teal-500"
+                                />
+                                <span className="text-sm">
+                                  {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">Click to select multiple doctors</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Status */}
