@@ -19,11 +19,11 @@ export default function AppointmentsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    // Default to today's date
+  // Always use today's date - no date filter needed
+  const getTodayDate = () => {
     return new Date().toISOString().split('T')[0];
-  });
-  const [showDateFilter, setShowDateFilter] = useState(false);
+  };
+  const [selectedDate] = useState<string>(getTodayDate());
   const [selectedDoctor, setSelectedDoctor] = useState<string>('');
   const [showDoctorFilter, setShowDoctorFilter] = useState(false);
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
@@ -98,13 +98,15 @@ export default function AppointmentsPage() {
 
   // Apply role-based filtering to appointments
   useEffect(() => {
+    // Always use today's date
+    const todayDate = getTodayDate();
+    
     // For doctors, require at least date selection (doctor is auto-selected)
-    // For admins/assistants, require both doctor and date
+    // For admins/assistants, require doctor selection (date is always today)
     const isDoctorRole = currentUser?.role === 'doctor';
     const requiresDoctorFilter = !isDoctorRole;
-    const requiresDateFilter = true;
 
-    if ((requiresDoctorFilter && !selectedDoctor) || !selectedDate) {
+    if (requiresDoctorFilter && !selectedDoctor) {
       setFilteredAppointments([]);
       setMorningAppointments([]);
       setEveningAppointments([]);
@@ -137,9 +139,9 @@ export default function AppointmentsPage() {
       }
     }
 
-    // Apply date and doctor filters
+    // Apply date and doctor filters (always use today's date)
     const finalFiltered = roleFilteredAppointments.filter(appointment => {
-      const matchesDate = appointment.appointmentDate === selectedDate;
+      const matchesDate = appointment.appointmentDate === todayDate;
       // For doctors, we already filtered by their doctor ID above
       // For others, check the selectedDoctor filter
       const matchesDoctor = isDoctorRole || appointment.doctorId === selectedDoctor;
@@ -178,7 +180,7 @@ export default function AppointmentsPage() {
     setMorningAppointments(morning);
     setEveningAppointments(evening);
     setCurrentPage(1);
-  }, [appointments, currentUser, isAuthenticated, assistants, selectedDate, selectedDoctor, doctors]);
+  }, [appointments, currentUser, isAuthenticated, assistants, selectedDoctor, doctors]);
 
   // Get appointments to display based on current time
   const getAppointmentsToDisplay = () => {
@@ -203,12 +205,6 @@ export default function AppointmentsPage() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (showDateFilter) {
-        const target = event.target as Element;
-        if (!target.closest('.date-filter-container')) {
-          setShowDateFilter(false);
-        }
-      }
       if (showDoctorFilter) {
         const target = event.target as Element;
         if (!target.closest('.doctor-filter-container')) {
@@ -217,14 +213,14 @@ export default function AppointmentsPage() {
       }
     };
 
-    if (showDateFilter || showDoctorFilter) {
+    if (showDoctorFilter) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showDateFilter, showDoctorFilter]);
+  }, [showDoctorFilter]);
 
   const handleMigrateTokens = async () => {
     setIsMigrating(true);
@@ -449,7 +445,7 @@ export default function AppointmentsPage() {
 
           {currentUser?.role === 'doctor' && (
             <div className="mt-2 text-xs text-gray-400">
-              Showing {appointmentsToDisplay.length} appointments for {selectedDate || 'selected date'}
+              Showing {appointmentsToDisplay.length} appointments for today
               {appointmentsToDisplay.length > itemsPerPage && (
                 <span> | Page {currentPage} of {totalPages}</span>
               )}
@@ -476,42 +472,6 @@ export default function AppointmentsPage() {
             placeholder="Search by patient name, phone, or token..."
             className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
           />
-        </div>
-
-        <div className="relative date-filter-container">
-          <button 
-            onClick={() => setShowDateFilter(!showDateFilter)}
-            className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white"
-          >
-            <Calendar className="w-4 h-4" />
-            <span className="font-medium text-gray-700">
-              {selectedDate ? `Date: ${formatDate(selectedDate)}` : 'Filter by Date'}
-            </span>
-          </button>
-          
-          {showDateFilter && (
-            <div className="absolute top-full right-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-10">
-              <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-gray-700">Select Date:</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  onClick={(e) => e.currentTarget.showPicker?.()}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
-                />
-                <button
-                  onClick={() => {
-                    setSelectedDate(new Date().toISOString().split('T')[0]);
-                    setShowDateFilter(false);
-                  }}
-                  className="px-3 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors text-sm"
-                >
-                  Today
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Hide doctor filter for doctors since they can only see their own appointments */}
@@ -566,8 +526,8 @@ export default function AppointmentsPage() {
         )}
       </div>
 
-      {/* Session Statistics - Show for doctors with date, for others require both date and doctor */}
-      {selectedDate && (currentUser?.role === 'doctor' || selectedDoctor) && (
+      {/* Session Statistics - Show for doctors (always today), for others require doctor selection */}
+      {(currentUser?.role === 'doctor' || selectedDoctor) && (
         <div className="mb-6 grid grid-cols-3 gap-4">
           <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
             <div className="text-sm text-gray-500 font-medium">Total Appointments</div>
@@ -576,12 +536,10 @@ export default function AppointmentsPage() {
           <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 shadow-sm">
             <div className="text-sm text-blue-600 font-medium">Morning Session</div>
             <div className="text-2xl font-bold text-blue-800">{morningAppointments.length}</div>
-            <div className="text-xs text-blue-500">(Before 2 PM)</div>
           </div>
           <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 shadow-sm">
             <div className="text-sm text-orange-600 font-medium">Evening Session</div>
             <div className="text-2xl font-bold text-orange-800">{eveningAppointments.length}</div>
-            <div className="text-xs text-orange-500">(2 PM and after)</div>
           </div>
         </div>
       )}
@@ -696,17 +654,11 @@ export default function AppointmentsPage() {
             <p className="text-gray-500 text-lg font-medium">No appointments found</p>
             <p className="text-gray-400 text-sm mt-2">
               {currentUser?.role === 'doctor' ? (
-                !selectedDate 
-                  ? 'Please select a date to view your appointments.'
-                  : `No ${isMorningSession() ? 'morning' : 'evening'} session appointments found for you on ${formatDate(selectedDate)}.`
+                `No ${isMorningSession() ? 'morning' : 'evening'} session appointments found for you today.`
               ) : (
-                !selectedDoctor && !selectedDate ? 
-                  'Please select a doctor and date to view appointments.' :
-                  !selectedDoctor ?
-                  'Please select a doctor to view appointments.' :
-                  !selectedDate ?
-                  'Please select a date to view appointments.' :
-                  `No ${isMorningSession() ? 'morning' : 'evening'} session appointments found for ${doctors.find(d => d.id === selectedDoctor)?.user?.name || 'selected doctor'} on ${formatDate(selectedDate)}.`
+                !selectedDoctor ?
+                  'Please select a doctor to view appointments for today.' :
+                  `No ${isMorningSession() ? 'morning' : 'evening'} session appointments found for ${doctors.find(d => d.id === selectedDoctor)?.user?.name || 'selected doctor'} today.`
               )}
             </p>
           </div>

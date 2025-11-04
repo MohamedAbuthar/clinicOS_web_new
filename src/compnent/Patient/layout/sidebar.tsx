@@ -1,10 +1,12 @@
 import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutGrid, Calendar, Activity, Stethoscope, UserPlus, Users } from 'lucide-react';
+import { LayoutGrid, Calendar, Activity, Stethoscope, UserPlus, Users, LogOut } from 'lucide-react';
+import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 
 export default function PatientSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { patient, logout } = usePatientAuth();
 
   const menuItems = [
     { icon: LayoutGrid, label: 'Home', path: '/Patient/dashboard' },
@@ -16,6 +18,11 @@ export default function PatientSidebar() {
 
   const handleNavigation = (path: string) => {
     router.push(path);
+  };
+
+  const handleLogout = () => {
+    logout();
+    router.push('/Auth-patientLogin');
   };
 
   return (
@@ -63,12 +70,25 @@ export default function PatientSidebar() {
       <div className="px-4 py-4 border-t border-gray-200">
         <div className="flex items-center gap-3 bg-teal-50 rounded-2xl p-3.5">
           <div className="w-11 h-11 bg-teal-500 rounded-full flex items-center justify-center">
-            <span className="text-white font-bold text-base">P</span>
+            <span className="text-white font-bold text-base">
+              {patient?.name ? patient.name.charAt(0).toUpperCase() : 'P'}
+            </span>
           </div>
-          <div>
-            <h3 className="text-gray-900 font-semibold text-sm">Patient User</h3>
-            <p className="text-gray-500 text-xs">Patient</p>
+          <div className="flex-1">
+            <h3 className="text-gray-900 font-semibold text-sm">
+              {patient?.name || 'Patient'}
+            </h3>
+            <p className="text-gray-500 text-xs capitalize">
+              Patient
+            </p>
           </div>
+          <button
+            onClick={handleLogout}
+            className="p-2 hover:bg-teal-100 rounded-lg transition-colors duration-200"
+            title="Logout"
+          >
+            <LogOut className="w-5 h-5 text-gray-600" strokeWidth={2} />
+          </button>
         </div>
       </div>
     </div>
