@@ -200,13 +200,14 @@ export function getSessionCapacity(
   allSlots: string[],
   session: SessionType,
   appointmentDate: string,
-  existingAppointments: any[]
+  existingAppointments: any[],
+  config: SessionConfig = DEFAULT_SESSION_CONFIG
 ): {
   totalSlots: number;
   bookedSlots: number;
   availableSlots: number;
 } {
-  const sessionSlots = getSessionSlots(allSlots, session);
+  const sessionSlots = getSessionSlots(allSlots, session, config);
   
   const bookedSlotsForSession = existingAppointments.filter(apt => {
     const aptDate = apt.appointmentDate;
