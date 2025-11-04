@@ -44,11 +44,26 @@ export default function PatientProfileWithEdit() {
   // Initialize form data when profile loads
   useEffect(() => {
     if (profile) {
+      // Ensure phone has +91 prefix
+      let phoneValue = profile.phone || '';
+      if (phoneValue && !phoneValue.startsWith('+91 ')) {
+        // If phone exists but doesn't have +91, add it
+        const digitsOnly = phoneValue.replace(/\D/g, '');
+        if (digitsOnly.length === 10) {
+          phoneValue = '+91 ' + digitsOnly;
+        } else if (!phoneValue) {
+          phoneValue = '+91 ';
+        }
+      } else if (!phoneValue) {
+        phoneValue = '+91 ';
+      }
+
       setFormData({
         name: profile.name,
         email: profile.email,
-        phone: profile.phone,
+        phone: phoneValue,
         address: profile.address,
+        gender: profile.gender,
         bloodGroup: profile.bloodGroup,
         height: profile.height,
         weight: profile.weight,
@@ -66,11 +81,25 @@ export default function PatientProfileWithEdit() {
     setIsEditing(false);
     // Reset form data
     if (profile) {
+      // Ensure phone has +91 prefix
+      let phoneValue = profile.phone || '';
+      if (phoneValue && !phoneValue.startsWith('+91 ')) {
+        const digitsOnly = phoneValue.replace(/\D/g, '');
+        if (digitsOnly.length === 10) {
+          phoneValue = '+91 ' + digitsOnly;
+        } else if (!phoneValue) {
+          phoneValue = '+91 ';
+        }
+      } else if (!phoneValue) {
+        phoneValue = '+91 ';
+      }
+
       setFormData({
         name: profile.name,
         email: profile.email,
-        phone: profile.phone,
+        phone: phoneValue,
         address: profile.address,
+        gender: profile.gender,
         bloodGroup: profile.bloodGroup,
         height: profile.height,
         weight: profile.weight,
@@ -82,6 +111,29 @@ export default function PatientProfileWithEdit() {
 
   const handleInputChange = (field: keyof Patient, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Handle phone number input with +91 prefix and 10 digit limit
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    
+    // Always ensure +91 prefix
+    if (!value.startsWith('+91 ')) {
+      value = '+91 ';
+    }
+    
+    // Extract only the number part after +91 
+    const numberPart = value.slice(4).replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    const limitedNumber = numberPart.slice(0, 10);
+    
+    // Format as +91 XXXXXXXXXX
+    const formattedValue = '+91 ' + limitedNumber;
+    
+    // Update the input value
+    e.target.value = formattedValue;
+    handleInputChange('phone', formattedValue);
   };
 
   const handleSaveProfile = async () => {
@@ -97,8 +149,11 @@ export default function PatientProfileWithEdit() {
         throw new Error('Invalid email format');
       }
 
-      if (formData.phone && !/^\d{10}$/.test(formData.phone.replace(/[^\d]/g, ''))) {
-        throw new Error('Phone number must be 10 digits');
+      if (formData.phone) {
+        const phoneDigits = formData.phone.replace(/[^\d]/g, '');
+        if (phoneDigits.length !== 10) {
+          throw new Error('Phone number must be 10 digits');
+        }
       }
 
       if (formData.height && (formData.height < 50 || formData.height > 300)) {
@@ -441,7 +496,20 @@ export default function PatientProfileWithEdit() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Gender
                 </label>
-                <p className="text-gray-900 capitalize">{profile.gender}</p>
+                {isEditing ? (
+                  <select
+                    value={formData.gender || profile.gender || ''}
+                    onChange={(e) => handleInputChange('gender', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                ) : (
+                  <p className="text-gray-900 capitalize">{profile.gender || 'Not provided'}</p>
+                )}
               </div>
             </div>
           </div>
@@ -459,13 +527,13 @@ export default function PatientProfileWithEdit() {
                 {isEditing ? (
                   <input
                     type="tel"
-                    value={formData.phone || ''}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    value={formData.phone || '+91 '}
+                    onChange={handlePhoneChange}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
-                    placeholder="10-digit phone number"
+                    placeholder="+91 XXXXXXXXXX"
                   />
                 ) : (
-                  <p className="text-gray-900">{profile.phone}</p>
+                  <p className="text-gray-900">{profile.phone || 'Not provided'}</p>
                 )}
               </div>
 

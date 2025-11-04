@@ -6,7 +6,7 @@ import { signUpWithEmail, signOut } from '@/lib/firebase/auth';
 import { db } from '@/lib/firebase/config';
 import { doc, setDoc } from 'firebase/firestore';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { AlertCircle, Loader2, CheckCircle, House } from 'lucide-react';
+import { AlertCircle, Loader2, CheckCircle, House, Eye, EyeOff } from 'lucide-react';
 
 const Auth = () => {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
@@ -18,6 +18,7 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const { login: contextLogin } = useAuth();
 
@@ -278,14 +279,27 @@ const Auth = () => {
             >
               Password
             </label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
-              required
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 pr-12 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                {showPassword ? (
+                  <EyeOff className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Submit Button */}

@@ -1,19 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw, Shield, User } from 'lucide-react';
+import { AlertCircle, RefreshCw, Shield, User, Edit } from 'lucide-react';
 import { useRecentActivity } from '@/lib/hooks/useRecentActivity';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useAssistants } from '@/lib/hooks/useAssistants';
+import { useDoctors } from '@/lib/hooks/useDoctors';
+import EditDoctorProfileDialog, { DoctorProfileData } from './EditDoctorProfileDialog';
+import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   
-  const { user: currentUser, isAuthenticated } = useAuth();
+  const { user: currentUser, isAuthenticated, refreshUser } = useAuth();
   const { assistants } = useAssistants();
+  const { doctors, updateDoctor, fetchDoctors, loading: doctorsLoading } = useDoctors();
   const isAdmin = currentUser?.role === 'admin';
+  const isDoctor = currentUser?.role === 'doctor';
+  
+  // Get current doctor data if user is a doctor
+  const currentDoctor = isDoctor 
+    ? doctors.find(d => d.userId === currentUser?.id)
+    : null;
   
   // Only fetch audit logs for admin users
-  const { auditLogs, loading, error: apiError, refetch } = useRecentActivity(isAdmin ? 20 : 0);
+  const { auditLogs, loading, error: apiError } = useRecentActivity(isAdmin ? 20 : 0);
+
+  // Fetch doctors when component loads if user is a doctor
+  useEffect(() => {
+    if (isDoctor && isAuthenticated) {
+      fetchDoctors();
+    }
+  }, [isDoctor, isAuthenticated, fetchDoctors]);
 
   // Filter audit logs based on user role
   const getFilteredAuditLogs = () => {
@@ -45,9 +64,6 @@ export default function SettingsPage() {
     return [];
   };
   
-  // Track if we've manually refreshed
-  const [hasManuallyRefreshed, setHasManuallyRefreshed] = useState(false);
-
   // Show success message and hide after 3 seconds
   useEffect(() => {
     if (successMessage) {
@@ -63,10 +79,60 @@ export default function SettingsPage() {
     }
   }, [apiError]);
 
-  const handleRefresh = () => {
-    setError(null);
-    setHasManuallyRefreshed(true);
-    refetch();
+  const handleEditProfile = () => {
+    if (!currentDoctor || !currentUser) {
+      toast.error('Doctor profile data not loaded yet');
+      return;
+    }
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveProfile = async (data: DoctorProfileData) => {
+    if (!currentDoctor) {
+      toast.error('Doctor profile not found');
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      // Prepare updates with all fields
+      const updates = {
+        name: data.name.trim(),
+        email: data.email.trim(),
+        phone: data.phone.trim(),
+        specialty: data.specialty.trim(),
+      };
+
+      const success = await updateDoctor(currentDoctor.id, updates);
+      
+      if (success) {
+        // Refresh doctors list first to get updated specialty data
+        await fetchDoctors();
+        // Then refresh user data from AuthContext to show updated name, email, phone
+        await refreshUser();
+        
+        toast.success('✅ Profile updated successfully');
+        setIsEditDialogOpen(false);
+        setSuccessMessage('Profile updated successfully');
+      } else {
+        toast.error('❌ Failed to update profile');
+      }
+    } catch (err: any) {
+      toast.error(`❌ ${err.message || 'Failed to update profile'}`);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const getInitialProfileData = (): DoctorProfileData | null => {
+    if (!currentDoctor || !currentUser) return null;
+    
+    return {
+      name: currentUser.name || '',
+      email: currentUser.email || '',
+      phone: currentUser.phone || '',
+      specialty: currentDoctor.specialty || '',
+    };
   };
 
 
@@ -92,49 +158,51 @@ export default function SettingsPage() {
         )}
 
         {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-1">
-              {currentUser?.role === 'doctor' 
-                ? 'Your Settings' 
-                : currentUser?.role === 'assistant'
-                ? 'Your Settings'
-                : 'Settings'
-              }
-            </h1>
-            <p className="text-gray-500">
-              {currentUser?.role === 'doctor' 
-                ? 'Your profile settings and activity logs' 
-                : currentUser?.role === 'assistant'
-                ? 'Your profile settings and activity logs'
-                : 'System settings and user management'
-              }
-            </p>
-            {/* User context indicator */}
-            {currentUser && (
-              <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
-                {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
-                {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
-                {currentUser.role === 'admin' && '👨‍💼 Admin View'}
-              </div>
-            )}
-          </div>
-          <button 
-            onClick={handleRefresh}
-            disabled={loading}
-            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">
+            {currentUser?.role === 'doctor' 
+              ? 'Your Settings' 
+              : currentUser?.role === 'assistant'
+              ? 'Your Settings'
+              : 'Settings'
+            }
+          </h1>
+          <p className="text-gray-500">
+            {currentUser?.role === 'doctor' 
+              ? 'Your profile settings and activity logs' 
+              : currentUser?.role === 'assistant'
+              ? 'Your profile settings and activity logs'
+              : 'System settings and user management'
+            }
+          </p>
+          {/* User context indicator */}
+          {currentUser && (
+            <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
+              {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
+              {currentUser.role === 'assistant' && '👩‍💼 Assistant View'}
+              {currentUser.role === 'admin' && '👨‍💼 Admin View'}
+            </div>
+          )}
         </div>
 
 
         {/* User Profile Section - For All Staff */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <User className="w-6 h-6 text-teal-600" />
-            <h2 className="text-xl font-bold text-gray-900">Your Profile</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <User className="w-6 h-6 text-teal-600" />
+              <h2 className="text-xl font-bold text-gray-900">Your Profile</h2>
+            </div>
+            {isDoctor && currentDoctor && (
+              <button
+                onClick={handleEditProfile}
+                className="flex items-center gap-2 px-3 py-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                title="Edit Profile"
+              >
+                <Edit className="w-5 h-5" />
+                <span className="text-sm font-medium">Edit</span>
+              </button>
+            )}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -147,6 +215,18 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <p className="text-gray-900">{currentUser?.email || 'N/A'}</p>
               </div>
+              {isDoctor && currentDoctor && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Specialty</label>
+                  <p className="text-gray-900 font-medium">{currentDoctor.specialty || 'N/A'}</p>
+                </div>
+              )}
+              {currentUser?.phone && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                  <p className="text-gray-900">{currentUser.phone}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                 <div className="flex items-center gap-2">
@@ -179,7 +259,7 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
-              {loading && !hasManuallyRefreshed ? (
+              {loading ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="flex items-center gap-2 text-gray-500">
                     <RefreshCw size={20} className="animate-spin" />
@@ -207,14 +287,6 @@ export default function SettingsPage() {
                       <span className="text-sm text-gray-500">{log.timestamp}</span>
                     </div>
                   ))}
-                  {loading && hasManuallyRefreshed && (
-                    <div className="flex items-center justify-center py-4">
-                      <div className="flex items-center gap-2 text-gray-500">
-                        <RefreshCw size={16} className="animate-spin" />
-                        <span className="text-sm">Refreshing...</span>
-                      </div>
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -271,6 +343,17 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Edit Doctor Profile Dialog */}
+        {isDoctor && currentDoctor && (
+          <EditDoctorProfileDialog
+            isOpen={isEditDialogOpen}
+            onClose={() => setIsEditDialogOpen(false)}
+            onSave={handleSaveProfile}
+            initialData={getInitialProfileData()}
+            loading={isUpdating}
+          />
         )}
       </div>
     </div>

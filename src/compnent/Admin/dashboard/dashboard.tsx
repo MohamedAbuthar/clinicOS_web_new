@@ -64,11 +64,17 @@ export default function DashboardPage() {
         apt.appointmentDate === today
       );
 
+      // Find current doctor if user is a doctor
+      let currentDoctor = null;
+      if (isAuthenticated && currentUser && currentUser.role === 'doctor') {
+        currentDoctor = doctorsData.find(doctor => doctor.userId === currentUser.id);
+      }
+
       // Apply role-based filtering to appointments
       if (isAuthenticated && currentUser) {
-        if (currentUser.role === 'doctor') {
-          // Doctor sees only their own appointments
-          todayAppointments = todayAppointments.filter(apt => apt.doctorId === currentUser.id);
+        if (currentUser.role === 'doctor' && currentDoctor) {
+          // Doctor sees only their own appointments (use doctor.id, not userId)
+          todayAppointments = todayAppointments.filter(apt => apt.doctorId === currentDoctor.id);
         } else if (currentUser.role === 'assistant') {
           // Assistant sees appointments for their assigned doctors
           const assistant = assistants.find(a => a.userId === currentUser.id);
@@ -109,9 +115,17 @@ export default function DashboardPage() {
         // Admin sees all doctors (no filtering)
       }
 
-      const doctorsActive = filteredDoctors.filter(doctor => 
-        doctor.status === 'In'
-      ).length;
+      // For doctors, show 1 if they're active, 0 otherwise
+      // For others, count active doctors in filtered list
+      let doctorsActive = 0;
+      if (isAuthenticated && currentUser && currentUser.role === 'doctor' && currentDoctor) {
+        doctorsActive = currentDoctor.status === 'In' ? 1 : 0;
+      } else {
+        doctorsActive = filteredDoctors.filter(doctor => 
+          doctor.status === 'In'
+        ).length;
+      }
+
       const noShows = todayAppointments.filter(apt => 
         apt.status === 'no_show'
       ).length;
