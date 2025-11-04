@@ -21,7 +21,7 @@ interface AssistantForm {
   phone: string;
   password: string;
   role: string;
-  assignedDoctors: string; // Changed to string for form input
+  assignedDoctors: string;
   status: 'active' | 'inactive';
 }
 
@@ -155,23 +155,19 @@ const AssistantsPage = () => {
 
     let filtered = [...assistants];
 
-    // If no user is authenticated, show all assistants (shouldn't happen in admin portal)
     if (!isAuthenticated || !currentUser) {
       setFilteredAssistants(filtered);
       return;
     }
 
-    // If doctor is authenticated, show only assistants assigned to them
     if (currentUser.role === 'doctor') {
       console.log('Doctor filtering assistants - currentUser:', currentUser);
       console.log('Available assistants:', assistants);
       
-      // Find the doctor record for this user to get the doctor ID
       const doctorRecord = doctors.find(d => d.userId === currentUser.id);
       console.log('Doctor record found:', doctorRecord);
       
       if (doctorRecord) {
-        // Find assistants that have this doctor ID in their assignedDoctors array
         filtered = assistants.filter(assistant => {
           const hasDoctor = assistant.assignedDoctors && assistant.assignedDoctors.includes(doctorRecord.id);
           console.log(`Assistant ${assistant.user.name}: assignedDoctors=${assistant.assignedDoctors}, doctorRecord.id=${doctorRecord.id}, hasDoctor=${hasDoctor}`);
@@ -184,13 +180,10 @@ const AssistantsPage = () => {
         filtered = [];
       }
     }
-    
-    // If assistant is authenticated, show only themselves
     else if (currentUser.role === 'assistant') {
       console.log('Assistant filtering - currentUser:', currentUser);
       console.log('Available assistants:', assistants);
       
-      // Check if the current assistant exists in the assistants list
       const currentAssistant = assistants.find(a => a.userId === currentUser.id);
       console.log('Current assistant found:', currentAssistant);
       
@@ -202,8 +195,6 @@ const AssistantsPage = () => {
         filtered = [];
       }
     }
-    
-    // If admin is authenticated, show all assistants
     else if (currentUser.role === 'admin') {
       filtered = assistants;
     }
@@ -217,9 +208,9 @@ const AssistantsPage = () => {
       name: assistant.user.name,
       email: assistant.user.email,
       phone: assistant.user.phone || '+91 ',
-      password: '', // Password not shown in edit mode for security
-      role: 'assistant', // Default role
-      assignedDoctors: assistant.assignedDoctors.join(','), // Convert array to string with comma separator
+      password: '',
+      role: 'assistant',
+      assignedDoctors: assistant.assignedDoctors.join(','),
       status: assistant.isActive ? 'active' : 'inactive'
     });
     setShowEditDialog(true);
@@ -239,7 +230,6 @@ const AssistantsPage = () => {
       } catch (error: any) {
         console.error('Error deleting assistant:', error);
         
-        // Handle specific error cases
         if (error.message?.includes('permission-denied') || error.message?.includes('permissions')) {
           toast.error('❌ Permission denied. You do not have access to delete this assistant.');
         } else {
@@ -259,30 +249,21 @@ const AssistantsPage = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // Handle phone number input with +91 validation
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
     
-    // Always ensure +91 prefix
     if (!value.startsWith('+91 ')) {
       value = '+91 ';
     }
     
-    // Extract only the number part after +91 
     const numberPart = value.slice(4).replace(/\D/g, '');
-    
-    // Limit to 10 digits
     const limitedNumber = numberPart.slice(0, 10);
-    
-    // Format as +91 XXXXXXXXXX
     const formattedValue = '+91 ' + limitedNumber;
     
-    // Update the input value
     e.target.value = formattedValue;
     handleFormChange('phone', formattedValue);
   };
 
-  // Helper functions for doctor selection
   const getSelectedDoctors = () => {
     return formData.assignedDoctors.split(',').map(d => d.trim()).filter(d => d);
   };
@@ -296,11 +277,9 @@ const AssistantsPage = () => {
     const isSelected = selected.includes(doctorId);
     
     if (isSelected) {
-      // Remove doctor
       const updated = selected.filter(id => id !== doctorId);
       handleFormChange('assignedDoctors', updated.join(','));
     } else {
-      // Add doctor
       const updated = [...selected, doctorId];
       handleFormChange('assignedDoctors', updated.join(','));
     }
@@ -314,30 +293,25 @@ const AssistantsPage = () => {
     });
   };
 
-  // Email validation function
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  // Valid email domains
   const validDomains = [
     'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
     'protonmail.com', 'aol.com', 'live.com', 'msn.com', 'yandex.com',
     'zoho.com', 'mail.com', 'gmx.com', 'web.de', 'tutanota.com'
   ];
 
-  // Check if email domain is valid
   const isValidDomain = (email: string) => {
     const domain = email.split('@')[1]?.toLowerCase();
     return validDomains.includes(domain);
   };
 
-  // Handle email input with validation
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const email = e.target.value;
     
-    // Only validate if email is not empty
     if (email) {
       if (!validateEmail(email) || !isValidDomain(email)) {
         if (!emailErrorShown) {
@@ -345,22 +319,18 @@ const AssistantsPage = () => {
           setEmailErrorShown(true);
         }
       } else {
-        // Valid email entered, reset error state
         setEmailErrorShown(false);
       }
     } else {
-      // Empty email, reset error state
       setEmailErrorShown(false);
     }
     
-    // Call the original onChange handler
     handleFormChange('email', email);
   };
 
   const handleAddSubmit = async () => {
     setActionLoading(true);
     
-    // Validate email format
     if (formData.email && formData.email.trim() !== '') {
       if (!validateEmail(formData.email)) {
         toast.error('Please enter a valid email format');
@@ -374,25 +344,31 @@ const AssistantsPage = () => {
       }
     }
     
-    // Validate required fields
     if (!formData.name.trim() || !formData.email.trim() || !formData.phone.trim()) {
       toast.error('Please fill in all required fields');
       setActionLoading(false);
       return;
     }
     
-    // Validate password
     if (!formData.password.trim()) {
       toast.error('Please enter a password for the assistant');
       setActionLoading(false);
       return;
     }
     
-    // Convert assigned doctors string to array
-    const assignedDoctorsArray = formData.assignedDoctors
+    // FIX 1: Get assigned doctors array
+    let assignedDoctorsArray = formData.assignedDoctors
       .split(',')
       .map(doctor => doctor.trim())
       .filter(doctor => doctor.length > 0);
+
+    // FIX 2: If doctor is logged in, automatically assign them
+    if (currentUser?.role === 'doctor') {
+      const doctorRecord = doctors.find(d => d.userId === currentUser.id);
+      if (doctorRecord) {
+        assignedDoctorsArray = [doctorRecord.id];
+      }
+    }
     
     console.log('Assigned doctors:', assignedDoctorsArray);
     console.log('Creating assistant with email:', formData.email);
@@ -408,7 +384,6 @@ const AssistantsPage = () => {
       });
       
       if (result.success) {
-        // Send password email to the assistant
         console.log('Sending login credentials to assistant email...');
         try {
           const emailResult = await sendPasswordEmailWithRetry(
@@ -420,7 +395,6 @@ const AssistantsPage = () => {
           if (emailResult.success) {
             toast.success('✅ Assistant created successfully! Login credentials sent to their email.');
           } else {
-            // Assistant created but email failed - provide manual credentials
             toast.warning(
               `✅ Assistant created successfully!\n\n⚠️ Email sending failed: ${emailResult.message}\n\nPlease share these credentials manually:\nEmail: ${formData.email}\nPassword: ${formData.password}`,
               { duration: 10000 }
@@ -428,7 +402,6 @@ const AssistantsPage = () => {
             console.warn('Failed to send password email:', emailResult.message);
           }
         } catch (emailError: any) {
-          // Assistant created but email failed
           toast.warning(
             `✅ Assistant created successfully!\n\n⚠️ Failed to send email: ${emailError.message}\n\nPlease share these credentials manually:\nEmail: ${formData.email}\nPassword: ${formData.password}`,
             { duration: 10000 }
@@ -436,9 +409,11 @@ const AssistantsPage = () => {
           console.warn('Error sending password email:', emailError);
         }
         
+        // FIX 1: Refresh the assistants list after successful creation
+        await fetchAssistants();
+        
         closeDialogs();
       } else {
-        // Handle specific error cases
         if (result.errorCode === 'email-already-in-use') {
           toast.error('❌ Email already exists. Please use a different email address.');
         } else if (result.errorCode === 'weak-password') {
@@ -462,7 +437,6 @@ const AssistantsPage = () => {
     
     setActionLoading(true);
     
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       toast.error('Please enter a valid email address');
@@ -470,7 +444,6 @@ const AssistantsPage = () => {
       return;
     }
     
-    // Validate required fields
     if (!formData.name.trim() || !formData.email.trim() || !formData.phone.trim()) {
       toast.error('Please fill in all required fields');
       setActionLoading(false);
@@ -478,7 +451,6 @@ const AssistantsPage = () => {
     }
     
     try {
-      // Convert assigned doctors string to array
       const assignedDoctorsArray = formData.assignedDoctors
         .split(',')
         .map(doctor => doctor.trim())
@@ -513,7 +485,6 @@ const AssistantsPage = () => {
     } catch (err: any) {
       console.error('Error updating assistant:', err);
       
-      // Handle specific error cases
       if (err.message?.includes('email-already-in-use') || err.message?.includes('already exists')) {
         toast.error('❌ Email already exists. Please use a different email address.');
       } else if (err.message?.includes('permission-denied') || err.message?.includes('permissions')) {
@@ -593,7 +564,6 @@ const AssistantsPage = () => {
                   : 'Manage assistant profiles and doctor assignments'
                 }
               </p>
-              {/* User context indicator */}
               {currentUser && (
                 <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
                   {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
@@ -732,7 +702,7 @@ const AssistantsPage = () => {
                     <input
                       type="email"
                       value={formData.email}
-                      onChange={(e) => handleFormChange('email', e.target.value)}
+                      onChange={handleEmailChange}
                       placeholder="email@example.com"
                       className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
@@ -801,82 +771,103 @@ const AssistantsPage = () => {
                   />
                 </div>
 
-                {/* Assigned Doctors */}
+                {/* Assigned Doctors - FIX 2: Show only logged-in doctor for doctor role */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Users className="inline w-4 h-4 mr-1" />
                     Assigned Doctors
                   </label>
-                  <div className="relative doctor-dropdown-container">
-                    <div
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white cursor-pointer min-h-[42px] flex items-center"
-                      onClick={() => setShowDoctorDropdown(!showDoctorDropdown)}
-                    >
-                      <div className="flex-1">
-                        {getSelectedDoctorNames().length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {getSelectedDoctorNames().map((name, index) => (
-                              <span
-                                key={index}
-                                className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-teal-100 text-teal-800"
-                              >
-                                {name}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const doctorId = getSelectedDoctors()[index];
-                                    toggleDoctorSelection(doctorId);
-                                  }}
-                                  className="ml-1 text-teal-600 hover:text-teal-800"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-gray-500">
-                            {doctorsLoading ? 'Loading doctors...' : 'Select doctors...'}
-                          </span>
-                        )}
-                      </div>
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                  
+                  {currentUser?.role === 'doctor' ? (
+                    // For doctor: Show only their name (non-editable)
+                    <div>
+                      <input
+                        type="text"
+                        value={(() => {
+                          const doctorRecord = doctors.find(d => d.userId === currentUser.id);
+                          return doctorRecord 
+                            ? `${doctorRecord.user?.name || 'Unknown'} - ${doctorRecord.specialty}` 
+                            : 'Loading...';
+                        })()}
+                        disabled
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Assistants you create will be automatically assigned to you
+                      </p>
                     </div>
-                    
-                    {showDoctorDropdown && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
-                        {doctorsLoading ? (
-                          <div className="px-4 py-2 text-gray-500 text-sm">Loading doctors...</div>
-                        ) : doctors.length === 0 ? (
-                          <div className="px-4 py-2 text-gray-500 text-sm">No doctors available</div>
-                        ) : (
-                          doctors.map((doctor) => (
-                            <div
-                              key={doctor.id}
-                              className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${
-                                isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
-                              }`}
-                              onClick={() => toggleDoctorSelection(doctor.id)}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isDoctorSelected(doctor.id)}
-                                onChange={() => {}} // Handled by parent onClick
-                                className="mr-3 text-teal-600 focus:ring-teal-500"
-                              />
-                              <span className="text-sm">
-                                {doctor.user?.name || 'Unknown'} - {doctor.specialty}
-                              </span>
+                  ) : (
+                    // For admin: Show multi-select dropdown
+                    <div className="relative doctor-dropdown-container">
+                      <div
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white cursor-pointer min-h-[42px] flex items-center"
+                        onClick={() => setShowDoctorDropdown(!showDoctorDropdown)}
+                      >
+                        <div className="flex-1">
+                          {getSelectedDoctorNames().length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {getSelectedDoctorNames().map((name, index) => (
+                                <span
+                                  key={index}
+                                  className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-teal-100 text-teal-800"
+                                >
+                                  {name}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const doctorId = getSelectedDoctors()[index];
+                                      toggleDoctorSelection(doctorId);
+                                    }}
+                                    className="ml-1 text-teal-600 hover:text-teal-800"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </span>
+                              ))}
                             </div>
-                          ))
-                        )}
+                          ) : (
+                            <span className="text-gray-500">
+                              {doctorsLoading ? 'Loading doctors...' : 'Select doctors...'}
+                            </span>
+                          )}
+                        </div>
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
                       </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">Click to select multiple doctors</p>
+                      
+                      {showDoctorDropdown && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                          {doctorsLoading ? (
+                            <div className="px-4 py-2 text-gray-500 text-sm">Loading doctors...</div>
+                          ) : doctors.length === 0 ? (
+                            <div className="px-4 py-2 text-gray-500 text-sm">No doctors available</div>
+                          ) : (
+                            doctors.map((doctor) => (
+                              <div
+                                key={doctor.id}
+                                className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${
+                                  isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
+                                }`}
+                                onClick={() => toggleDoctorSelection(doctor.id)}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isDoctorSelected(doctor.id)}
+                                  onChange={() => {}}
+                                  className="mr-3 text-teal-600 focus:ring-teal-500"
+                                />
+                                <span className="text-sm">
+                                  {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Status */}
@@ -1065,7 +1056,7 @@ const AssistantsPage = () => {
                               <input
                                 type="checkbox"
                                 checked={isDoctorSelected(doctor.id)}
-                                onChange={() => {}} // Handled by parent onClick
+                                onChange={() => {}}
                                 className="mr-3 text-teal-600 focus:ring-teal-500"
                               />
                               <span className="text-sm">
