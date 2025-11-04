@@ -32,6 +32,11 @@ export default function Sidebar() {
       return false;
     }
     
+    // Hide Schedule and Reports for assistants
+    if (user?.role === 'assistant' && (item.label === 'Schedule' || item.label === 'Reports')) {
+      return false;
+    }
+    
     // Show all items for admin
     return true;
   });

@@ -1,12 +1,13 @@
 'use client'
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, User, Star, Clock, Loader2, Users, Sun, Moon, Check, X, Info, Calendar as CalendarIcon } from 'lucide-react';
+import { Search, User, Star, Clock, Loader2, Users, Sun, Moon, Check, X, Info, Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Doctor } from '@/lib/api';
 import { createMultipleAppointments, getDoctorAppointmentsByDate, getFamilyMembers } from '@/lib/firebase/firestore';
 import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 import { usePatientDoctors } from '@/lib/hooks/usePatientDoctors';
+import { useScheduleOverrides } from '@/lib/hooks/useScheduleOverrides';
 import { 
   SessionType, 
   getSessionSlots,
@@ -53,6 +54,10 @@ export default function BookAppointmentPage() {
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
   const [selectedFamilyMembers, setSelectedFamilyMembers] = useState<string[]>([]);
   const [loadingFamilyMembers, setLoadingFamilyMembers] = useState(false);
+  
+  // Booking confirmation dialog
+  const [showBookingConfirmDialog, setShowBookingConfirmDialog] = useState(false);
+  const [bookingFor, setBookingFor] = useState<'yourself' | 'family' | 'both' | null>(null);
 
   // Session capacity
   const [sessionCapacity, setSessionCapacity] = useState<{
@@ -62,6 +67,26 @@ export default function BookAppointmentPage() {
 
   // Use the patient doctors hook
   const { doctors, loading: doctorsLoading, error: doctorsError, refreshDoctors } = usePatientDoctors();
+  
+  // Schedule overrides for checking doctor availability
+  const { fetchOverrides, overrides } = useScheduleOverrides();
+  
+  // Log overrides when they change
+  useEffect(() => {
+    if (overrides.length > 0 && selectedDoctor) {
+      console.log('📅 Schedule overrides loaded for doctor:', selectedDoctor, 'Count:', overrides.length);
+      overrides.forEach(override => {
+        console.log('  - Override:', {
+          date: override.date,
+          reason: override.reason,
+          startTime: override.startTime,
+          endTime: override.endTime,
+          type: override.type,
+          displayType: (override as any).displayType
+        });
+      });
+    }
+  }, [overrides, selectedDoctor]);
 
   // Handle doctors loading error
   useEffect(() => {
@@ -93,7 +118,7 @@ export default function BookAppointmentPage() {
     loadFamilyMembers();
   }, [includeFamilyMembers, patient]);
 
-  // Load session capacity when doctor and date are selected
+  // Load session capacity and schedule overrides when doctor and date are selected
   useEffect(() => {
     const loadSessionCapacity = async () => {
       if (selectedDoctor && selectedDate) {
@@ -114,6 +139,9 @@ export default function BookAppointmentPage() {
             setIsLoading(false);
             return;
           }
+
+          // Fetch schedule overrides for this doctor
+          await fetchOverrides(selectedDoctor);
 
           // Get existing appointments for this doctor and date
           const dateStr = formatDateForAPI(selectedDate);
@@ -152,7 +180,7 @@ export default function BookAppointmentPage() {
     };
 
     loadSessionCapacity();
-  }, [selectedDoctor, selectedDate, doctors]);
+  }, [selectedDoctor, selectedDate, doctors, fetchOverrides]);
 
   const filteredDoctors = doctors.filter(doctor =>
     doctor.user?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -169,21 +197,24 @@ export default function BookAppointmentPage() {
     );
   };
 
-  const handleConfirmBooking = async () => {
+  const handleConfirmBooking = () => {
     if (!selectedDoctorData || !selectedSession || !selectedDate || !reason.trim() || !patient?.id) {
       toast.error('❌ Please fill in all required fields');
       return;
     }
 
-    // Check session capacity
-    if (sessionCapacity) {
-      const capacity = sessionCapacity[selectedSession];
-      const totalBookings = 1 + selectedFamilyMembers.length;
-      
-      if (capacity.availableSlots < totalBookings) {
-        toast.error(`❌ Not enough slots available in this session. Available: ${capacity.availableSlots}, Requested: ${totalBookings}`);
-        return;
-      }
+    // Check if doctor is on leave for this date and session
+    const leaveCheck = isDoctorOnLeave(selectedDate, selectedSession);
+    if (leaveCheck.onLeave) {
+      toast.error(`❌ ${leaveCheck.reason || 'Doctor is on leave for this session'}`);
+      return;
+    }
+
+    // Check if session can be booked (must be at least 3 hours before session starts)
+    const sessionTimeCheck = canBookSessionByTime(selectedDate, selectedSession);
+    if (!sessionTimeCheck.canBook) {
+      toast.error(`❌ ${sessionTimeCheck.reason || 'Session can only be booked at least 3 hours before it starts'}`);
+      return;
     }
 
     // Validate session booking rules
@@ -193,9 +224,36 @@ export default function BookAppointmentPage() {
       return;
     }
 
-      try {
-        setIsBooking(true);
-        
+    // If family members are selected, show confirmation dialog
+    if (selectedFamilyMembers.length > 0) {
+      setShowBookingConfirmDialog(true);
+      return;
+    }
+
+    // If no family members, proceed with booking for yourself
+    processBooking('yourself');
+  };
+
+  const processBooking = async (bookingType: 'yourself' | 'family' | 'both') => {
+    if (!selectedDoctorData || !selectedSession || !selectedDate || !reason.trim() || !patient?.id) {
+      return;
+    }
+
+    // Check session capacity based on booking type
+    if (sessionCapacity) {
+      const capacity = sessionCapacity[selectedSession];
+      const totalBookings = bookingType === 'both' ? 2 : 1;
+      
+      if (capacity.availableSlots < totalBookings) {
+        toast.error(`❌ Not enough slots available in this session. Available: ${capacity.availableSlots}, Requested: ${totalBookings}`);
+        return;
+      }
+    }
+
+    try {
+      setIsBooking(true);
+      setShowBookingConfirmDialog(false);
+      
       const dateStr = formatDateForAPI(selectedDate);
       
       // Get existing appointments for token generation
@@ -208,76 +266,82 @@ export default function BookAppointmentPage() {
         .filter((apt: any) => sessionSlots.includes(apt.appointmentTime))
         .map((apt: any) => apt.appointmentTime);
       
-      // Prepare appointments data (patient + family members)
+      // Prepare appointments data based on booking type
       const appointmentsToCreate = [];
       
-      // Patient's appointment
-      const patientToken = getNextTokenForSession(existingAppointments, selectedSession, dateStr);
-      const patientSlot = assignSlotByToken(patientToken, sessionSlots, bookedSlots);
+      // Determine which appointments to create
+      const shouldBookYourself = bookingType === 'yourself' || bookingType === 'both';
+      const shouldBookFamily = bookingType === 'family' || bookingType === 'both';
       
-      if (!patientSlot) {
-        toast.error('❌ No available slots for the selected session');
-        setIsBooking(false);
-        return;
-      }
-
-      appointmentsToCreate.push({
-          patientId: patient.id,
-        patientName: patient.name,
-        patientPhone: patient.phone,
-        doctorId: selectedDoctor!,
-        appointmentDate: dateStr,
-        appointmentTime: patientSlot,
-        session: selectedSession,
-        duration: selectedDoctorData.consultationDuration || 30,
-        status: 'scheduled',
-        source: 'web',
-        notes: reason.trim(),
-        tokenNumber: patientToken
-      });
-
-      bookedSlots.push(patientSlot); // Mark as booked for next iteration
-      
-      // Family members' appointments
-      for (let i = 0; i < selectedFamilyMembers.length; i++) {
-        const memberId = selectedFamilyMembers[i];
-        const member = familyMembers.find(m => m.id === memberId);
+      // Book for yourself
+      if (shouldBookYourself) {
+        const patientToken = getNextTokenForSession(existingAppointments, selectedSession, dateStr);
+        const patientSlot = assignSlotByToken(patientToken, sessionSlots, bookedSlots);
         
-        if (!member) continue;
-        
-        const memberToken = getNextTokenForSession(
-          [...existingAppointments, ...appointmentsToCreate],
-          selectedSession,
-          dateStr
-        );
-        const memberSlot = assignSlotByToken(memberToken, sessionSlots, bookedSlots);
-        
-        if (!memberSlot) {
-          toast.error('❌ Not enough slots available for all selected family members');
+        if (!patientSlot) {
+          toast.error('❌ No available slots for the selected session');
           setIsBooking(false);
           return;
         }
 
         appointmentsToCreate.push({
-          patientId: memberId,
-          patientName: member.name,
-          patientPhone: patient.phone, // Use patient's phone for family members
+          patientId: patient.id,
+          patientName: patient.name,
+          patientPhone: patient.phone,
           doctorId: selectedDoctor!,
           appointmentDate: dateStr,
-          appointmentTime: memberSlot,
+          appointmentTime: patientSlot,
           session: selectedSession,
           duration: selectedDoctorData.consultationDuration || 30,
           status: 'scheduled',
           source: 'web',
-          notes: `Booked with ${patient.name}. ${reason.trim()}`,
-          tokenNumber: memberToken,
-          bookedBy: patient.id // Track who booked this appointment
+          notes: reason.trim(),
+          tokenNumber: patientToken
         });
 
-        bookedSlots.push(memberSlot); // Mark as booked for next iteration
+        bookedSlots.push(patientSlot);
       }
       
-      console.log(`📝 Booking ${appointmentsToCreate.length} appointments:`, appointmentsToCreate.map(a => `${a.patientName} - ${a.tokenNumber} - ${a.appointmentTime}`));
+      // Book for family member
+      if (shouldBookFamily && selectedFamilyMembers.length > 0) {
+        const memberId = selectedFamilyMembers[0]; // Book for first selected family member
+        const member = familyMembers.find(m => m.id === memberId);
+        
+        if (member) {
+          const memberToken = getNextTokenForSession(
+            [...existingAppointments, ...appointmentsToCreate],
+            selectedSession,
+            dateStr
+          );
+          const memberSlot = assignSlotByToken(memberToken, sessionSlots, bookedSlots);
+          
+          if (!memberSlot) {
+            toast.error('❌ Not enough slots available for the family member');
+            setIsBooking(false);
+            return;
+          }
+
+          appointmentsToCreate.push({
+            patientId: memberId,
+            patientName: member.name,
+            patientPhone: patient.phone,
+            doctorId: selectedDoctor!,
+            appointmentDate: dateStr,
+            appointmentTime: memberSlot,
+            session: selectedSession,
+            duration: selectedDoctorData.consultationDuration || 30,
+            status: 'scheduled',
+            source: 'web',
+            notes: `Booked by ${patient.name}. ${reason.trim()}`,
+            tokenNumber: memberToken,
+            bookedBy: patient.id
+          });
+
+          bookedSlots.push(memberSlot);
+        }
+      }
+      
+      console.log(`📝 Booking ${appointmentsToCreate.length} appointment(s):`, appointmentsToCreate.map(a => `${a.patientName} - Token ${a.tokenNumber} - ${a.appointmentTime}`));
       
       // Create all appointments
       const bookingResult = await createMultipleAppointments(appointmentsToCreate);
@@ -287,30 +351,193 @@ export default function BookAppointmentPage() {
           `${apt.patientName}: Token ${apt.tokenNumber} at ${apt.appointmentTime}`
         ).join(', ');
         
-        toast.success(`✅ Appointments booked successfully! ${summary}`, {
+        toast.success(`✅ Appointment${appointmentsToCreate.length > 1 ? 's' : ''} booked successfully! ${summary}`, {
           duration: 5000
         });
         router.push('/Patient/myappoinment');
-        } else {
+      } else {
         toast.error(`❌ ${bookingResult.error || 'Failed to book appointment'}`);
-        }
-      } catch (error: any) {
+      }
+    } catch (error: any) {
       console.error('Booking error:', error);
-        toast.error(`❌ ${error.message || 'Failed to book appointment'}`);
-      } finally {
-        setIsBooking(false);
+      toast.error(`❌ ${error.message || 'Failed to book appointment'}`);
+    } finally {
+      setIsBooking(false);
     }
   };
 
+  // Helper function to check if session can be booked (must be at least 3 hours before session starts)
+  const canBookSessionByTime = (date: Date, session: SessionType): { canBook: boolean; reason?: string; showMessage?: boolean } => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const selectedDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    
+    // If selected date is today, check if there are at least 3 hours before session starts
+    if (selectedDay.getTime() === today.getTime()) {
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+      
+      // Session start times (in minutes from midnight)
+      const morningStartMinutes = 9 * 60; // 09:00 = 540 minutes
+      const eveningStartMinutes = 14 * 60; // 14:00 = 840 minutes
+      
+      const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
+      const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
+      
+      if (session === 'evening') {
+        // Evening session starts at 14:00 (2:00 PM)
+        // Booking cutoff: 14:00 - 3 hours = 11:00 AM
+        const bookingCutoffMinutes = eveningStartMinutes - hoursBeforeBookingMinutes; // 11:00 = 660 minutes
+        
+        if (currentTimeInMinutes >= bookingCutoffMinutes) {
+          const cutoffHour = Math.floor(bookingCutoffMinutes / 60);
+          const cutoffMinute = bookingCutoffMinutes % 60;
+          const cutoffTime12Hour = cutoffHour > 12 ? `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM` : 
+                                   cutoffHour === 12 ? `12:${String(cutoffMinute).padStart(2, '0')} PM` :
+                                   `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
+          
+          return {
+            canBook: false,
+            reason: `Evening session can only be booked at least 3 hours before it starts (before ${cutoffTime12Hour})`,
+            showMessage: true
+          };
+        }
+      } else if (session === 'morning') {
+        // Morning session starts at 09:00 (9:00 AM)
+        // Booking cutoff: 09:00 - 3 hours = 06:00 AM
+        const bookingCutoffMinutes = morningStartMinutes - hoursBeforeBookingMinutes; // 06:00 = 360 minutes
+        
+        if (currentTimeInMinutes >= bookingCutoffMinutes) {
+          const cutoffHour = Math.floor(bookingCutoffMinutes / 60);
+          const cutoffMinute = bookingCutoffMinutes % 60;
+          const cutoffTime12Hour = cutoffHour > 12 ? `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM` : 
+                                   cutoffHour === 12 ? `12:${String(cutoffMinute).padStart(2, '0')} PM` :
+                                   `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
+          
+          return {
+            canBook: false,
+            reason: `Morning session can only be booked at least 3 hours before it starts (before ${cutoffTime12Hour})`,
+            showMessage: true
+          };
+        }
+      }
+    }
+    
+    // For future dates or if there are at least 3 hours before session, booking is available
+    return { canBook: true, showMessage: false };
+  };
+
+  // Helper function to check if doctor is on leave for a specific date and session
+  const isDoctorOnLeave = (date: Date, session: SessionType): { onLeave: boolean; reason?: string } => {
+    if (!selectedDoctor || !overrides.length) {
+      return { onLeave: false };
+    }
+
+    const dateStr = formatDateForAPI(date);
+    
+    // Check for schedule overrides on this date
+    // Check both type === 'holiday' and displayType for holiday/special-event
+    const dateOverrides = overrides.filter(override => {
+      const overrideDate = override.date.includes('T') 
+        ? override.date.split('T')[0] 
+        : override.date; // Handle both ISO format and YYYY-MM-DD format
+      
+      // Normalize dates for comparison
+      const normalizedOverrideDate = overrideDate.substring(0, 10); // Ensure YYYY-MM-DD format
+      const normalizedSelectedDate = dateStr.substring(0, 10);
+      
+      // Check if it's a holiday (either by type or displayType)
+      // Include special-event as it's used for holidays/leaves
+      const isHoliday = override.type === 'holiday' || 
+                       (override as any).displayType === 'holiday' ||
+                       (override as any).displayType === 'special-event';
+      
+      const matches = normalizedOverrideDate === normalizedSelectedDate && isHoliday;
+      
+      if (matches) {
+        console.log(`🔍 Found override for date ${normalizedSelectedDate}:`, {
+          reason: override.reason,
+          startTime: override.startTime,
+          endTime: override.endTime,
+          type: override.type,
+          displayType: (override as any).displayType
+        });
+      }
+      
+      return matches;
+    });
+
+    if (dateOverrides.length === 0) {
+      return { onLeave: false };
+    }
+
+    // Check if any override affects this session
+    for (const override of dateOverrides) {
+      // If no startTime/endTime, it's a full day leave (affects both sessions)
+      if (!override.startTime || !override.endTime) {
+        console.log(`🚫 Full day leave detected for ${session} session`);
+        return { 
+          onLeave: true, 
+          reason: `Doctor is on leave: ${override.reason}` 
+        };
+      }
+
+      // Check if this session is affected by the override time range
+      // Morning session: 09:00-12:00, Evening session: 14:00-18:00
+      const overrideStartHour = parseInt(override.startTime.split(':')[0]);
+      const overrideEndHour = parseInt(override.endTime.split(':')[0]);
+      
+      console.log(`🔍 Checking ${session} session against override:`, {
+        session,
+        overrideStartHour,
+        overrideEndHour,
+        reason: override.reason
+      });
+      
+      if (session === 'morning') {
+        // Morning session is 09:00-12:00
+        // Override affects morning if it starts at 09:00 and ends at 12:00
+        if (overrideStartHour === 9 && overrideEndHour === 12) {
+          console.log(`🚫 Morning session leave detected`);
+          return { 
+            onLeave: true, 
+            reason: `Doctor is on leave: ${override.reason}` 
+          };
+        }
+      } else if (session === 'evening') {
+        // Evening session is 14:00-18:00
+        // Override affects evening if it starts at 14:00 and ends at 18:00
+        if (overrideStartHour === 14 && overrideEndHour === 18) {
+          console.log(`🚫 Evening session leave detected`);
+          return { 
+            onLeave: true, 
+            reason: `Doctor is on leave: ${override.reason}` 
+          };
+        }
+      }
+    }
+
+    return { onLeave: false };
+  };
+
   const SessionCard = ({ session }: { session: SessionType }) => {
-    if (!sessionCapacity) return null;
+    if (!sessionCapacity || !selectedDate) return null;
     
     const capacity = sessionCapacity[session];
     const icon = session === 'morning' ? Sun : Moon;
     const Icon = icon;
     const isSelected = selectedSession === session;
     const sessionCheck = selectedDate ? canBookSession(selectedDate, session) : { canBook: false };
-    const isDisabled = !sessionCheck.canBook || capacity.availableSlots === 0;
+    const leaveCheck = isDoctorOnLeave(selectedDate, session);
+    
+    // Check if session can be booked (must be at least 3 hours before session starts)
+    const sessionTimeCheck = canBookSessionByTime(selectedDate, session);
+    
+    const isDisabled = !sessionCheck.canBook || 
+                       capacity.availableSlots === 0 || 
+                       leaveCheck.onLeave || 
+                       !sessionTimeCheck.canBook;
     
     return (
       <button
@@ -337,11 +564,25 @@ export default function BookAppointmentPage() {
             </p>
             <div className={`text-xs ${isDisabled ? 'text-gray-400' : isSelected ? 'text-white' : 'text-gray-500'}`}>
               {capacity.availableSlots} / {capacity.totalSlots} slots available
-        </div>
-            {!sessionCheck.canBook && (
+            </div>
+            {leaveCheck.onLeave && (
+              <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-xs text-red-700 font-semibold text-center">
+                  ⚠️ {leaveCheck.reason}
+                </p>
+              </div>
+            )}
+            {sessionTimeCheck.showMessage && !leaveCheck.onLeave && (
+              <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-xs text-yellow-700 font-semibold text-center">
+                  ⏰ {sessionTimeCheck.reason}
+                </p>
+              </div>
+            )}
+            {!sessionCheck.canBook && !leaveCheck.onLeave && sessionTimeCheck.canBook && (
               <div className="mt-2 text-xs text-red-600 font-medium">
                 {sessionCheck.reason}
-      </div>
+              </div>
             )}
           </div>
           {isSelected && (
@@ -748,7 +989,10 @@ export default function BookAppointmentPage() {
             
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm text-blue-800">
-                <strong>Note:</strong> Your token number and exact time slot will be assigned automatically based on the booking order. You&apos;ll receive {1 + selectedFamilyMembers.length} sequential token{1 + selectedFamilyMembers.length !== 1 ? 's' : ''}.
+                <strong>Note:</strong> Your token number and exact time slot will be assigned automatically based on the booking order.
+                {selectedFamilyMembers.length > 0 && (
+                  <span> If booking for both, you&apos;ll receive separate tokens.</span>
+                )}
               </p>
             </div>
 
@@ -760,12 +1004,178 @@ export default function BookAppointmentPage() {
               {isBooking ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Booking {1 + selectedFamilyMembers.length} Appointment{1 + selectedFamilyMembers.length !== 1 ? 's' : ''}...
+                  Booking Appointment...
                 </>
               ) : (
-                `Confirm Booking (${1 + selectedFamilyMembers.length} Appointment${1 + selectedFamilyMembers.length !== 1 ? 's' : ''})`
+                'Confirm Booking'
               )}
             </button>
+          </div>
+        )}
+
+        {/* Booking Confirmation Dialog */}
+        {showBookingConfirmDialog && selectedFamilyMembers.length > 0 && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            {/* Blur Background */}
+            <div 
+              className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+              onClick={() => setShowBookingConfirmDialog(false)}
+            />
+            
+            {/* Dialog */}
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h2 className="text-xl font-semibold text-gray-900">Confirm Booking</h2>
+                <button
+                  onClick={() => setShowBookingConfirmDialog(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-blue-800">
+                      <p className="font-medium mb-1">You have selected a family member.</p>
+                      <p>Please choose who this appointment is for:</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  {/* Option 1: Yourself */}
+                  <button
+                    onClick={() => {
+                      setBookingFor('yourself');
+                    }}
+                    className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                      bookingFor === 'yourself'
+                        ? 'border-teal-500 bg-teal-50'
+                        : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center border-2 ${
+                        bookingFor === 'yourself'
+                          ? 'border-teal-500 bg-teal-500'
+                          : 'border-gray-300'
+                      }`}>
+                        {bookingFor === 'yourself' && (
+                          <Check className="w-4 h-4 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 mb-1">Book for Yourself</h3>
+                        <p className="text-sm text-gray-600">Book appointment for {patient?.name}</p>
+                        <p className="text-xs text-gray-500 mt-1">1 appointment • 1 token</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Option 2: Family Member */}
+                  <button
+                    onClick={() => {
+                      setBookingFor('family');
+                    }}
+                    className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                      bookingFor === 'family'
+                        ? 'border-teal-500 bg-teal-50'
+                        : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center border-2 ${
+                        bookingFor === 'family'
+                          ? 'border-teal-500 bg-teal-500'
+                          : 'border-gray-300'
+                      }`}>
+                        {bookingFor === 'family' && (
+                          <Check className="w-4 h-4 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 mb-1">
+                          Book for {familyMembers.find(m => selectedFamilyMembers.includes(m.id))?.name || 'Family Member'}
+                        </h3>
+                        <p className="text-sm text-gray-600">Book appointment for the selected family member</p>
+                        <p className="text-xs text-gray-500 mt-1">1 appointment • 1 token</p>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Option 3: Both */}
+                  <button
+                    onClick={() => {
+                      setBookingFor('both');
+                    }}
+                    className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                      bookingFor === 'both'
+                        ? 'border-teal-500 bg-teal-50'
+                        : 'border-gray-200 hover:border-teal-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center border-2 ${
+                        bookingFor === 'both'
+                          ? 'border-teal-500 bg-teal-500'
+                          : 'border-gray-300'
+                      }`}>
+                        {bookingFor === 'both' && (
+                          <Check className="w-4 h-4 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 mb-1">Book for Both</h3>
+                        <p className="text-sm text-gray-600">
+                          Book appointments for {patient?.name} and {familyMembers.find(m => selectedFamilyMembers.includes(m.id))?.name || 'family member'}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">2 appointments • 2 separate tokens</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowBookingConfirmDialog(false);
+                      setBookingFor(null);
+                    }}
+                    className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (bookingFor) {
+                        processBooking(bookingFor);
+                      } else {
+                        toast.error('❌ Please select who this appointment is for');
+                      }
+                    }}
+                    disabled={!bookingFor || isBooking}
+                    className="flex-1 px-4 py-2 bg-teal-500 hover:bg-teal-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+                  >
+                    {isBooking ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Booking...
+                      </>
+                    ) : (
+                      'Confirm & Book'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

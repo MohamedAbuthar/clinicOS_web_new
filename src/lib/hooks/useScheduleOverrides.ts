@@ -10,6 +10,8 @@ export interface ScheduleOverride {
   endTime?: string;
   reason: string;
   type: 'holiday' | 'extended_hours' | 'reduced_hours';
+  description?: string;
+  displayType?: 'special-event' | 'holiday' | 'extended-hours'; // Store original UI type for correct mapping
   isActive: boolean;
   createdAt: any;
   updatedAt: any;
