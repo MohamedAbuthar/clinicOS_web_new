@@ -363,10 +363,22 @@ export default function BookAppointmentPage() {
       const result = await getDoctorAppointmentsByDate(selectedDoctor!, dateStr);
       const existingAppointments = result.success && result.data ? result.data : [];
       
-      // Get session slots using doctor's session config
-      const sessionSlots = getSessionSlots(selectedDoctorData.availableSlots || [], selectedSession, doctorSessionConfig);
+      // Get booked slots for this session (convert to 24-hour format for comparison)
       const bookedSlots = existingAppointments
-        .filter((apt: any) => sessionSlots.includes(apt.appointmentTime))
+        .filter((apt: any) => {
+          // Filter appointments for the same date and session
+          if (apt.appointmentDate !== dateStr) return false;
+          
+          // Determine session from appointment time
+          const aptTime = apt.appointmentTime || '';
+          const aptTime24 = aptTime.includes(':') ? aptTime : '';
+          if (!aptTime24) return false;
+          
+          const hour = parseInt(aptTime24.split(':')[0]);
+          const aptSession = hour < 13 ? 'morning' : 'evening';
+          
+          return aptSession === selectedSession;
+        })
         .map((apt: any) => apt.appointmentTime);
       
       // Prepare appointments data based on booking type
@@ -376,10 +388,17 @@ export default function BookAppointmentPage() {
       const shouldBookYourself = bookingType === 'yourself' || bookingType === 'both';
       const shouldBookFamily = bookingType === 'family' || bookingType === 'both';
       
-      // Book for yourself
+      // Book for yourself - use dynamic slot assignment based on slot duration
       if (shouldBookYourself) {
+        const { getNextAvailableSlot } = await import('@/lib/utils/slotAssignmentHelper');
+        
         const patientToken = getNextTokenForSession(existingAppointments, selectedSession, dateStr);
-        const patientSlot = assignSlotByToken(patientToken, sessionSlots, bookedSlots);
+        const patientSlot = getNextAvailableSlot(
+          selectedDoctorData,
+          dateStr,
+          selectedSession,
+          bookedSlots
+        );
         
         if (!patientSlot) {
           toast.error('❌ No available slots for the selected session');
@@ -393,9 +412,9 @@ export default function BookAppointmentPage() {
           patientPhone: patient.phone,
           doctorId: selectedDoctor!,
           appointmentDate: dateStr,
-          appointmentTime: patientSlot,
+          appointmentTime: patientSlot, // This will be in 24-hour format (HH:MM)
           session: selectedSession,
-          duration: selectedDoctorData.consultationDuration || 30,
+          duration: selectedDoctorData.consultationDuration || 20,
           status: 'scheduled',
           source: 'web',
           notes: reason.trim(),
@@ -405,18 +424,25 @@ export default function BookAppointmentPage() {
         bookedSlots.push(patientSlot);
       }
       
-      // Book for family member
+      // Book for family member - use dynamic slot assignment
       if (shouldBookFamily && selectedFamilyMembers.length > 0) {
         const memberId = selectedFamilyMembers[0]; // Book for first selected family member
         const member = familyMembers.find(m => m.id === memberId);
         
         if (member) {
+          const { getNextAvailableSlot } = await import('@/lib/utils/slotAssignmentHelper');
+          
           const memberToken = getNextTokenForSession(
             [...existingAppointments, ...appointmentsToCreate],
             selectedSession,
             dateStr
           );
-          const memberSlot = assignSlotByToken(memberToken, sessionSlots, bookedSlots);
+          const memberSlot = getNextAvailableSlot(
+            selectedDoctorData,
+            dateStr,
+            selectedSession,
+            bookedSlots
+          );
           
           if (!memberSlot) {
             toast.error('❌ Not enough slots available for the family member');
@@ -430,9 +456,9 @@ export default function BookAppointmentPage() {
             patientPhone: patient.phone,
             doctorId: selectedDoctor!,
             appointmentDate: dateStr,
-            appointmentTime: memberSlot,
+            appointmentTime: memberSlot, // This will be in 24-hour format (HH:MM)
             session: selectedSession,
-            duration: selectedDoctorData.consultationDuration || 30,
+            duration: selectedDoctorData.consultationDuration || 20,
             status: 'scheduled',
             source: 'web',
             notes: `Booked by ${patient.name}. ${reason.trim()}`,
@@ -445,6 +471,16 @@ export default function BookAppointmentPage() {
       }
       
       console.log(`📝 Booking ${appointmentsToCreate.length} appointment(s):`, appointmentsToCreate.map(a => `${a.patientName} - Token ${a.tokenNumber} - ${a.appointmentTime}`));
+      console.log('📋 Appointment details for queue:', {
+        doctorId: selectedDoctor!,
+        appointmentDate: dateStr,
+        appointments: appointmentsToCreate.map(apt => ({
+          patientName: apt.patientName,
+          tokenNumber: apt.tokenNumber,
+          appointmentTime: apt.appointmentTime,
+          status: apt.status
+        }))
+      });
       
       // Create all appointments
       const bookingResult = await createMultipleAppointments(appointmentsToCreate);
@@ -454,9 +490,20 @@ export default function BookAppointmentPage() {
           `${apt.patientName}: Token ${apt.tokenNumber} at ${apt.appointmentTime}`
         ).join(', ');
         
+        console.log('✅ Booking successful! Appointments created:', bookingResult.data);
+        console.log('📌 These appointments should now appear in the queue for:', {
+          doctorId: selectedDoctor!,
+          appointmentDate: dateStr,
+          today: new Date().toISOString().split('T')[0]
+        });
+        
         toast.success(`✅ Appointment${appointmentsToCreate.length > 1 ? 's' : ''} booked successfully! ${summary}`, {
           duration: 5000
         });
+        
+        // Small delay to ensure Firestore has processed the write
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         router.push('/Patient/myappoinment');
       } else {
         toast.error(`❌ ${bookingResult.error || 'Failed to book appointment'}`);

@@ -67,15 +67,50 @@ export const useAppointments = (patientId?: string, doctorId?: string): UseAppoi
       } else {
         const q = query(collection(db, 'appointments'));
         const snapshot = await getDocs(q);
-        data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        data = snapshot.docs.map(doc => {
+          const docData = doc.data();
+          return { 
+            id: doc.id, 
+            ...docData,
+            // Ensure all required fields are present
+            patientName: docData.patientName || '',
+            patientPhone: docData.patientPhone || '',
+            appointmentDate: docData.appointmentDate || '',
+            appointmentTime: docData.appointmentTime || '',
+            status: docData.status || 'scheduled',
+            doctorId: docData.doctorId || ''
+          };
+        });
         
         // Debug logging
         console.log('=== FETCHED APPOINTMENTS DEBUG ===');
         console.log('Total appointments fetched:', data.length);
         if (data.length > 0) {
-          console.log('First appointment data:', data[0]);
-          console.log('First appointment patientName:', (data[0] as any).patientName);
-          console.log('First appointment patientPhone:', (data[0] as any).patientPhone);
+          console.log('Sample appointment data:', {
+            id: data[0].id,
+            patientName: (data[0] as any).patientName,
+            patientPhone: (data[0] as any).patientPhone,
+            doctorId: (data[0] as any).doctorId,
+            appointmentDate: (data[0] as any).appointmentDate,
+            appointmentTime: (data[0] as any).appointmentTime,
+            status: (data[0] as any).status,
+            tokenNumber: (data[0] as any).tokenNumber
+          });
+          
+          // Log today's appointments
+          const today = new Date().toISOString().split('T')[0];
+          const todayAppts = data.filter((apt: any) => apt.appointmentDate === today);
+          console.log(`Today's appointments (${today}):`, todayAppts.length);
+          if (todayAppts.length > 0) {
+            console.log('Today appointments:', todayAppts.map((apt: any) => ({
+              id: apt.id,
+              patientName: apt.patientName,
+              doctorId: apt.doctorId,
+              appointmentTime: apt.appointmentTime,
+              tokenNumber: apt.tokenNumber,
+              status: apt.status
+            })));
+          }
         }
         console.log('==================================');
       }

@@ -34,13 +34,83 @@ interface AppointmentQueueItem {
 }
 
 // Helper Functions
-const formatTime = (timeString: string) => {
-  if (!timeString) return 'N/A';
-  const [hours, minutes] = timeString.split(':');
-  const hour = parseInt(hours);
+
+/**
+ * Dynamic function to extract and display appointmentTime from any source
+ * This ensures appointmentTime is always shown correctly in the queue
+ * @param source - Can be a string, appointment object, queue item, or any object with appointmentTime/time property
+ * @returns Formatted time string (e.g., "9:00 PM") or "N/A" if not available
+ */
+const getAppointmentTimeDisplay = (source: any): string => {
+  // If source is null/undefined, return N/A
+  if (!source) {
+    return 'N/A';
+  }
+  
+  // If source is already a string (direct time value), format it
+  if (typeof source === 'string') {
+    return formatTime(source);
+  }
+  
+  // Extract appointmentTime from object (handles multiple possible field names)
+  const rawTime = source?.appointmentTime || source?.time || source?.appointment?.appointmentTime || null;
+  
+  // If no time found, return N/A
+  if (!rawTime) {
+    return 'N/A';
+  }
+  
+  // Convert to string, trim whitespace, and format
+  const timeString = String(rawTime).trim();
+  return formatTime(timeString);
+};
+
+const formatTime = (timeString: string | undefined | null): string => {
+  if (!timeString || timeString === 'N/A' || timeString === '') {
+    return 'N/A';
+  }
+  
+  // Handle different time formats
+  let hour: number, minute: string;
+  
+  // If time is in HH:MM format (24-hour format like "21:00")
+  if (timeString.includes(':')) {
+    const parts = timeString.split(':');
+    hour = parseInt(parts[0]);
+    minute = parts[1] || '00';
+    
+    // Remove any AM/PM suffix if present (for 12-hour format input)
+    if (minute.includes(' ')) {
+      minute = minute.split(' ')[0];
+    }
+  } else {
+    // If it's a different format, try to parse
+    const parsed = parseInt(timeString);
+    if (!isNaN(parsed)) {
+      hour = Math.floor(parsed / 100);
+      minute = String(parsed % 100).padStart(2, '0');
+    } else {
+      return 'N/A';
+    }
+  }
+  
+  // Ensure hour is valid (0-23)
+  if (isNaN(hour) || hour < 0 || hour > 23) {
+    console.warn('Invalid hour in formatTime:', timeString, 'hour:', hour);
+    return 'N/A';
+  }
+  
+  // Ensure minute is valid (0-59)
+  const minuteNum = parseInt(minute);
+  if (isNaN(minuteNum) || minuteNum < 0 || minuteNum > 59) {
+    console.warn('Invalid minute in formatTime:', timeString, 'minute:', minute);
+    return 'N/A';
+  }
+  
+  // Convert to 12-hour format
   const ampm = hour >= 12 ? 'PM' : 'AM';
   const displayHour = hour % 12 || 12;
-  return `${displayHour}:${minutes} ${ampm}`;
+  return `${displayHour}:${minute.padStart(2, '0')} ${ampm}`;
 };
 
 const formatDate = (dateString: string) => {
@@ -133,10 +203,10 @@ const QueueItem = ({ queueItem, index, isCurrentUser }: QueueItemProps) => {
                   {queueItem.phone}
                 </div>
               )}
-              {queueItem.appointmentDate && queueItem.appointmentTime && (
+              {queueItem.appointmentDate && (
                 <div className="flex items-center gap-1 text-xs text-gray-500">
                   <Calendar className="w-3 h-3" />
-                  {formatDate(queueItem.appointmentDate)} • {formatTime(queueItem.appointmentTime)}
+                  {formatDate(queueItem.appointmentDate)} • {getAppointmentTimeDisplay(queueItem)}
                 </div>
               )}
               <span className="text-xs text-gray-500">• Waiting: {queueItem.waitingTime} min</span>
@@ -261,21 +331,110 @@ export default function PatientQueuePage() {
     }
   }, [doctors, selectedDoctorId]);
 
-  // Filter appointments for selected doctor
+  // Filter appointments for selected doctor - ensure we're filtering correctly
   const doctorAppointments = selectedDoctorId 
-    ? appointments.filter(apt => apt.doctorId === selectedDoctorId)
-    : appointments;
+    ? appointments.filter(apt => {
+        // Check if doctorId matches
+        const matches = apt.doctorId === selectedDoctorId;
+        if (!matches) {
+          console.log('Appointment filtered out - doctorId mismatch:', {
+            appointmentId: apt.id,
+            appointmentDoctorId: apt.doctorId,
+            selectedDoctorId: selectedDoctorId
+          });
+        }
+        return matches;
+      })
+    : [];
 
   // Get today's appointments for the selected doctor (EXACT same logic as admin queue)
   const today = new Date().toISOString().split('T')[0];
-  const todayAppointments = doctorAppointments.filter(apt => 
-    apt.appointmentDate === today && 
-    (apt.status === 'scheduled' || apt.status === 'confirmed')
-  );
+  console.log('=== PATIENT QUEUE FILTERING DEBUG ===');
+  console.log('Today (YYYY-MM-DD):', today);
+  console.log('Selected Doctor ID:', selectedDoctorId);
+  console.log('Total appointments:', appointments.length);
+  console.log('Doctor appointments (filtered):', doctorAppointments.length);
+  
+  // Debug: Show all doctor appointments with their dates
+  if (doctorAppointments.length > 0) {
+    console.log('All doctor appointments dates:', doctorAppointments.map(apt => ({
+      id: apt.id,
+      appointmentDate: apt.appointmentDate,
+      appointmentDateType: typeof apt.appointmentDate,
+      appointmentDateLength: apt.appointmentDate?.length,
+      status: apt.status,
+      tokenNumber: apt.tokenNumber,
+      patientName: apt.patientName
+    })));
+  }
+  
+  const todayAppointments = doctorAppointments.filter(apt => {
+    // Normalize date format for comparison (handle both YYYY-MM-DD and other formats)
+    let normalizedAptDate = apt.appointmentDate;
+    if (normalizedAptDate && typeof normalizedAptDate === 'string') {
+      // If date includes time, extract just the date part
+      if (normalizedAptDate.includes('T')) {
+        normalizedAptDate = normalizedAptDate.split('T')[0];
+      }
+      // Ensure it's in YYYY-MM-DD format
+      if (normalizedAptDate.length > 10) {
+        normalizedAptDate = normalizedAptDate.substring(0, 10);
+      }
+    }
+    
+    const isToday = normalizedAptDate === today;
+    const isValidStatus = apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'approved';
+    const matches = isToday && isValidStatus;
+    
+    if (!matches) {
+      if (isToday && !isValidStatus) {
+        console.log('⚠️ Appointment filtered out - invalid status:', {
+          appointmentId: apt.id,
+          appointmentDate: normalizedAptDate,
+          status: apt.status,
+          tokenNumber: apt.tokenNumber,
+          patientName: apt.patientName
+        });
+      } else if (!isToday) {
+        console.log('📅 Appointment not for today:', {
+          appointmentId: apt.id,
+          appointmentDate: normalizedAptDate,
+          today: today,
+          status: apt.status,
+          tokenNumber: apt.tokenNumber
+        });
+      }
+    }
+    
+    return matches;
+  });
+  
+  console.log('✅ Today appointments (after filtering):', todayAppointments.length);
+  if (todayAppointments.length > 0) {
+    console.log('📋 Today appointments data:', todayAppointments.map(apt => ({
+      id: apt.id,
+      tokenNumber: apt.tokenNumber,
+      appointmentTime: apt.appointmentTime,
+      status: apt.status,
+      patientName: apt.patientName,
+      doctorId: apt.doctorId,
+      appointmentDate: apt.appointmentDate
+    })));
+  } else {
+    console.log('⚠️ No appointments found for today!');
+    console.log('Check if:');
+    console.log('  1. Appointments exist for this doctor:', doctorAppointments.length > 0);
+    console.log('  2. Appointment date matches today:', today);
+    console.log('  3. Appointment status is valid (scheduled/confirmed/approved)');
+  }
+  console.log('=====================================');
 
   // Create queue items from today's appointments (same logic as admin queue)
   const appointmentQueueItems: AppointmentQueueItem[] = useMemo(() => {
-    return todayAppointments.map((appointment, index) => {
+    console.log('=== CREATING PATIENT QUEUE ITEMS ===');
+    console.log('Today appointments count:', todayAppointments.length);
+    
+    const items = todayAppointments.map((appointment, index) => {
       const patient = patients.find(p => p.id === appointment.patientId);
       let waitingTime = 0;
       
@@ -297,7 +456,11 @@ export default function PatientQueuePage() {
         }
       }
       
-      return {
+      // Extract appointmentTime dynamically - ensure it's always captured
+      const rawAppointmentTime = appointment.appointmentTime || (appointment as any).time || null;
+      const appointmentTime = rawAppointmentTime ? String(rawAppointmentTime).trim() : 'N/A';
+      
+      const queueItem = {
         id: `apt-${appointment.id}`,
         appointmentId: appointment.id,
         patientId: appointment.patientId,
@@ -307,12 +470,29 @@ export default function PatientQueuePage() {
         status: appointment.checkedInAt ? 'checked_in' : 'waiting',
         waitingTime,
         appointmentDate: appointment.appointmentDate,
-        appointmentTime: appointment.appointmentTime,
+        appointmentTime: appointmentTime, // Dynamically extracted and formatted
         acceptanceStatus: (appointment as Appointment).acceptanceStatus,
         checkedInAt: appointment.checkedInAt,
         queueOrder: (appointment as Appointment).queueOrder,
       };
+      
+      console.log('Created patient queue item:', {
+        id: queueItem.id,
+        tokenNumber: queueItem.tokenNumber,
+        name: queueItem.name,
+        rawAppointmentTime: rawAppointmentTime,
+        appointmentTime: queueItem.appointmentTime,
+        formattedTime: formatTime(queueItem.appointmentTime),
+        appointmentDate: queueItem.appointmentDate
+      });
+      
+      return queueItem;
     });
+    
+    console.log('Total patient queue items created:', items.length);
+    console.log('===================================');
+    
+    return items;
   }, [todayAppointments, patients, currentTime]);
 
   // Sort by queue order (if available) or appointment time
