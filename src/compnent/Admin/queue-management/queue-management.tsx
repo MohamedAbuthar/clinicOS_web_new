@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { UserPlus, GripVertical, Clock, X, AlertCircle, Loader2, CheckCircle, UserCheck, Calendar, Phone, XCircle, UserX } from 'lucide-react';
+import { UserPlus, GripVertical, Clock, X, AlertCircle, Loader2, CheckCircle, UserCheck, Calendar, Phone, XCircle, UserX, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQueue } from '@/lib/hooks/useQueue';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { usePatients } from '@/lib/hooks/usePatients';
@@ -109,7 +109,6 @@ const formatDate = (dateString: string) => {
 const formatTimestamp = (timestamp: unknown): string => {
   if (!timestamp) return '';
   
-  // Handle Firebase Timestamp objects
   if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof (timestamp as { toDate(): Date }).toDate === 'function') {
     const date = (timestamp as { toDate(): Date }).toDate();
     return date.toLocaleTimeString('en-US', { 
@@ -119,7 +118,6 @@ const formatTimestamp = (timestamp: unknown): string => {
     });
   }
   
-  // Handle regular Date objects or date strings
   try {
     const date = new Date(timestamp as string | number | Date);
     if (isNaN(date.getTime())) return '';
@@ -247,6 +245,7 @@ const QueueItem = ({ patient, onSkip, onComplete, isSelected, onDragStart, onDra
   const handleDrop = (e: React.DragEvent) => {
     onDrop(e, patient.id);
   };
+
   const statusColors: Record<Patient['status'], string> = {
     Arrived: 'bg-green-100 text-green-700',
     Late: 'bg-yellow-100 text-yellow-700',
@@ -330,9 +329,7 @@ const QueueItem = ({ patient, onSkip, onComplete, isSelected, onDragStart, onDra
           {patient.status === 'Arrived' && onComplete && (
             <button
               onClick={() => {
-                // Handle completion for checked-in patients
                 console.log('Complete checked-in patient:', patient.id);
-                // Extract appointment ID from patient.id (format: apt-{appointmentId})
                 const appointmentId = patient.id.replace('apt-', '');
                 onComplete(appointmentId);
               }}
@@ -789,7 +786,6 @@ const AllAppointmentsTable = ({
 
                   {/* Actions */}
                   <div className="col-span-2 flex items-center gap-2 flex-wrap">
-                    {/* Check-in button - ONLY show for completed appointments */}
                     {appointment.status === 'completed' && 
                      !appointment.checkedInAt && (
                       <button 
@@ -802,7 +798,6 @@ const AllAppointmentsTable = ({
                       </button>
                     )}
                     
-                    {/* Other action buttons - show for scheduled/confirmed appointments */}
                     {(appointment.status === 'scheduled' || appointment.status === 'confirmed') ? (
                       <>
                         <button 
@@ -873,6 +868,11 @@ export default function QueueManagementPage() {
     breakStartTime: '',
     breakEndTime: ''
   });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  
   const breakButtonRef = useRef<HTMLDivElement>(null);
   const lastManualChangeTime = useRef<number>(0);
 
@@ -909,18 +909,15 @@ export default function QueueManagementPage() {
     if (!isAuthenticated || !currentUser) return doctors;
     
     if (currentUser.role === 'doctor') {
-      // Doctor sees only themselves
       return doctors.filter(doctor => doctor.userId === currentUser.id);
     } else if (currentUser.role === 'assistant') {
-      // Assistant sees only their assigned doctors
       const assistant = assistants.find(a => a.userId === currentUser.id);
       if (assistant && assistant.assignedDoctors) {
         return doctors.filter(doctor => assistant.assignedDoctors.includes(doctor.id));
       }
-      return []; // No assigned doctors
+      return [];
     }
     
-    // Admin sees all doctors
     return doctors;
   };
 
@@ -931,11 +928,11 @@ export default function QueueManagementPage() {
     }
   }, [error]);
 
-  // Update current time every 30 seconds for real-time waiting time calculation
+  // Update current time every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(Date.now());
-    }, 30000); // Update every 30 seconds
+    }, 30000);
 
     return () => clearInterval(interval);
   }, []);
@@ -945,10 +942,9 @@ export default function QueueManagementPage() {
     const checkBreakStatus = () => {
       if (doctorBreakStatus.isOnBreak && doctorBreakStatus.breakEndTime) {
         const now = new Date();
-        const currentTimeStr = now.toTimeString().slice(0, 5); // HH:MM format
+        const currentTimeStr = now.toTimeString().slice(0, 5);
         
         if (currentTimeStr >= doctorBreakStatus.breakEndTime) {
-          // Break time is over, return to active
           setDoctorBreakStatus({
             isOnBreak: false,
             breakStartTime: '',
@@ -959,10 +955,7 @@ export default function QueueManagementPage() {
       }
     };
 
-    // Check every minute
     const interval = setInterval(checkBreakStatus, 60000);
-    
-    // Also check immediately
     checkBreakStatus();
 
     return () => clearInterval(interval);
@@ -971,7 +964,6 @@ export default function QueueManagementPage() {
   // Auto-select first doctor if available (only for doctors and assistants)
   useEffect(() => {
     if (doctors.length > 0 && !selectedDoctorId) {
-      // Only auto-select for doctors and assistants, not for admins
       if (currentUser?.role === 'doctor' || currentUser?.role === 'assistant') {
         console.log('Auto-selecting first doctor:', doctors[0]);
         setSelectedDoctorId(doctors[0].id);
@@ -1001,12 +993,10 @@ export default function QueueManagementPage() {
       
       if (appointment.checkedInAt) {
         try {
-          // Handle Firebase Timestamp objects
           if (typeof appointment.checkedInAt === 'object' && appointment.checkedInAt !== null && 'toDate' in appointment.checkedInAt && typeof (appointment.checkedInAt as { toDate(): Date }).toDate === 'function') {
             const checkedInDate = (appointment.checkedInAt as { toDate(): Date }).toDate();
             waitingTime = Math.floor((currentTime - checkedInDate.getTime()) / (1000 * 60));
           } else {
-            // Handle regular Date objects or date strings
             const checkedInDate = new Date(appointment.checkedInAt as string | number | Date);
             if (!isNaN(checkedInDate.getTime())) {
               waitingTime = Math.floor((currentTime - checkedInDate.getTime()) / (1000 * 60));
@@ -1035,20 +1025,16 @@ export default function QueueManagementPage() {
     });
   }, [todayAppointments, skippedItems, patients, currentTime]);
 
-  // Sort by queue order (if available) or appointment time
   appointmentQueueItems.sort((a, b) => {
-    // First try to sort by queueOrder if both have it
     if (a.queueOrder !== undefined && b.queueOrder !== undefined) {
       return a.queueOrder - b.queueOrder;
     }
-    // If only one has queueOrder, prioritize it
     if (a.queueOrder !== undefined && b.queueOrder === undefined) {
       return -1;
     }
     if (a.queueOrder === undefined && b.queueOrder !== undefined) {
       return 1;
     }
-    // Fall back to appointment time
     if (a.appointmentTime && b.appointmentTime) {
       return a.appointmentTime.localeCompare(b.appointmentTime);
     }
@@ -1089,17 +1075,13 @@ export default function QueueManagementPage() {
     fetchPendingCheckIns();
   }, [selectedDoctorId, getPendingCheckIns]);
 
-  // Manual refresh only - removed auto-refresh
-
   // Load saved queue order from database when appointments are loaded for selected doctor
   useEffect(() => {
-    // Skip if manually reordering - we don't want to override the drag-and-drop changes
     if (isManualReorder) {
       console.log('⏸️ Skipping queue order loading - manual reorder in progress');
       return;
     }
 
-    // Skip if we made a manual change recently (within last 10 seconds)
     const timeSinceLastChange = Date.now() - lastManualChangeTime.current;
     if (timeSinceLastChange < 10000) {
       console.log(`⏸️ Skipping queue order loading - manual change was ${timeSinceLastChange}ms ago`);
@@ -1111,13 +1093,10 @@ export default function QueueManagementPage() {
     console.log('Appointment Queue Items Length:', appointmentQueueItems.length);
     
     if (appointmentQueueItems.length > 0 && selectedDoctorId) {
-      // Check if any appointments have queueOrder set
       const hasQueueOrder = appointmentQueueItems.some(item => item.queueOrder !== undefined && item.queueOrder !== null);
       console.log('Has Queue Order:', hasQueueOrder);
       
       if (hasQueueOrder) {
-        // Load queue order from database only if we don't have reordered items
-        // This prevents overriding manual drag-and-drop changes
         if (reorderedQueueItems.length === 0) {
           setReorderedQueueItems([...appointmentQueueItems]);
           console.log('✅ Loaded saved queue order from database');
@@ -1125,14 +1104,12 @@ export default function QueueManagementPage() {
           console.log('⏸️ Skipping queue order loading - reordered items already exist');
         }
       } else {
-        // No saved queue order, clear reordered items to use default order
         console.log('❌ No saved queue order found, using default order (by appointment time)');
         if (reorderedQueueItems.length > 0) {
           setReorderedQueueItems([]);
         }
       }
     } else if (selectedDoctorId && appointmentQueueItems.length === 0) {
-      // No appointments for this doctor
       console.log('❌ No appointments for selected doctor');
       if (reorderedQueueItems.length > 0) {
         setReorderedQueueItems([]);
@@ -1146,6 +1123,7 @@ export default function QueueManagementPage() {
     setSkippedItems(new Set());
     setReorderedQueueItems([]);
     setIsManualReorder(false);
+    setCurrentPage(1); // Reset pagination when doctor changes
     console.log('Doctor changed - reset queue state');
   }, [selectedDoctorId]);
 
@@ -1180,7 +1158,6 @@ export default function QueueManagementPage() {
       onClick: async () => {
         setActionLoading(true);
         await refreshQueue();
-        // Also refresh pending check-ins
         if (selectedDoctorId) {
           const today = new Date().toISOString().split('T')[0];
           const pending = await getPendingCheckIns(selectedDoctorId, today);
@@ -1197,7 +1174,6 @@ export default function QueueManagementPage() {
     {
       label: 'Reset Queue Order',
       onClick: async () => {
-        // Clear all queue orders from the database
         try {
           const updates = appointmentQueueItems.map(item => {
             const appointmentId = item.id.replace('apt-', '');
@@ -1213,7 +1189,6 @@ export default function QueueManagementPage() {
           console.error('❌ Error clearing queue orders:', error);
         }
         
-        // Reset the state
         setReorderedQueueItems([]);
         setIsManualReorder(false);
         toast.success('✅ Queue order reset to original (by appointment time)');
@@ -1251,25 +1226,20 @@ export default function QueueManagementPage() {
     setActionLoading(true);
     
     try {
-      // For appointment queue items, we'll remove them from the display
       if (queueItemId.startsWith('apt-')) {
-        // Add to skipped items set
         setSkippedItems(prev => new Set([...prev, queueItemId]));
         
-        // Remove from reordered items if it exists there
         if (reorderedQueueItems.length > 0) {
           const newReorderedItems = reorderedQueueItems.filter(item => item.id !== queueItemId);
           setReorderedQueueItems(newReorderedItems);
         }
         
-        // Find the skipped item to show in success message
         const skippedItem = appointmentQueueItems.find(item => item.id === queueItemId);
         if (skippedItem) {
           console.log('Skipped appointment:', skippedItem);
           toast.success(`✅ Token ${skippedItem.tokenNumber} skipped successfully`);
         }
       } else {
-        // For regular queue items, use the original skip logic
         const success = await skipPatient(queueItemId, 'Skipped by assistant');
         if (success) {
           toast.success('✅ Patient skipped successfully');
@@ -1315,17 +1285,12 @@ export default function QueueManagementPage() {
     console.log(`=== DRAG AND DROP ===`);
     console.log(`Dragged item ID: ${draggedItemId}, Dropped on item ID: ${dropItemId}`);
 
-    // Set manual reorder flag to prevent database loading from overriding changes
     setIsManualReorder(true);
-    
-    // Track when we made this manual change
     lastManualChangeTime.current = Date.now();
 
-    // Get the current queue items (either reordered or original)
     const currentItems = reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems;
     console.log('Current items before reorder:', currentItems.map(item => ({ name: item.name, id: item.id })));
     
-    // Find the indices of the dragged and drop items
     const draggedIndex = currentItems.findIndex(item => item.id === draggedItemId);
     const dropIndex = currentItems.findIndex(item => item.id === dropItemId);
     
@@ -1338,36 +1303,28 @@ export default function QueueManagementPage() {
     
     console.log(`Found dragged item at index: ${draggedIndex}, drop item at index: ${dropIndex}`);
     
-    // Create a new array with the item moved
     const newItems = [...currentItems];
     const draggedItem = newItems[draggedIndex];
     
-    // Remove the dragged item from its original position
     newItems.splice(draggedIndex, 1);
     
-    // Find the new drop index after removal
     const newDropIndex = newItems.findIndex(item => item.id === dropItemId);
     
-    // Insert it at the new position
     newItems.splice(newDropIndex, 0, draggedItem);
     
     console.log('New items after reorder:', newItems.map(item => ({ name: item.name, id: item.id })));
     
-    // Update the reordered queue items immediately for UI responsiveness
     setReorderedQueueItems(newItems);
     
-    // Save queue order to database with updated queueOrder in the items
     const updatedItems = newItems.map((item, index) => ({
       ...item,
       queueOrder: index + 1
     }));
     
-    // Update state with the new order including updated queueOrder values
     setReorderedQueueItems(updatedItems);
     
     try {
       const updates = updatedItems.map((item, index) => {
-        // Extract the actual appointment ID from the queue item ID
         const appointmentId = item.id.replace('apt-', '');
         const appointment = appointments.find(apt => apt.id === appointmentId);
         if (appointment) {
@@ -1384,10 +1341,6 @@ export default function QueueManagementPage() {
       console.log('✅ Queue order saved to database');
       toast.success('✅ Queue order saved successfully');
       
-      // Keep the manual reorder flag active for 15 seconds to prevent race conditions
-      // This gives Firebase time to propagate the changes through real-time listeners
-      // After 15 seconds, the database should have the updated queueOrder values
-      // and the useEffect can safely reload from the database
       setTimeout(() => {
         setIsManualReorder(false);
         console.log('Manual reorder flag reset - database should now have correct order');
@@ -1405,18 +1358,15 @@ export default function QueueManagementPage() {
   const handleBreakSubmit = async (fromTime: string, toTime: string) => {
     console.log('Doctor break set from', fromTime, 'to', toTime);
     
-    // Check if break time is valid (end time should be after start time)
     if (fromTime >= toTime) {
       toast.error('❌ End time must be after start time');
       return;
     }
 
-    // Check if break is starting now or in the future
     const now = new Date();
-    const currentTimeStr = now.toTimeString().slice(0, 5); // HH:MM format
+    const currentTimeStr = now.toTimeString().slice(0, 5);
     
     if (fromTime <= currentTimeStr && toTime > currentTimeStr) {
-      // Break is starting now
       setDoctorBreakStatus({
         isOnBreak: true,
         breakStartTime: fromTime,
@@ -1424,14 +1374,11 @@ export default function QueueManagementPage() {
       });
       toast.success(`✅ Doctor is now on break until ${toTime}`);
     } else if (fromTime > currentTimeStr) {
-      // Break is scheduled for later
       toast.success(`✅ Break scheduled from ${fromTime} to ${toTime}`);
     } else {
-      // Break time has already passed
       toast.warning('⚠️ Break time has already passed');
     }
 
-    // Update doctor status in database if needed
     if (selectedDoctorId) {
       try {
         await updateDoc(doc(db, 'doctors', selectedDoctorId), {
@@ -1454,7 +1401,6 @@ export default function QueueManagementPage() {
     });
     toast.success('✅ Break ended - Doctor is now active');
 
-    // Update doctor status in database
     if (selectedDoctorId) {
       try {
         await updateDoc(doc(db, 'doctors', selectedDoctorId), {
@@ -1483,7 +1429,6 @@ export default function QueueManagementPage() {
     
     if (success) {
       toast.success(`✅ Patient ${appointment.tokenNumber} added to queue successfully`);
-      // Refresh pending check-ins
       const today = new Date().toISOString().split('T')[0];
       const pending = await getPendingCheckIns(selectedDoctorId, today);
       setPendingCheckIns(pending);
@@ -1529,7 +1474,6 @@ export default function QueueManagementPage() {
         };
         toast.success(`✅ Appointment ${actionMessages[action] || action + 'ed'} successfully`);
         
-        // Refresh data
         await refreshQueue();
         if (selectedDoctorId) {
           const today = new Date().toISOString().split('T')[0];
@@ -1558,7 +1502,6 @@ export default function QueueManagementPage() {
       if (success) {
         toast.success('✅ Appointment completed successfully and removed from queue');
         
-        // Refresh data to update the queue
         await refreshQueue();
         if (selectedDoctorId) {
           const today = new Date().toISOString().split('T')[0];
@@ -1587,12 +1530,10 @@ export default function QueueManagementPage() {
     );
   }
 
-  // Don't show any data until a doctor is selected
   if (!selectedDoctorId) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
@@ -1611,7 +1552,6 @@ export default function QueueManagementPage() {
                   : `Real-time token board for selected doctor`
                 }
               </p>
-              {/* User context indicator */}
               {currentUser && (
                 <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
                   {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
@@ -1636,7 +1576,6 @@ export default function QueueManagementPage() {
             </div>
           </div>
 
-          {/* No Doctor Selected Message */}
           <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <UserPlus className="w-8 h-8 text-gray-400" />
@@ -1653,6 +1592,13 @@ export default function QueueManagementPage() {
       </div>
     );
   }
+
+  // Calculate pagination
+  const queueToDisplay = reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems;
+  const totalPages = Math.ceil(queueToDisplay.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedItems = queueToDisplay.slice(startIndex, endIndex);
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -1676,7 +1622,6 @@ export default function QueueManagementPage() {
                 : `Real-time token board for ${selectedDoctor?.user?.name || 'Select a doctor'}`
               }
             </p>
-            {/* User context indicator */}
             {currentUser && (
               <div className="mt-2 inline-flex items-center px-3 py-1 rounded-full bg-teal-100 text-teal-800 text-xs font-medium">
                 {currentUser.role === 'doctor' && '👨‍⚕️ Doctor View'}
@@ -1698,17 +1643,6 @@ export default function QueueManagementPage() {
                 </option>
               ))}
             </select>
-            {/* <div ref={breakButtonRef}>
-              <Button 
-                variant={doctorBreakStatus.isOnBreak ? "secondary" : "primary"}
-                onClick={() => setIsBreakDropdownOpen(!isBreakDropdownOpen)}
-                disabled={actionLoading}
-              >
-                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 
-                 doctorBreakStatus.isOnBreak ? `On Break (Until ${doctorBreakStatus.breakEndTime})` : 
-                 'Mark Doctor Break'}
-              </Button>
-            </div> */}
           </div>
         </div>
 
@@ -1824,11 +1758,11 @@ export default function QueueManagementPage() {
               </div>
             )}
 
-            {/* Waiting Queue */}
+            {/* Waiting Queue with Pagination */}
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">
-                  Waiting Queue ({(reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).length})
+                  Waiting Queue ({queueToDisplay.length})
                 </h2>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <span className="font-medium">Queue Order:</span>
@@ -1837,60 +1771,113 @@ export default function QueueManagementPage() {
                       Saved Order
                     </span>
                   )}
-                  {(reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).length > 0 && (
+                  {queueToDisplay.length > 0 && (
                     <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-semibold">
-                      {(reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).map((item, idx) => (
+                      {queueToDisplay.map((item, idx) => (
                         <span key={item.id}>
                           {item.tokenNumber || idx + 1}
-                          {idx < (reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).length - 1 && ' → '}
+                          {idx < queueToDisplay.length - 1 && ' → '}
                         </span>
                       ))}
                     </span>
                   )}
                 </div>
               </div>
+
+              {/* Pagination Info */}
+              {queueToDisplay.length > 0 && (
+                <div className="mb-4 text-sm text-gray-600">
+                  Showing {startIndex + 1} to {Math.min(endIndex, queueToDisplay.length)} of {queueToDisplay.length} patients
+                </div>
+              )}
               
               <div className="space-y-3">
-                {(reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).length > 0 ? (
-                  (reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems).map((queueItem, index) => {
-                    return (
-                      <div key={queueItem.id} className="relative">
-                        {/* Position Badge */}
-                        <div className="absolute -left-3 top-1/2 -translate-y-1/2 z-10">
-                          <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm shadow-lg">
-                            {index + 1}
+                {queueToDisplay.length > 0 ? (
+                  <>
+                    {/* Paginated Queue Items */}
+                    {paginatedItems.map((queueItem, index) => {
+                      const actualIndex = startIndex + index;
+                      return (
+                        <div key={queueItem.id} className="relative">
+                          {/* Position Badge */}
+                          <div className="absolute -left-3 top-1/2 -translate-y-1/2 z-10">
+                            <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm shadow-lg">
+                              {actualIndex + 1}
+                            </div>
                           </div>
+                          
+                          <QueueItem
+                            patient={{
+                              id: queueItem.id,
+                              tokenNumber: queueItem.tokenNumber,
+                              name: queueItem.name,
+                              phone: queueItem.phone,
+                              category: queueItem.status === 'checked_in' ? 'Checked In' : 'Scheduled',
+                              waitingTime: queueItem.waitingTime ? `${queueItem.waitingTime} min` : '0 min',
+                              status: (queueItem.status === 'checked_in' ? 'Arrived' : 
+                                      queueItem.status === 'waiting' ? 'Scheduled' : 
+                                      'Walk-in') as 'Arrived' | 'Late' | 'Walk-in' | 'Scheduled',
+                              appointmentDate: queueItem.appointmentDate,
+                              appointmentTime: queueItem.appointmentTime,
+                              acceptanceStatus: queueItem.acceptanceStatus,
+                              checkedInAt: queueItem.checkedInAt ? formatTimestamp(queueItem.checkedInAt) : undefined,
+                            }}
+                            onSkip={() => handleSkip(queueItem.id)}
+                            onComplete={handleCompleteAppointment}
+                            isSelected={actualIndex === 0}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={handleDragOver}
+                            onDrop={handleDrop}
+                            isDragging={draggedIndex === actualIndex}
+                            index={actualIndex}
+                          />
                         </div>
-                        
-                        <QueueItem
-                          patient={{
-                            id: queueItem.id,
-                            tokenNumber: queueItem.tokenNumber,
-                            name: queueItem.name,
-                            phone: queueItem.phone,
-                            category: queueItem.status === 'checked_in' ? 'Checked In' : 'Scheduled',
-                            waitingTime: queueItem.waitingTime ? `${queueItem.waitingTime} min` : '0 min',
-                            status: (queueItem.status === 'checked_in' ? 'Arrived' : 
-                                    queueItem.status === 'waiting' ? 'Scheduled' : 
-                                    'Walk-in') as 'Arrived' | 'Late' | 'Walk-in',
-                            appointmentDate: queueItem.appointmentDate,
-                            appointmentTime: queueItem.appointmentTime,
-                            acceptanceStatus: queueItem.acceptanceStatus,
-                            checkedInAt: queueItem.checkedInAt ? formatTimestamp(queueItem.checkedInAt) : undefined,
-                          }}
-                          onSkip={() => handleSkip(queueItem.id)}
-                          onComplete={handleCompleteAppointment}
-                          isSelected={index === 0}
-                          onDragStart={handleDragStart}
-                          onDragEnd={handleDragEnd}
-                          onDragOver={handleDragOver}
-                          onDrop={handleDrop}
-                          isDragging={draggedIndex === index}
-                          index={index}
-                        />
+                      );
+                    })}
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-center gap-2 pt-6 border-t border-gray-200 mt-6">
+                        {/* Previous Button */}
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                          disabled={currentPage === 1}
+                          className="p-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Previous page"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+
+                        {/* Page Numbers */}
+                        <div className="flex gap-1">
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                            <button
+                              key={pageNum}
+                              onClick={() => setCurrentPage(pageNum)}
+                              className={`px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
+                                currentPage === pageNum
+                                  ? 'bg-teal-600 text-white'
+                                  : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Next Button */}
+                        <button
+                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                          disabled={currentPage === totalPages}
+                          className="p-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Next page"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
                       </div>
-                    );
-                  })
+                    )}
+                  </>
                 ) : (
                   <div className="text-center py-8 text-gray-500">
                     No appointments for today
