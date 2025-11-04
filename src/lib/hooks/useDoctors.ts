@@ -15,6 +15,10 @@ export interface Doctor {
   schedule?: string;
   startTime?: string;
   endTime?: string;
+  morningStartTime?: string;
+  morningEndTime?: string;
+  eveningStartTime?: string;
+  eveningEndTime?: string;
   availableSlots?: string[];
   assignedAssistants?: string[];
   createdAt: any;
@@ -34,7 +38,7 @@ export interface UseDoctorsReturn {
   error: string | null;
   setError: (error: string | null) => void;
   fetchDoctors: () => Promise<void>;
-  createDoctor: (data: any) => Promise<boolean>;
+  createDoctor: (data: any) => Promise<Doctor | null>;
   updateDoctor: (id: string, data: any) => Promise<boolean>;
   updateDoctorStatus: (id: string, status: 'active' | 'break' | 'offline') => Promise<boolean>;
   deleteDoctor: (id: string) => Promise<boolean>;
@@ -71,7 +75,7 @@ export const useDoctors = (): UseDoctorsReturn => {
     }
   }, []);
 
-  const createDoctor = useCallback(async (data: any): Promise<boolean> => {
+  const createDoctor = useCallback(async (data: any): Promise<Doctor | null> => {
     setLoading(true);
     setError(null);
     
@@ -115,6 +119,10 @@ export const useDoctors = (): UseDoctorsReturn => {
       if (data.schedule) doctorData.schedule = data.schedule;
       if (data.startTime) doctorData.startTime = data.startTime;
       if (data.endTime) doctorData.endTime = data.endTime;
+      if (data.morningStartTime) doctorData.morningStartTime = data.morningStartTime;
+      if (data.morningEndTime) doctorData.morningEndTime = data.morningEndTime;
+      if (data.eveningStartTime) doctorData.eveningStartTime = data.eveningStartTime;
+      if (data.eveningEndTime) doctorData.eveningEndTime = data.eveningEndTime;
       if (data.availableSlots && Array.isArray(data.availableSlots)) {
         doctorData.availableSlots = data.availableSlots;
       }
@@ -122,16 +130,37 @@ export const useDoctors = (): UseDoctorsReturn => {
         doctorData.assignedAssistants = data.assignedAssistants;
       }
 
-      await addDoc(collection(db, 'doctors'), doctorData);
+      // Add doctor document and get the reference
+      const docRef = await addDoc(collection(db, 'doctors'), doctorData);
+      
+      // Retrieve the created document to return complete data
+      const createdDoc = await getDoc(docRef);
+      if (!createdDoc.exists()) {
+        throw new Error('Failed to retrieve created doctor document');
+      }
+
+      const docData = createdDoc.data();
+      const createdDoctor: Doctor = {
+        id: createdDoc.id,
+        ...docData,
+        user: {
+          id: userId,
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          isActive: true
+        }
+      } as Doctor;
       
       console.log('Doctor created successfully. Admin session maintained.');
+      console.log('Created Doctor Data:', JSON.stringify(createdDoctor, null, 2));
       
       await fetchDoctors();
-      return true;
+      return createdDoctor;
     } catch (err: any) {
       setError(err.message);
       console.error('Error creating doctor:', err);
-      return false;
+      return null;
     } finally {
       setLoading(false);
     }

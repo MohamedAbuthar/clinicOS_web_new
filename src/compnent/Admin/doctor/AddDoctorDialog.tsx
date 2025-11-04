@@ -16,6 +16,10 @@ interface NewDoctorForm {
   schedule: string;
   startTime: string;
   endTime: string;
+  morningStartTime: string;
+  morningEndTime: string;
+  eveningStartTime: string;
+  eveningEndTime: string;
   room: string;
   slotDuration: string;
   assistants: string[];
@@ -39,6 +43,10 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
     schedule: '',
     startTime: '09:00',
     endTime: '17:00',
+    morningStartTime: '09:00',
+    morningEndTime: '12:00',
+    eveningStartTime: '17:00',
+    eveningEndTime: '20:00',
     room: '',
     slotDuration: '20',
     assistants: [],
@@ -174,8 +182,10 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
       { field: 'phone', value: newDoctor.phone, label: 'Phone Number' },
       { field: 'email', value: newDoctor.email, label: 'Email' },
       { field: 'password', value: newDoctor.password, label: 'Password' },
-      { field: 'startTime', value: newDoctor.startTime, label: 'Start Time' },
-      { field: 'endTime', value: newDoctor.endTime, label: 'End Time' }
+      { field: 'morningStartTime', value: newDoctor.morningStartTime, label: 'Morning Start Time' },
+      { field: 'morningEndTime', value: newDoctor.morningEndTime, label: 'Morning End Time' },
+      { field: 'eveningStartTime', value: newDoctor.eveningStartTime, label: 'Evening Start Time' },
+      { field: 'eveningEndTime', value: newDoctor.eveningEndTime, label: 'Evening End Time' }
     ];
 
     for (const { field, value, label } of requiredFields) {
@@ -234,6 +244,10 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
         schedule: scheduleString,
         startTime: newDoctor.startTime,
         endTime: newDoctor.endTime,
+        morningStartTime: newDoctor.morningStartTime,
+        morningEndTime: newDoctor.morningEndTime,
+        eveningStartTime: newDoctor.eveningStartTime,
+        eveningEndTime: newDoctor.eveningEndTime,
         availableSlots: slots.map(slot => slot.time), // Store available slots
         assignedAssistants: newDoctor.assistants, // Include selected assistants
         status: newDoctor.status, // Include the initial status
@@ -251,6 +265,10 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
         schedule: '',
         startTime: '09:00',
         endTime: '17:00',
+        morningStartTime: '09:00',
+        morningEndTime: '12:00',
+        eveningStartTime: '17:00',
+        eveningEndTime: '20:00',
         room: '',
         slotDuration: '20',
         assistants: [],
@@ -276,6 +294,10 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
       schedule: '',
       startTime: '09:00',
       endTime: '17:00',
+      morningStartTime: '09:00',
+      morningEndTime: '12:00',
+      eveningStartTime: '17:00',
+      eveningEndTime: '20:00',
       room: '',
       slotDuration: '20',
       assistants: [],
@@ -400,38 +422,82 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
               </div>
             </div>
 
-            {/* Start and End Time */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Clock size={16} className="inline mr-1" />
-                  Start Time <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                  <input
-                    type="time"
-                    value={newDoctor.startTime}
-                    onChange={(e) => handleAddDoctorChange('startTime', e.target.value)}
-                    onClick={(e) => e.currentTarget.showPicker?.()}
-                    className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
-                  />
+            {/* Morning Session */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-3">
+                <Clock size={16} className="inline mr-1" />
+                Morning Session
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Start Time <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    <input
+                      type="time"
+                      value={newDoctor.morningStartTime}
+                      onChange={(e) => handleAddDoctorChange('morningStartTime', e.target.value)}
+                      onClick={(e) => e.currentTarget.showPicker?.()}
+                      className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    End Time <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    <input
+                      type="time"
+                      value={newDoctor.morningEndTime}
+                      onChange={(e) => handleAddDoctorChange('morningEndTime', e.target.value)}
+                      onClick={(e) => e.currentTarget.showPicker?.()}
+                      className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                    />
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Clock size={16} className="inline mr-1" />
-                  End Time <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                  <input
-                    type="time"
-                    value={newDoctor.endTime}
-                    onChange={(e) => handleAddDoctorChange('endTime', e.target.value)}
-                    onClick={(e) => e.currentTarget.showPicker?.()}
-                    className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
-                  />
+            </div>
+
+            {/* Evening Session */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-3">
+                <Clock size={16} className="inline mr-1" />
+                Evening Session
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Start Time <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    <input
+                      type="time"
+                      value={newDoctor.eveningStartTime}
+                      onChange={(e) => handleAddDoctorChange('eveningStartTime', e.target.value)}
+                      onClick={(e) => e.currentTarget.showPicker?.()}
+                      className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    End Time <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    <input
+                      type="time"
+                      value={newDoctor.eveningEndTime}
+                      onChange={(e) => handleAddDoctorChange('eveningEndTime', e.target.value)}
+                      onClick={(e) => e.currentTarget.showPicker?.()}
+                      className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

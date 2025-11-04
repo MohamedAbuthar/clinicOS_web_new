@@ -370,10 +370,24 @@ export default function DoctorDashboard() {
   const handleAddDoctorSubmit = async (doctorData: any) => {
     setActionLoading(true);
     try {
-      const success = await createDoctor(doctorData);
+      const createdDoctor = await createDoctor(doctorData);
 
-      if (success) {
-        toast.success(`✅ Doctor created successfully with ${doctorData.availableSlots.length} time slots!`);
+      if (createdDoctor) {
+        console.log('✅ Doctor Created Successfully!');
+        console.log('📋 Doctor ID:', createdDoctor.id);
+        console.log('📋 Doctor Name:', createdDoctor.user?.name);
+        console.log('📋 Specialty:', createdDoctor.specialty);
+        console.log('📋 Morning Session:', {
+          startTime: createdDoctor.morningStartTime,
+          endTime: createdDoctor.morningEndTime
+        });
+        console.log('📋 Evening Session:', {
+          startTime: createdDoctor.eveningStartTime,
+          endTime: createdDoctor.eveningEndTime
+        });
+        console.log('📋 Complete Doctor Data:', JSON.stringify(createdDoctor, null, 2));
+        
+        toast.success(`✅ Doctor created successfully!`);
         closeDialogs();
       } else {
         toast.error('❌ Failed to create doctor');
