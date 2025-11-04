@@ -6,7 +6,7 @@ import { signUpWithEmail, signOut } from '@/lib/firebase/auth';
 import { db } from '@/lib/firebase/config';
 import { doc, setDoc } from 'firebase/firestore';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { AlertCircle, Loader2, CheckCircle } from 'lucide-react';
+import { AlertCircle, Loader2, CheckCircle, House } from 'lucide-react';
 
 const Auth = () => {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
@@ -108,6 +108,15 @@ const Auth = () => {
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+        {/* Back to Home Button */}
+        <button
+          onClick={() => router.push('/MainDashboard')}
+          className="mb-4 flex items-center gap-2 text-gray-600 hover:text-teal-600 transition-colors"
+        >
+          <House className="w-4 h-4" />
+          <span className="text-sm font-medium">Back to Home</span>
+        </button>
+
         {/* Success Message */}
         {successMessage && (
           <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
