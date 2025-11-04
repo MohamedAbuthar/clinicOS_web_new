@@ -1,20 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock } from 'lucide-react';
+import { X, ChevronDown } from 'lucide-react';
+
+interface DoctorOption {
+  id: string;
+  name: string;
+}
 
 interface EditOverrideDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: OverrideData) => void;
   initialData?: OverrideData;
+  showDoctorSelection?: boolean;
+  doctors?: DoctorOption[];
+  selectedDoctorId?: string;
 }
 
 interface OverrideData {
   id: string;
   title: string;
   date: string;
-  timeRange: string;
+  session: 'morning' | 'evening' | 'both';
   type: 'special-event' | 'holiday' | 'extended-hours';
   description?: string;
+  doctorId?: string;
 }
 
 const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
@@ -22,21 +31,55 @@ const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
   onClose,
   onSave,
   initialData,
+  showDoctorSelection = false,
+  doctors = [],
+  selectedDoctorId = '',
 }) => {
   const [formData, setFormData] = useState<OverrideData>({
     id: '',
     title: '',
     date: '',
-    timeRange: '',
+    session: 'both',
     type: 'special-event',
     description: '',
+    doctorId: selectedDoctorId,
   });
+
+  // Helper function to convert timeRange to session
+  const timeRangeToSession = (timeRange: string): 'morning' | 'evening' | 'both' => {
+    if (!timeRange || timeRange === 'Full Day') {
+      return 'both';
+    }
+    
+    const [startTime] = timeRange.split(' - ');
+    if (!startTime) return 'both';
+    
+    // Convert time to hours for comparison
+    const [hours] = startTime.split(':').map(Number);
+    
+    // Morning session typically starts before 13:00 (1 PM)
+    // Evening session typically starts at or after 13:00 (1 PM)
+    if (hours < 13) {
+      return 'morning';
+    } else {
+      return 'evening';
+    }
+  };
 
   useEffect(() => {
     if (initialData) {
-      setFormData(initialData);
+      // Convert timeRange to session if it exists (for backward compatibility)
+      const session = (initialData as any).session || 
+                     (initialData as any).timeRange ? 
+                     timeRangeToSession((initialData as any).timeRange) : 'both';
+      
+      setFormData({
+        ...initialData,
+        session,
+        doctorId: (initialData as any).doctorId || selectedDoctorId,
+      });
     }
-  }, [initialData]);
+  }, [initialData, selectedDoctorId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +116,31 @@ const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Doctor Selection - Only for Admin */}
+          {showDoctorSelection && doctors.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Doctor *
+              </label>
+              <div className="relative">
+                <select
+                  value={formData.doctorId || ''}
+                  onChange={(e) => setFormData({ ...formData, doctorId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent appearance-none cursor-pointer"
+                  required
+                >
+                  <option value="">Select a doctor</option>
+                  {doctors.map((doctor) => (
+                    <option key={doctor.id} value={doctor.id}>
+                      {doctor.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+          )}
+
           {/* Title */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -104,36 +172,21 @@ const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
             </div>
           </div>
 
-          {/* Time Range */}
+          {/* Select Session */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Time Range
+              Select Session *
             </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="time"
-                  value={formData.timeRange.split(' - ')[0] || ''}
-                  onChange={(e) => {
-                    const endTime = formData.timeRange.split(' - ')[1] || '';
-                    setFormData({ ...formData, timeRange: `${e.target.value} - ${endTime}` });
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                />
-              </div>
-              <span className="flex items-center text-gray-500">to</span>
-              <div className="relative flex-1">
-                <input
-                  type="time"
-                  value={formData.timeRange.split(' - ')[1] || ''}
-                  onChange={(e) => {
-                    const startTime = formData.timeRange.split(' - ')[0] || '';
-                    setFormData({ ...formData, timeRange: `${startTime} - ${e.target.value}` });
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                />
-              </div>
-            </div>
+            <select
+              value={formData.session}
+              onChange={(e) => setFormData({ ...formData, session: e.target.value as 'morning' | 'evening' | 'both' })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              required
+            >
+              <option value="both">Both</option>
+              <option value="morning">Morning Session</option>
+              <option value="evening">Evening Session</option>
+            </select>
           </div>
 
           {/* Type */}

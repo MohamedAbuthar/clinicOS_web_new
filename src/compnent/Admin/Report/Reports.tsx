@@ -1,24 +1,19 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Clock, Users, TrendingUp, Download, ChevronDown, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { Calendar, Clock, Users, TrendingUp, ChevronDown, Check, AlertCircle, Loader2 } from 'lucide-react';
 import ReportStatCard, { ReportStatCardProps } from './ReportStatCard';
 import AppointmentTrendsChart, { AppointmentData } from './AppointmentTrendsChart';
-import WaitTimeChart, { WaitTimeData } from './WaitTimeChart';
-import DoctorPerformanceCard, { DoctorPerformanceCardProps } from './DoctorPerformanceCard';
 import { useAppointments } from '@/lib/hooks/useAppointments';
-import { useDoctors } from '@/lib/hooks/useDoctors';
 import { useQueue } from '@/lib/hooks/useQueue';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils } from '@/lib/api';
 
-type TabType = 'appointments' | 'queue' | 'doctor';
 type TimeRange = 'today' | 'thisWeek' | 'thisMonth' | 'custom';
 
 const ReportsPage: React.FC = () => {
   const { user: currentUser, isAuthenticated } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('appointments');
   const [timeRange, setTimeRange] = useState<TimeRange>('thisWeek');
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -26,7 +21,6 @@ const ReportsPage: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { appointments, loading: appointmentsLoading } = useAppointments();
-  const { doctors, loading: doctorsLoading } = useDoctors();
   const { assistants } = useAssistants();
   const { queueStats } = useQueue();
 
@@ -50,24 +44,6 @@ const ReportsPage: React.FC = () => {
     return appointments;
   };
 
-  const getFilteredDoctors = () => {
-    if (!isAuthenticated || !currentUser) return doctors;
-    
-    if (currentUser.role === 'doctor') {
-      // Doctor sees only themselves
-      return doctors.filter(doctor => doctor.userId === currentUser.id);
-    } else if (currentUser.role === 'assistant') {
-      // Assistant sees only their assigned doctors
-      const assistant = assistants.find(a => a.userId === currentUser.id);
-      if (assistant && assistant.assignedDoctors) {
-        return doctors.filter(doctor => assistant.assignedDoctors.includes(doctor.id));
-      }
-      return []; // No assigned doctors
-    }
-    
-    // Admin sees all doctors
-    return doctors;
-  };
 
   const timeRangeOptions = [
     { value: 'today', label: 'Today' },
@@ -78,8 +54,8 @@ const ReportsPage: React.FC = () => {
 
   // Update loading state based on data hooks
   useEffect(() => {
-    setLoading(appointmentsLoading || doctorsLoading);
-  }, [appointmentsLoading, doctorsLoading]);
+    setLoading(appointmentsLoading);
+  }, [appointmentsLoading]);
 
   // Click outside handler for dropdown
   useEffect(() => {
@@ -183,13 +159,13 @@ const ReportsPage: React.FC = () => {
     },
   ];
 
-  // Generate appointment trends data based on time range
-  const generateAppointmentData = (): AppointmentData[] => {
+  // Generate appointment chart data based on time range
+  const generateAppointmentChartData = (): AppointmentData[] => {
     const { start, end } = getDateRange(timeRange);
     const data: AppointmentData[] = [];
     
     if (timeRange === 'today') {
-      // For today, show hourly data
+      // For today, show hourly data (9 AM to 5 PM)
       for (let hour = 9; hour <= 17; hour++) {
         const hourStart = new Date(start);
         hourStart.setHours(hour, 0, 0, 0);
@@ -197,8 +173,19 @@ const ReportsPage: React.FC = () => {
         hourEnd.setHours(hour + 1, 0, 0, 0);
         
         const hourAppointments = filteredAppointments.filter(apt => {
-          const aptTime = new Date(`${apt.appointmentDate} ${apt.appointmentTime}`);
-          return aptTime >= hourStart && aptTime < hourEnd;
+          const aptDate = new Date(apt.appointmentDate);
+          // Check if appointment date matches today
+          if (aptDate.toDateString() !== start.toDateString()) {
+            return false;
+          }
+          
+          // If appointmentTime exists, use it; otherwise use appointment date hour
+          if (apt.appointmentTime) {
+            const aptHour = parseInt(apt.appointmentTime.split(':')[0]);
+            return aptHour === hour;
+          }
+          
+          return aptDate.getHours() === hour;
         });
         
         data.push({
@@ -214,13 +201,22 @@ const ReportsPage: React.FC = () => {
       const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       
       while (current <= end) {
+        const dayStart = new Date(current);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(current);
+        dayEnd.setHours(23, 59, 59, 999);
+        
         const dayAppointments = filteredAppointments.filter(apt => {
           const aptDate = new Date(apt.appointmentDate);
-          return aptDate.toDateString() === current.toDateString();
+          return aptDate >= dayStart && aptDate <= dayEnd;
         });
         
+        const dayLabel = timeRange === 'thisMonth' 
+          ? `${current.getDate()}/${current.getMonth() + 1}` // Show day/month for month view
+          : days[current.getDay()]; // Show day name for week view
+        
         data.push({
-          day: days[current.getDay()],
+          day: dayLabel,
           total: dayAppointments.length,
           completed: dayAppointments.filter(apt => apt.status === 'completed').length,
           cancelled: dayAppointments.filter(apt => apt.status === 'cancelled').length,
@@ -233,34 +229,7 @@ const ReportsPage: React.FC = () => {
     return data;
   };
 
-  const appointmentData = generateAppointmentData();
-
-  // Wait time data
-  const waitTimeData: WaitTimeData[] = [
-    { hour: '9AM', avgWait: 5 },
-    { hour: '10AM', avgWait: 12 },
-    { hour: '11AM', avgWait: 18 },
-    { hour: '12PM', avgWait: 25 },
-    { hour: '2PM', avgWait: 14 },
-    { hour: '3PM', avgWait: 20 },
-    { hour: '4PM', avgWait: 22 },
-    { hour: '5PM', avgWait: 8 },
-  ];
-
-  // Doctor performance data from filtered data
-  const doctorPerformance: DoctorPerformanceCardProps[] = getFilteredDoctors()
-    .filter(doctor => doctor.user) // Filter out doctors without user data
-    .map(doctor => {
-      const doctorAppointments = filteredAppointments.filter(apt => apt.doctorId === doctor.id);
-      const completedAppointments = doctorAppointments.filter(apt => apt.status === 'completed');
-      
-      return {
-        doctorName: doctor.user!.name,
-        patientsServed: completedAppointments.length,
-        avgConsultTime: `${doctor.consultationDuration} min`,
-        onTimeRate: '94%', // This would need more complex calculation
-      };
-    });
+  const appointmentChartData = generateAppointmentChartData();
 
   const handleExport = () => {
     console.log('Export report');
@@ -371,60 +340,10 @@ const ReportsPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Tabs */}
-        <div className="bg-gray-100 rounded-lg p-1 mb-6 inline-flex">
-          <button
-            onClick={() => setActiveTab('appointments')}
-            className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'appointments'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Appointments
-          </button>
-          <button
-            onClick={() => setActiveTab('queue')}
-            className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'queue'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Queue Analytics
-          </button>
-          <button
-            onClick={() => setActiveTab('doctor')}
-            className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'doctor'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Doctor Performance
-          </button>
+        {/* Appointment Trends Chart */}
+        <div className="mb-6">
+          <AppointmentTrendsChart data={appointmentChartData} />
         </div>
-
-        {/* Tab Content */}
-        {activeTab === 'appointments' && (
-          <div>
-            <AppointmentTrendsChart data={appointmentData} />
-          </div>
-        )}
-
-        {activeTab === 'queue' && (
-          <div>
-            <WaitTimeChart data={waitTimeData} />
-          </div>
-        )}
-
-        {activeTab === 'doctor' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {doctorPerformance.map((doctor, index) => (
-              <DoctorPerformanceCard key={index} {...doctor} />
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

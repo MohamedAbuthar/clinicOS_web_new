@@ -573,14 +573,16 @@ export default function DoctorDashboard() {
               </div>
             )}
           </div>
-          <button 
-            onClick={openAddDialog}
-            disabled={actionLoading}
-            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <UserPlus size={18} />
-            Add Doctor
-          </button>
+          {currentUser?.role !== 'assistant' && (
+            <button 
+              onClick={openAddDialog}
+              disabled={actionLoading}
+              className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <UserPlus size={18} />
+              Add Doctor
+            </button>
+          )}
         </div>
 
         {/* Search Bar */}
