@@ -60,7 +60,6 @@ export default function Sidebar() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">ClinicOS</h1>
-            <p className="text-gray-500 text-xs">Admin Portal</p>
           </div>
         </div>
       </div>
