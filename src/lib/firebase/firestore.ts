@@ -568,12 +568,15 @@ export const getAllDoctors = async () => {
         console.log(`Doctor ${docSnapshot.id}:`, doctorData);
         
         // Fetch associated user profile using userId as document ID
+        // CRITICAL: User data MUST be fetched for doctor names to display
         let userData = null;
         let doctorName = null;
         
         if (doctorData.userId) {
           try {
             console.log(`Fetching user for doctor ${docSnapshot.id}, userId: ${doctorData.userId}`);
+            
+            // First attempt: Try direct document access
             const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, doctorData.userId));
             if (userDoc.exists()) {
               const userDocData = userDoc.data();
@@ -581,13 +584,12 @@ export const getAllDoctors = async () => {
                 id: userDoc.id,
                 ...userDocData
               };
-              // Extract name from user data
               doctorName = userDocData?.name || null;
-              console.log(`Found user directly:`, userData);
-              console.log(`Doctor name from user: ${doctorName}`);
+              console.log(`✅ Found user directly for doctor ${docSnapshot.id}:`, userData);
+              console.log(`✅ Doctor name: ${doctorName}`);
             } else {
-              console.log(`User not found by doc ID, trying query...`);
-              // Fallback: try querying by id field for old documents
+              // Second attempt: Try querying by id field
+              console.log(`User not found by doc ID, trying query by id field...`);
               const usersRef = collection(db, COLLECTIONS.USERS);
               const userQuery = query(usersRef, where('id', '==', doctorData.userId));
               const userSnapshot = await getDocs(userQuery);
@@ -599,24 +601,62 @@ export const getAllDoctors = async () => {
                   id: oldUserDoc.id,
                   ...oldUserData
                 };
-                // Extract name from user data
                 doctorName = oldUserData?.name || null;
-                console.log(`Found user via query:`, userData);
-                console.log(`Doctor name from user (query): ${doctorName}`);
+                console.log(`✅ Found user via query for doctor ${docSnapshot.id}:`, userData);
+                console.log(`✅ Doctor name (query): ${doctorName}`);
               } else {
-                console.warn(`No user found for userId: ${doctorData.userId}`);
+                // Third attempt: Try to get all users and find matching one
+                console.warn(`User not found by query, trying to fetch all users to find match...`);
+                const allUsersSnapshot = await getDocs(collection(db, COLLECTIONS.USERS));
+                const matchingUser = allUsersSnapshot.docs.find(
+                  (userDoc) => userDoc.id === doctorData.userId || userDoc.data().id === doctorData.userId
+                );
+                
+                if (matchingUser) {
+                  const matchingUserData = matchingUser.data();
+                  userData = {
+                    id: matchingUser.id,
+                    ...matchingUserData
+                  };
+                  doctorName = matchingUserData?.name || null;
+                  console.log(`✅ Found user via full scan for doctor ${docSnapshot.id}:`, userData);
+                  console.log(`✅ Doctor name (full scan): ${doctorName}`);
+                } else {
+                  console.error(`❌ CRITICAL: No user found for userId: ${doctorData.userId} after all attempts`);
+                }
               }
             }
           } catch (userError: any) {
-            console.error(`Failed to fetch user for doctor ${docSnapshot.id}:`, userError);
+            console.error(`❌ CRITICAL ERROR: Failed to fetch user for doctor ${docSnapshot.id}:`, userError);
             console.error(`Error details:`, {
               code: userError?.code,
               message: userError?.message,
               stack: userError?.stack
             });
+            // Don't give up - try one more time with a fresh fetch
+            try {
+              console.log(`Retrying user fetch for doctor ${docSnapshot.id}...`);
+              const retryUserDoc = await getDoc(doc(db, COLLECTIONS.USERS, doctorData.userId));
+              if (retryUserDoc.exists()) {
+                const retryUserData = retryUserDoc.data();
+                userData = {
+                  id: retryUserDoc.id,
+                  ...retryUserData
+                };
+                doctorName = retryUserData?.name || null;
+                console.log(`✅ Successfully fetched user on retry:`, userData);
+              }
+            } catch (retryError) {
+              console.error(`❌ Retry also failed:`, retryError);
+            }
           }
         } else {
-          console.warn(`Doctor ${docSnapshot.id} has no userId!`);
+          console.error(`❌ CRITICAL: Doctor ${docSnapshot.id} has no userId!`);
+        }
+        
+        // Validate that we have user data - if not, this is a critical error
+        if (!userData && doctorData.userId) {
+          console.error(`❌ CRITICAL: Doctor ${docSnapshot.id} has userId ${doctorData.userId} but userData is null!`);
         }
         
         // Build doctor object with user data and name

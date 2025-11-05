@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDoctors } from '@/lib/hooks/useDoctors';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
+import { COLLECTIONS } from '@/lib/firebase/firestore';
 
 
 const MainDashboard = () => {
@@ -22,21 +25,49 @@ const MainDashboard = () => {
   useEffect(() => {
     if (loading || !doctors.length) return;
     
-    // Always show all doctors regardless of login status
-    setFilteredDoctors(doctors);
-    console.log('Main dashboard - showing all doctors:', doctors.length);
+    // Fetch missing user data for doctors that don't have it
+    const fetchMissingUserData = async () => {
+      const doctorsWithUserData = await Promise.all(
+        doctors.map(async (doctor: any) => {
+          // If user data is missing but userId exists, fetch it
+          if (!doctor.user && doctor.userId) {
+            try {
+              console.log(`Fetching missing user data for doctor ${doctor.id}, userId: ${doctor.userId}`);
+              const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, doctor.userId));
+              if (userDoc.exists()) {
+                const userData = {
+                  id: userDoc.id,
+                  ...userDoc.data()
+                };
+                console.log(`✅ Fetched missing user data:`, userData);
+                return {
+                  ...doctor,
+                  user: userData,
+                  name: (userData as any).name || (doctor as any).name
+                };
+              }
+            } catch (error) {
+              console.error(`Failed to fetch user data for doctor ${doctor.id}:`, error);
+            }
+          }
+          return doctor;
+        })
+      );
+      
+      setFilteredDoctors(doctorsWithUserData);
+    };
     
-    // Debug: Log doctor data to see what we're getting
-    doctors.forEach((doctor: any, index: number) => {
-      console.log(`Doctor ${index + 1}:`, {
-        id: doctor.id,
-        userId: doctor.userId,
-        name: doctor.name,
-        user: doctor.user,
-        user_name: doctor.user?.name,
-        specialty: doctor.specialty
-      });
-    });
+    // Check if any doctors are missing user data
+    const hasMissingUserData = doctors.some((doctor: any) => !doctor.user && doctor.userId);
+    
+    if (hasMissingUserData) {
+      console.log('Some doctors missing user data, fetching...');
+      fetchMissingUserData();
+    } else {
+      setFilteredDoctors(doctors);
+    }
+    
+    console.log('Main dashboard - showing all doctors:', doctors.length);
   }, [doctors, loading]);
 
   return (
@@ -169,9 +200,17 @@ const MainDashboard = () => {
             ) : (
               // Display filtered doctors
               filteredDoctors.map((doctor: any) => {
-                // Match old working code logic - check user.name first, then fallback to name field
+                // Get doctor name - check user.name first, then name field, then specialty as last resort
                 const doctorName = doctor.user?.name || doctor.name;
-                const displayName = doctorName ? `Dr. ${doctorName.trim()}` : 'Dr. Name Not Available';
+                
+                // If no name available, use specialty instead of "Name Not Available"
+                let displayName = 'Dr.';
+                if (doctorName) {
+                  displayName = `Dr. ${doctorName.trim()}`;
+                } else if (doctor.specialty) {
+                  displayName = `Dr. ${doctor.specialty} Specialist`;
+                }
+                
                 const hasFullName = !!doctorName;
                 
                 return (
@@ -191,7 +230,9 @@ const MainDashboard = () => {
                     <p className="text-gray-600 text-base leading-relaxed mb-6 flex-grow">
                       {hasFullName ? 
                         `Dr. ${doctorName.trim()} specializes in ${doctor.specialty || 'general medicine'} with ${doctor.consultationDuration || 30} minute consultations.` :
-                        'Experienced healthcare professional dedicated to providing quality patient care.'
+                        doctor.specialty ?
+                          `Experienced ${doctor.specialty} specialist dedicated to providing quality patient care.` :
+                          'Experienced healthcare professional dedicated to providing quality patient care.'
                       }
                     </p>
                     <div className="flex items-center justify-between mb-6">
