@@ -158,15 +158,18 @@ const MainDashboard = () => {
               // Display filtered doctors
               filteredDoctors.map((doctor) => {
                 // Get doctor name from ALL possible sources for robust display
+                // Priority: name field (set from user data) > user.name > other alternatives
                 const doctorName = 
-                  doctor.user?.name ||        // From user object (preferred)
-                  doctor.name ||              // Direct name field
+                  doctor.name ||              // Direct name field (set from user data in Firestore)
+                  doctor.user?.name ||        // From user object (fallback)
                   doctor.doctorName ||        // Alternative field name
                   doctor.userName ||          // Another alternative
                   (doctor.specialty ? `${doctor.specialty} Specialist` : 'Doctor'); // Fallback to specialty
                 
-                const displayName = doctorName.startsWith('Dr.') ? doctorName : `Dr. ${doctorName}`;
-                const hasFullName = doctor.user?.name || doctor.name || doctor.doctorName || doctor.userName;
+                // Clean up name (remove extra spaces)
+                const cleanName = doctorName ? doctorName.trim() : '';
+                const displayName = cleanName.startsWith('Dr.') ? cleanName : `Dr. ${cleanName}`;
+                const hasFullName = !!(doctor.name || doctor.user?.name || doctor.doctorName || doctor.userName);
                 
                 return (
                 <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 h-full flex flex-col">
