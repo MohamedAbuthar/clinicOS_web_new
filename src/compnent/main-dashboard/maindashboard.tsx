@@ -25,6 +25,18 @@ const MainDashboard = () => {
     // Always show all doctors regardless of login status
     setFilteredDoctors(doctors);
     console.log('Main dashboard - showing all doctors:', doctors.length);
+    
+    // Debug: Log doctor data to see what we're getting
+    doctors.forEach((doctor: any, index: number) => {
+      console.log(`Doctor ${index + 1}:`, {
+        id: doctor.id,
+        userId: doctor.userId,
+        name: doctor.name,
+        user: doctor.user,
+        user_name: doctor.user?.name,
+        specialty: doctor.specialty
+      });
+    });
   }, [doctors, loading]);
 
   return (
@@ -156,20 +168,11 @@ const MainDashboard = () => {
         </div>
             ) : (
               // Display filtered doctors
-              filteredDoctors.map((doctor) => {
-                // Get doctor name from ALL possible sources for robust display
-                // Priority: name field (set from user data) > user.name > other alternatives
-                const doctorName = 
-                  doctor.name ||              // Direct name field (set from user data in Firestore)
-                  doctor.user?.name ||        // From user object (fallback)
-                  doctor.doctorName ||        // Alternative field name
-                  doctor.userName ||          // Another alternative
-                  (doctor.specialty ? `${doctor.specialty} Specialist` : 'Doctor'); // Fallback to specialty
-                
-                // Clean up name (remove extra spaces)
-                const cleanName = doctorName ? doctorName.trim() : '';
-                const displayName = cleanName.startsWith('Dr.') ? cleanName : `Dr. ${cleanName}`;
-                const hasFullName = !!(doctor.name || doctor.user?.name || doctor.doctorName || doctor.userName);
+              filteredDoctors.map((doctor: any) => {
+                // Match old working code logic - check user.name first, then fallback to name field
+                const doctorName = doctor.user?.name || doctor.name;
+                const displayName = doctorName ? `Dr. ${doctorName.trim()}` : 'Dr. Name Not Available';
+                const hasFullName = !!doctorName;
                 
                 return (
                 <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 h-full flex flex-col">
@@ -187,7 +190,7 @@ const MainDashboard = () => {
                     <p className="text-blue-600 font-medium mb-4 text-lg">{doctor.specialty || 'General Medicine'}</p>
                     <p className="text-gray-600 text-base leading-relaxed mb-6 flex-grow">
                       {hasFullName ? 
-                        `${displayName} specializes in ${doctor.specialty || 'general medicine'} with ${doctor.consultationDuration || 30} minute consultations.` :
+                        `Dr. ${doctorName.trim()} specializes in ${doctor.specialty || 'general medicine'} with ${doctor.consultationDuration || 30} minute consultations.` :
                         'Experienced healthcare professional dedicated to providing quality patient care.'
                       }
                     </p>
