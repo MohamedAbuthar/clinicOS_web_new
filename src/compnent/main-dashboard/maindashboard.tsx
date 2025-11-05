@@ -156,7 +156,19 @@ const MainDashboard = () => {
         </div>
             ) : (
               // Display filtered doctors
-              filteredDoctors.map((doctor) => (
+              filteredDoctors.map((doctor) => {
+                // Get doctor name from ALL possible sources for robust display
+                const doctorName = 
+                  doctor.user?.name ||        // From user object (preferred)
+                  doctor.name ||              // Direct name field
+                  doctor.doctorName ||        // Alternative field name
+                  doctor.userName ||          // Another alternative
+                  (doctor.specialty ? `${doctor.specialty} Specialist` : 'Doctor'); // Fallback to specialty
+                
+                const displayName = doctorName.startsWith('Dr.') ? doctorName : `Dr. ${doctorName}`;
+                const hasFullName = doctor.user?.name || doctor.name || doctor.doctorName || doctor.userName;
+                
+                return (
                 <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 h-full flex flex-col">
                   <div className="h-72 bg-teal-100 flex items-center justify-center">
                     <div className="w-36 h-36 bg-teal-200 rounded-full flex items-center justify-center">
@@ -167,12 +179,12 @@ const MainDashboard = () => {
                   </div>
                   <div className="p-8 flex flex-col flex-grow">
                     <h3 className="text-2xl font-bold text-gray-800 mb-3">
-                      {doctor.user?.name ? `Dr. ${doctor.user.name}` : 'Dr. Name Not Available'}
+                      {displayName}
             </h3>
                     <p className="text-blue-600 font-medium mb-4 text-lg">{doctor.specialty || 'General Medicine'}</p>
                     <p className="text-gray-600 text-base leading-relaxed mb-6 flex-grow">
-                      {doctor.user?.name ? 
-                        `Dr. ${doctor.user.name} specializes in ${doctor.specialty || 'general medicine'} with ${doctor.consultationDuration || 30} minute consultations.` :
+                      {hasFullName ? 
+                        `${displayName} specializes in ${doctor.specialty || 'general medicine'} with ${doctor.consultationDuration || 30} minute consultations.` :
                         'Experienced healthcare professional dedicated to providing quality patient care.'
                       }
                     </p>
@@ -199,7 +211,8 @@ const MainDashboard = () => {
                     </button>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
