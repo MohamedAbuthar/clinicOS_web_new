@@ -106,6 +106,7 @@ export const useDoctors = (): UseDoctorsReturn => {
       // Create doctor profile in Firestore
       const doctorData: any = {
         userId,
+        name: data.name, // Store doctor name in doctor document
         specialty: data.specialty,
         licenseNumber: data.licenseNumber,
         consultationDuration: data.consultationDuration,

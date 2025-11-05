@@ -660,12 +660,14 @@ export const getAllDoctors = async () => {
         }
         
         // Build doctor object with user data and name
+        // Priority: doctor document name (most reliable) > user name > null
         const doctorObject: any = {
           id: docSnapshot.id,
           ...doctorData,
           user: userData,
           // Add name directly to doctor object for easier access
-          name: doctorName || doctorData.name || null
+          // Prioritize name from doctor document first, then fall back to user name
+          name: doctorData.name || doctorName || null
         };
         
         console.log(`Doctor object for ${docSnapshot.id}:`, {

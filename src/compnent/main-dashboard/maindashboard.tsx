@@ -43,7 +43,8 @@ const MainDashboard = () => {
                 return {
                   ...doctor,
                   user: userData,
-                  name: (userData as any).name || (doctor as any).name
+                  // Prioritize name from doctor document first, then user name
+                  name: (doctor as any).name || (userData as any).name
                 };
               }
             } catch (error) {
@@ -200,8 +201,8 @@ const MainDashboard = () => {
             ) : (
               // Display filtered doctors
               filteredDoctors.map((doctor: any) => {
-                // Get doctor name - check user.name first, then name field, then specialty as last resort
-                const doctorName = doctor.user?.name || doctor.name;
+                // Get doctor name - prioritize name from doctor document first, then user.name, then specialty as last resort
+                const doctorName = doctor.name || doctor.user?.name;
                 
                 // If no name available, use specialty instead of "Name Not Available"
                 let displayName = 'Dr.';
