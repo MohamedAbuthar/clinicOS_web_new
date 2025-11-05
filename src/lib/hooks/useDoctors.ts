@@ -577,11 +577,60 @@ export const useDoctors = (): UseDoctorsReturn => {
   const deleteDoctor = useCallback(async (id: string): Promise<boolean> => {
     setLoading(true);
     try {
+      // Get the doctor document before deleting to find assigned assistants
+      const doctorDoc = await getDoc(doc(db, 'doctors', id));
+      if (!doctorDoc.exists()) {
+        throw new Error('Doctor not found');
+      }
+
+      const doctorData = doctorDoc.data();
+      const assignedAssistants = (doctorData.assignedAssistants || []) as string[];
+
+      // Remove this doctor from all assigned assistants' assignedDoctors array
+      if (assignedAssistants.length > 0) {
+        console.log(`🔄 Removing doctor ${id} from ${assignedAssistants.length} assistant(s) before deletion...`);
+        
+        for (const assistantId of assignedAssistants) {
+          try {
+            const assistantDoc = await getDoc(doc(db, 'assistants', assistantId));
+            if (assistantDoc.exists()) {
+              const assistantData = assistantDoc.data();
+              const currentAssignedDoctors = (assistantData.assignedDoctors || []) as string[];
+              const updatedAssignedDoctors = currentAssignedDoctors.filter(docId => docId !== id);
+              
+              await updateDoc(doc(db, 'assistants', assistantId), {
+                assignedDoctors: updatedAssignedDoctors,
+                updatedAt: Timestamp.now()
+              });
+              console.log(`✅ Removed doctor ${id} from assistant ${assistantId}. Assistant is now free to be assigned to another doctor.`);
+            }
+          } catch (error) {
+            console.error(`❌ Error removing doctor ${id} from assistant ${assistantId}:`, error);
+            // Continue with deletion even if assistant update fails
+          }
+        }
+      }
+
+      // Delete the doctor document
       await deleteDoc(doc(db, 'doctors', id));
+      
+      // Also delete the associated user document if needed
+      // Note: You might want to keep the user document for audit purposes
+      // Uncomment the following if you want to delete the user as well:
+      // if (doctorData.userId) {
+      //   try {
+      //     await deleteDoc(doc(db, 'users', doctorData.userId));
+      //   } catch (userError) {
+      //     console.error('Error deleting user document:', userError);
+      //   }
+      // }
+
+      console.log(`✅ Doctor ${id} deleted successfully. All assistant relationships have been removed.`);
       await fetchDoctors();
       return true;
     } catch (err: any) {
       setError(err.message);
+      console.error('Error deleting doctor:', err);
       return false;
     } finally {
       setLoading(false);
