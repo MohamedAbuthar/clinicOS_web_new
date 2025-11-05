@@ -569,16 +569,22 @@ export const getAllDoctors = async () => {
         
         // Fetch associated user profile using userId as document ID
         let userData = null;
+        let doctorName = null;
+        
         if (doctorData.userId) {
           try {
             console.log(`Fetching user for doctor ${docSnapshot.id}, userId: ${doctorData.userId}`);
             const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, doctorData.userId));
             if (userDoc.exists()) {
+              const userDocData = userDoc.data();
               userData = {
                 id: userDoc.id,
-                ...userDoc.data()
+                ...userDocData
               };
+              // Extract name from user data
+              doctorName = userDocData?.name || null;
               console.log(`Found user directly:`, userData);
+              console.log(`Doctor name from user: ${doctorName}`);
             } else {
               console.log(`User not found by doc ID, trying query...`);
               // Fallback: try querying by id field for old documents
@@ -588,31 +594,59 @@ export const getAllDoctors = async () => {
               
               if (!userSnapshot.empty) {
                 const oldUserDoc = userSnapshot.docs[0];
+                const oldUserData = oldUserDoc.data();
                 userData = {
                   id: oldUserDoc.id,
-                  ...oldUserDoc.data()
+                  ...oldUserData
                 };
+                // Extract name from user data
+                doctorName = oldUserData?.name || null;
                 console.log(`Found user via query:`, userData);
+                console.log(`Doctor name from user (query): ${doctorName}`);
               } else {
                 console.warn(`No user found for userId: ${doctorData.userId}`);
               }
             }
-          } catch (userError) {
-            console.warn(`Failed to fetch user for doctor ${docSnapshot.id}:`, userError);
+          } catch (userError: any) {
+            console.error(`Failed to fetch user for doctor ${docSnapshot.id}:`, userError);
+            console.error(`Error details:`, {
+              code: userError?.code,
+              message: userError?.message,
+              stack: userError?.stack
+            });
           }
         } else {
           console.warn(`Doctor ${docSnapshot.id} has no userId!`);
         }
         
-        return {
+        // Build doctor object with user data and name
+        const doctorObject: any = {
           id: docSnapshot.id,
           ...doctorData,
-          user: userData
+          user: userData,
+          // Add name directly to doctor object for easier access
+          name: doctorName || doctorData.name || null
         };
+        
+        console.log(`Doctor object for ${docSnapshot.id}:`, {
+          id: doctorObject.id,
+          userId: doctorObject.userId,
+          name: doctorObject.name,
+          user: doctorObject.user ? { id: doctorObject.user.id, name: doctorObject.user.name } : null
+        });
+        
+        return doctorObject;
       })
     );
     
-    console.log('getAllDoctors: Returning doctors:', doctors);
+    console.log('getAllDoctors: Returning doctors:', doctors.map((d: any) => ({
+      id: d.id,
+      name: d.name,
+      specialty: d.specialty,
+      userId: d.userId,
+      hasUser: !!d.user,
+      userName: d.user?.name
+    })));
     
     return {
       success: true,
