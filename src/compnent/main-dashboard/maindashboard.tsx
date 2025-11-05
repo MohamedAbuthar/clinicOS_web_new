@@ -171,7 +171,7 @@ const MainDashboard = () => {
               filteredDoctors.map((doctor: any) => {
                 // Match old working code logic - check user.name first, then fallback to name field
                 const doctorName = doctor.user?.name || doctor.name;
-                const displayName = doctorName  `Dr. ${doctorName.trim()}` ;
+                const displayName = doctorName ? `Dr. ${doctorName.trim()}` : 'Dr. Name Not Available';
                 const hasFullName = !!doctorName;
                 
                 return (
