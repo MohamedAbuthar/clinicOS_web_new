@@ -237,6 +237,23 @@ export const useDoctors = (): UseDoctorsReturn => {
       if (data.endTime !== undefined && data.endTime !== null && data.endTime.trim() !== '') {
         doctorFields.endTime = data.endTime.trim();
       }
+      // Add morning and evening session timing fields
+      if (data.morningStartTime !== undefined && data.morningStartTime !== null && data.morningStartTime.trim() !== '') {
+        doctorFields.morningStartTime = data.morningStartTime.trim();
+      }
+      if (data.morningEndTime !== undefined && data.morningEndTime !== null && data.morningEndTime.trim() !== '') {
+        doctorFields.morningEndTime = data.morningEndTime.trim();
+      }
+      if (data.eveningStartTime !== undefined && data.eveningStartTime !== null && data.eveningStartTime.trim() !== '') {
+        doctorFields.eveningStartTime = data.eveningStartTime.trim();
+      }
+      if (data.eveningEndTime !== undefined && data.eveningEndTime !== null && data.eveningEndTime.trim() !== '') {
+        doctorFields.eveningEndTime = data.eveningEndTime.trim();
+      }
+      // Add room field
+      if (data.room !== undefined && data.room !== null && data.room.trim() !== '') {
+        doctorFields.room = data.room.trim();
+      }
       if (data.availableSlots !== undefined && Array.isArray(data.availableSlots) && data.availableSlots.length > 0) {
         doctorFields.availableSlots = data.availableSlots;
         console.log(`✅ Saving ${data.availableSlots.length} time slots to doctor ${id}`);
@@ -392,6 +409,23 @@ export const useDoctors = (): UseDoctorsReturn => {
           }
           if (doctorFields.endTime && typeof doctorFields.endTime === 'string' && doctorFields.endTime.trim().length > 0) {
             validatedDoctorFields.endTime = doctorFields.endTime.trim();
+          }
+          // Add validation for morning and evening session timing fields
+          if (doctorFields.morningStartTime && typeof doctorFields.morningStartTime === 'string' && doctorFields.morningStartTime.trim().length > 0) {
+            validatedDoctorFields.morningStartTime = doctorFields.morningStartTime.trim();
+          }
+          if (doctorFields.morningEndTime && typeof doctorFields.morningEndTime === 'string' && doctorFields.morningEndTime.trim().length > 0) {
+            validatedDoctorFields.morningEndTime = doctorFields.morningEndTime.trim();
+          }
+          if (doctorFields.eveningStartTime && typeof doctorFields.eveningStartTime === 'string' && doctorFields.eveningStartTime.trim().length > 0) {
+            validatedDoctorFields.eveningStartTime = doctorFields.eveningStartTime.trim();
+          }
+          if (doctorFields.eveningEndTime && typeof doctorFields.eveningEndTime === 'string' && doctorFields.eveningEndTime.trim().length > 0) {
+            validatedDoctorFields.eveningEndTime = doctorFields.eveningEndTime.trim();
+          }
+          // Add validation for room field
+          if (doctorFields.room && typeof doctorFields.room === 'string' && doctorFields.room.trim().length > 0) {
+            validatedDoctorFields.room = doctorFields.room.trim();
           }
           if (doctorFields.availableSlots && Array.isArray(doctorFields.availableSlots) && doctorFields.availableSlots.length > 0) {
             validatedDoctorFields.availableSlots = doctorFields.availableSlots;

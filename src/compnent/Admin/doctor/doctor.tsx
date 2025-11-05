@@ -66,6 +66,7 @@ export default function DoctorDashboard() {
     eveningStartTime: string;
     eveningEndTime: string;
     room: string;
+    specialty: string;
   } | null>(null);
 
   const {
@@ -412,13 +413,33 @@ export default function DoctorDashboard() {
           setEditAssistants([]);
         }
         
-        // Load timing and room data
+        // Load timing, room, and specialty data
+        // Ensure times are in HH:MM format (24-hour format for HTML time inputs)
+        const formatTime = (time: string | undefined): string => {
+          if (!time) return '';
+          // If time is already in HH:MM format, return as is
+          if (/^\d{2}:\d{2}$/.test(time)) return time;
+          // If time is in 12-hour format or has AM/PM, convert it
+          // For now, just return default if invalid format
+          return time;
+        };
+        
         setEditDoctorData({
-          morningStartTime: doctorData.morningStartTime || '09:00',
-          morningEndTime: doctorData.morningEndTime || '12:00',
-          eveningStartTime: doctorData.eveningStartTime || '17:00',
-          eveningEndTime: doctorData.eveningEndTime || '20:00',
-          room: doctorData.room || 'Room 101'
+          morningStartTime: formatTime(doctorData.morningStartTime) || '09:00',
+          morningEndTime: formatTime(doctorData.morningEndTime) || '12:00',
+          eveningStartTime: formatTime(doctorData.eveningStartTime) || '17:00',
+          eveningEndTime: formatTime(doctorData.eveningEndTime) || '20:00',
+          room: doctorData.room || 'Room 101',
+          specialty: doctorData.specialty || doctor.specialty || ''
+        });
+        
+        console.log('Loaded doctor data for editing:', {
+          morningStartTime: doctorData.morningStartTime,
+          morningEndTime: doctorData.morningEndTime,
+          eveningStartTime: doctorData.eveningStartTime,
+          eveningEndTime: doctorData.eveningEndTime,
+          room: doctorData.room,
+          specialty: doctorData.specialty
         });
       } else {
         setEditAssistants([]);
@@ -427,7 +448,8 @@ export default function DoctorDashboard() {
           morningEndTime: '12:00',
           eveningStartTime: '17:00',
           eveningEndTime: '20:00',
-          room: 'Room 101'
+          room: 'Room 101',
+          specialty: doctor.specialty || ''
         });
       }
     } catch (error) {
@@ -438,7 +460,8 @@ export default function DoctorDashboard() {
         morningEndTime: '12:00',
         eveningStartTime: '17:00',
         eveningEndTime: '20:00',
-        room: 'Room 101'
+        room: 'Room 101',
+        specialty: doctor.specialty || ''
       });
     }
     
@@ -551,12 +574,13 @@ export default function DoctorDashboard() {
       const name = formData.get('name') as string;
       const email = formData.get('email') as string;
       const phone = formData.get('phone') as string;
-      const specialty = formData.get('specialty') as string;
-      const morningStartTime = formData.get('morningStartTime') as string;
-      const morningEndTime = formData.get('morningEndTime') as string;
-      const eveningStartTime = formData.get('eveningStartTime') as string;
-      const eveningEndTime = formData.get('eveningEndTime') as string;
-      const room = formData.get('room') as string;
+      // Use state value for specialty, timings, and room since they're controlled inputs
+      const specialty = editDoctorData?.specialty || (formData.get('specialty') as string);
+      const morningStartTime = editDoctorData?.morningStartTime || (formData.get('morningStartTime') as string);
+      const morningEndTime = editDoctorData?.morningEndTime || (formData.get('morningEndTime') as string);
+      const eveningStartTime = editDoctorData?.eveningStartTime || (formData.get('eveningStartTime') as string);
+      const eveningEndTime = editDoctorData?.eveningEndTime || (formData.get('eveningEndTime') as string);
+      const room = editDoctorData?.room || (formData.get('room') as string);
       const consultationDurationStr = formData.get('consultationDuration') as string;
       const newStatus = formData.get('status') as string;
 
@@ -663,6 +687,8 @@ export default function DoctorDashboard() {
         // Refresh assistants to get updated data (in case assistant assignments changed)
         await fetchAssistants();
         toast.success(`✅ Doctor updated successfully with ${slots.length} time slots!`);
+        // Small delay to ensure Firestore has propagated the changes
+        await new Promise(resolve => setTimeout(resolve, 500));
         closeDialogs();
       } else {
         toast.error('❌ Failed to update doctor. Please check your permissions and try again.');
@@ -1045,12 +1071,21 @@ export default function DoctorDashboard() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Specialty <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <select 
                     name="specialty"
-                    defaultValue={selectedDoctor.specialty}
+                    value={editDoctorData.specialty}
+                    onChange={(e) => setEditDoctorData(prev => prev ? { ...prev, specialty: e.target.value } : null)}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  />
+                  >
+                    <option value="Cardiology">Cardiology</option>
+                    <option value="Dermatology">Dermatology</option>
+                    <option value="Orthopedics">Orthopedics</option>
+                    <option value="Pediatrics">Pediatrics</option>
+                    <option value="General Medicine">General Medicine</option>
+                    <option value="ENT">ENT</option>
+                    <option value="Gynecology">Gynecology</option>
+                    <option value="Neurology">Neurology</option>
+                  </select>
                 </div>
 
                 {/* Contact Info */}
@@ -1097,7 +1132,8 @@ export default function DoctorDashboard() {
                     <input
                       type="time"
                           name="morningStartTime"
-                          defaultValue={editDoctorData.morningStartTime}
+                          value={editDoctorData.morningStartTime}
+                          onChange={(e) => setEditDoctorData(prev => prev ? { ...prev, morningStartTime: e.target.value } : null)}
                           onClick={(e) => e.currentTarget.showPicker?.()}
                           className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                         />
@@ -1112,7 +1148,8 @@ export default function DoctorDashboard() {
                         <input
                           type="time"
                           name="morningEndTime"
-                          defaultValue={editDoctorData.morningEndTime}
+                          value={editDoctorData.morningEndTime}
+                          onChange={(e) => setEditDoctorData(prev => prev ? { ...prev, morningEndTime: e.target.value } : null)}
                           onClick={(e) => e.currentTarget.showPicker?.()}
                           className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                         />
@@ -1137,7 +1174,8 @@ export default function DoctorDashboard() {
                     <input
                       type="time"
                           name="eveningStartTime"
-                          defaultValue={editDoctorData.eveningStartTime}
+                          value={editDoctorData.eveningStartTime}
+                          onChange={(e) => setEditDoctorData(prev => prev ? { ...prev, eveningStartTime: e.target.value } : null)}
                           onClick={(e) => e.currentTarget.showPicker?.()}
                           className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                         />
@@ -1152,7 +1190,8 @@ export default function DoctorDashboard() {
                         <input
                           type="time"
                           name="eveningEndTime"
-                          defaultValue={editDoctorData.eveningEndTime}
+                          value={editDoctorData.eveningEndTime}
+                          onChange={(e) => setEditDoctorData(prev => prev ? { ...prev, eveningEndTime: e.target.value } : null)}
                           onClick={(e) => e.currentTarget.showPicker?.()}
                           className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                         />
@@ -1170,7 +1209,8 @@ export default function DoctorDashboard() {
                   <input
                     type="text"
                     name="room"
-                    defaultValue={editDoctorData.room}
+                    value={editDoctorData.room}
+                    onChange={(e) => setEditDoctorData(prev => prev ? { ...prev, room: e.target.value } : null)}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   />
                 </div>

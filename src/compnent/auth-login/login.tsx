@@ -6,7 +6,8 @@ import { signUpWithEmail, signOut } from '@/lib/firebase/auth';
 import { db } from '@/lib/firebase/config';
 import { doc, setDoc } from 'firebase/firestore';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { AlertCircle, Loader2, CheckCircle, House, Eye, EyeOff } from 'lucide-react';
+import { Loader2, House, Eye, EyeOff } from 'lucide-react';
+import { toast } from 'sonner';
 
 const Auth = () => {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
@@ -16,8 +17,6 @@ const Auth = () => {
   const [phone, setPhone] = useState('+91 ');
   const [role, setRole] = useState<'admin' | 'doctor' | 'assistant'>('admin');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const { login: contextLogin } = useAuth();
@@ -48,8 +47,6 @@ const Auth = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
-    setSuccessMessage(null);
 
     try {
       if (activeTab === 'signup') {
@@ -73,7 +70,7 @@ const Auth = () => {
           // Sign out after signup so user can log in fresh
           await signOut();
 
-          setSuccessMessage('Account created successfully! Please sign in.');
+          toast.success('Account created successfully! Please sign in.');
           // Clear form and switch to login
           setActiveTab('login');
           setFullName('');
@@ -82,25 +79,30 @@ const Auth = () => {
           setPhone('+91 ');
           setRole('admin');
         } else {
-          setError('Failed to create account');
+          toast.error('Failed to create account');
         }
       } else {
         // Handle login logic using AuthContext
         const result = await contextLogin(email, password);
 
         if (result.success) {
-          setSuccessMessage('Login successful! Redirecting...');
+          toast.success('Login successful! Redirecting...');
           
           // Wait a bit for auth state to propagate, then redirect
           console.log('Redirecting to dashboard...');
           await new Promise(resolve => setTimeout(resolve, 500));
           router.push('/Admin/dashboard');
         } else {
-          setError(result.message || 'Invalid email or password');
+          toast.error('Invalid credentials');
         }
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      // Show toast for login errors, keep error state for signup errors
+      if (activeTab === 'login') {
+        toast.error('Invalid credentials');
+      } else {
+        toast.error(err.message || 'An error occurred');
+      }
     } finally {
       setLoading(false);
     }
@@ -117,22 +119,6 @@ const Auth = () => {
           <House className="w-4 h-4" />
           <span className="text-sm font-medium">Back to Home</span>
         </button>
-
-        {/* Success Message */}
-        {successMessage && (
-          <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex items-center gap-2">
-            <CheckCircle className="w-5 h-5" />
-            {successMessage}
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" />
-            {error}
-          </div>
-        )}
 
         {/* Logo and Header */}
         <div className="text-center mb-8">
