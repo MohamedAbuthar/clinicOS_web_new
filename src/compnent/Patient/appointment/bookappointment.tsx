@@ -582,7 +582,7 @@ export default function BookAppointmentPage() {
     }
   };
 
-  // Helper function to check if session can be booked (must be at least 3 hours before session starts)
+  // Helper function to check if session can be booked (must be at least 3 hours before session starts, until session ends)
   const canBookSessionByTime = (date: Date, session: SessionType): { canBook: boolean; reason?: string; showMessage?: boolean } => {
     if (!selectedDoctorData) {
       return { canBook: true }; // If no doctor selected, allow (will be caught by other validation)
@@ -593,10 +593,13 @@ export default function BookAppointmentPage() {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     
-    // Get session start time from doctor's config
+    // Get session start and end time from doctor's config
     const sessionStartTime = doctorSessionConfig[session].startTime;
+    const sessionEndTime = doctorSessionConfig[session].endTime;
     const [startHours, startMinutes] = sessionStartTime.split(':').map(Number);
+    const [endHours, endMinutes] = sessionEndTime.split(':').map(Number);
     const sessionStartMinutes = startHours * 60 + startMinutes;
+    const sessionEndMinutes = endHours * 60 + endMinutes;
     
     // Calculate days difference between selected date and today
     const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -646,16 +649,16 @@ export default function BookAppointmentPage() {
         };
       }
       
-      // Check if session has already started (after session start time)
-      if (currentTimeInMinutes >= sessionStartMinutes) {
+      // Check if session has already ended (after session end time)
+      if (currentTimeInMinutes >= sessionEndMinutes) {
         return {
           canBook: false,
-          reason: `❌ ${sessionName} session has already started`,
+          reason: `❌ ${sessionName} session has already ended`,
           showMessage: true
         };
       }
       
-      // Booking is allowed (between cutoff time and session start time)
+      // Booking is allowed (between cutoff time and session end time)
       return { canBook: true, showMessage: false };
     } else {
       // Selected date is in the FUTURE (tomorrow or later)
@@ -673,29 +676,9 @@ export default function BookAppointmentPage() {
         };
       }
       
-      // Check if session has already started on the selected date
-      const sessionDateTime = new Date(selectedDay);
-      sessionDateTime.setHours(startHours, startMinutes, 0, 0);
-      
-      if (now >= sessionDateTime) {
-        // Session has started - check if it's the same day
-        if (daysDiff === 0) {
-          return {
-            canBook: false,
-            reason: `❌ ${sessionName} session has already started`,
-            showMessage: true
-          };
-        }
-        // For future dates, if we're past the session time, it means the session already happened
-        // This shouldn't happen if dates are validated correctly, but handle it anyway
-        return {
-          canBook: false,
-          reason: `❌ ${sessionName} session has already passed`,
-          showMessage: false
-        };
-      }
-      
-      // Current time is after the cutoff time on the selected date, booking is allowed
+      // For future dates, booking is allowed once the booking window opens
+      // (3 hours before session starts) until the session ends on that day
+      // We don't need to check if session has ended for future dates since we're not past that day yet
       return { canBook: true, showMessage: false };
     }
   };
