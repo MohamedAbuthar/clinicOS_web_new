@@ -218,6 +218,10 @@ export const useDoctors = (): UseDoctorsReturn => {
       }
       
       // Doctor fields with validation
+      // Update name in doctors collection as well
+      if (data.name !== undefined && data.name !== null && data.name.trim() !== '') {
+        doctorFields.name = data.name.trim();
+      }
       if (data.specialty !== undefined && data.specialty !== null && data.specialty.trim() !== '') {
         doctorFields.specialty = data.specialty.trim();
       }
@@ -393,6 +397,10 @@ export const useDoctors = (): UseDoctorsReturn => {
           // Validate and sanitize doctor fields
           const validatedDoctorFields: any = {};
           
+          // Validate name field for doctors collection
+          if (doctorFields.name && typeof doctorFields.name === 'string' && doctorFields.name.trim().length > 0) {
+            validatedDoctorFields.name = doctorFields.name.trim();
+          }
           if (doctorFields.specialty && typeof doctorFields.specialty === 'string' && doctorFields.specialty.trim().length > 0) {
             validatedDoctorFields.specialty = doctorFields.specialty.trim();
           }
