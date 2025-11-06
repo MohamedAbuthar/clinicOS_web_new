@@ -200,7 +200,7 @@ const MainDashboard = () => {
         </div>
             ) : (
               // Display filtered doctors
-              filteredDoctors.map((doctor: any) => {
+              filteredDoctors.map((doctor: any, index: number) => {
                 // Get doctor name - prioritize name from doctor document first, then user.name, then specialty as last resort
                 const doctorName = doctor.name || doctor.user?.name;
                 
@@ -214,14 +214,33 @@ const MainDashboard = () => {
                 
                 const hasFullName = !!doctorName;
                 
+                // Map doctor index to image (d1.jpeg, d2.jpeg, d3.jpeg, d4.jpeg)
+                // Use modulo to cycle through images if there are more than 4 doctors
+                const imageIndex = (index % 4) + 1;
+                const doctorImage = `/d${imageIndex}.jpeg`;
+                
                 return (
                 <div key={doctor.id} className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 h-full flex flex-col">
-                  <div className="h-72 bg-teal-100 flex items-center justify-center">
-                    <div className="w-36 h-36 bg-teal-200 rounded-full flex items-center justify-center">
+                  <div className="h-72 bg-teal-100 flex items-center justify-center relative overflow-hidden">
+                    <img 
+                      src={doctorImage} 
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                      style={{ objectPosition: 'center 10%' }}
+                      onError={(e) => {
+                        // Fallback to placeholder if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const fallback = target.nextElementSibling as HTMLElement;
+                        if (fallback) fallback.style.display = 'flex';
+                      }}
+                    />
+                    {/* Fallback placeholder (hidden by default, shown if image fails) */}
+                    <div className="w-36 h-36 bg-teal-200 rounded-full flex items-center justify-center absolute" style={{ display: 'none' }}>
                       <svg className="w-20 h-20 text-teal-600" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-              </svg>
-            </div>
+                      </svg>
+                    </div>
                   </div>
                   <div className="p-8 flex flex-col flex-grow">
                     <h3 className="text-2xl font-bold text-gray-800 mb-3">
