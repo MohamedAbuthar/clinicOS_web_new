@@ -27,6 +27,7 @@ export interface Appointment {
   queueOrder?: number;
   acceptedAt?: any;
   rejectedAt?: any;
+  isEmergency?: boolean; // Flag to indicate emergency appointment
   createdAt: any;
   updatedAt: any;
 }
