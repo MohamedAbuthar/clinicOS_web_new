@@ -52,10 +52,11 @@ export default function NewAppointmentDialog({
   const [emailErrorShown, setEmailErrorShown] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [sessionTime, setSessionTime] = useState('');
-  
+  const [patientNameError, setPatientNameError] = useState(false);
+
   // Force re-render to update session availability based on current time
   const [currentTime, setCurrentTime] = useState(new Date());
-  
+
   // Schedule overrides for checking doctor availability
   const { fetchOverrides, overrides } = useScheduleOverrides();
 
@@ -126,7 +127,7 @@ export default function NewAppointmentDialog({
     if (selectedDoctor && formData.session) {
       const session = formData.session as 'morning' | 'evening';
       if (session === 'morning') {
-        const startTime = selectedDoctor.morningStartTime 
+        const startTime = selectedDoctor.morningStartTime
           ? formatTimeForDisplay(selectedDoctor.morningStartTime, '9:00 AM')
           : (selectedDoctor.morningTime ? selectedDoctor.morningTime.split(' - ')[0] : '9:00 AM');
         const endTime = selectedDoctor.morningEndTime
@@ -150,8 +151,8 @@ export default function NewAppointmentDialog({
   // Helper function to format date as YYYY-MM-DD
   const formatDateForAPI = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.getFullYear() + '-' + 
-      String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+    return date.getFullYear() + '-' +
+      String(date.getMonth() + 1).padStart(2, '0') + '-' +
       String(date.getDate()).padStart(2, '0');
   };
 
@@ -162,21 +163,21 @@ export default function NewAppointmentDialog({
     }
 
     const dateStr = formatDateForAPI(date);
-    
+
     // Check for schedule overrides on this date
     const dateOverrides = overrides.filter(override => {
-      const overrideDate = override.date.includes('T') 
-        ? override.date.split('T')[0] 
+      const overrideDate = override.date.includes('T')
+        ? override.date.split('T')[0]
         : override.date;
-      
+
       const normalizedOverrideDate = overrideDate.substring(0, 10);
       const normalizedSelectedDate = dateStr.substring(0, 10);
-      
+
       // Check if it's a holiday (either by type or displayType)
-      const isHoliday = override.type === 'holiday' || 
-                       (override as any).displayType === 'holiday' ||
-                       (override as any).displayType === 'special-event';
-      
+      const isHoliday = override.type === 'holiday' ||
+        (override as any).displayType === 'holiday' ||
+        (override as any).displayType === 'special-event';
+
       return normalizedOverrideDate === normalizedSelectedDate && isHoliday;
     });
 
@@ -188,9 +189,9 @@ export default function NewAppointmentDialog({
     for (const override of dateOverrides) {
       // If no startTime/endTime, it's a full day leave (affects both sessions)
       if (!override.startTime || !override.endTime) {
-        return { 
-          onLeave: true, 
-          reason: `Doctor is on leave: ${override.reason}` 
+        return {
+          onLeave: true,
+          reason: `Doctor is on leave: ${override.reason}`
         };
       }
 
@@ -198,21 +199,21 @@ export default function NewAppointmentDialog({
       // Morning session: 09:00-12:00, Evening session: 14:00-18:00
       const overrideStartHour = parseInt(override.startTime.split(':')[0]);
       const overrideEndHour = parseInt(override.endTime.split(':')[0]);
-      
+
       if (session === 'morning') {
         // Morning session is 09:00-12:00
         if (overrideStartHour === 9 && overrideEndHour === 12) {
-          return { 
-            onLeave: true, 
-            reason: `Doctor is on leave: ${override.reason}` 
+          return {
+            onLeave: true,
+            reason: `Doctor is on leave: ${override.reason}`
           };
         }
       } else if (session === 'evening') {
         // Evening session is 14:00-18:00
         if (overrideStartHour === 14 && overrideEndHour === 18) {
-          return { 
-            onLeave: true, 
-            reason: `Doctor is on leave: ${override.reason}` 
+          return {
+            onLeave: true,
+            reason: `Doctor is on leave: ${override.reason}`
           };
         }
       }
@@ -243,63 +244,63 @@ export default function NewAppointmentDialog({
   // Check if session should be available based on selected date and current time
   const isSessionAvailable = (session: 'morning' | 'evening') => {
     if (!formData.date) return true; // If no date selected, show all options
-    
+
     // Check if doctor is on leave first
     const leaveCheck = isDoctorOnLeave(formData.date, session);
     if (leaveCheck.onLeave) {
       return false;
     }
-    
+
     if (!selectedDoctor) return true; // If no doctor selected, allow (will be caught by validation)
-    
+
     // Use currentTime state to ensure real-time updates
     const now = currentTime;
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDate = new Date(formData.date);
     const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-    
+
     // Get session start and end time from doctor's config
-    const sessionStartTime = session === 'morning' 
+    const sessionStartTime = session === 'morning'
       ? normalizeTime(selectedDoctor.morningStartTime, '09:00')
       : normalizeTime(selectedDoctor.eveningStartTime, '14:00');
     const sessionEndTime = session === 'morning'
       ? normalizeTime(selectedDoctor.morningEndTime, '13:00')
       : normalizeTime(selectedDoctor.eveningEndTime, '18:00');
-    
+
     // Parse session start and end time
     const [startHours, startMinutes] = sessionStartTime.split(':').map(Number);
     const [endHours, endMinutes] = sessionEndTime.split(':').map(Number);
     const sessionStartMinutes = startHours * 60 + startMinutes;
     const sessionEndMinutes = endHours * 60 + endMinutes;
-    
+
     // Calculate days difference between selected date and today
     const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     // For past dates, don't allow any bookings
     if (daysDiff < 0) {
       return false;
     }
-    
+
     const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
     const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
     const bookingCutoffMinutes = sessionStartMinutes - hoursBeforeBookingMinutes;
-    
+
     if (daysDiff === 0) {
       // Selected date is TODAY - check current time against today's session
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
-      
+
       // Check if current time is before the cutoff time (booking window hasn't opened yet)
       if (currentTimeInMinutes < bookingCutoffMinutes) {
         return false; // Session is disabled
       }
-      
+
       // Check if session has already ended (after session end time)
       if (currentTimeInMinutes >= sessionEndMinutes) {
         return false; // Session has ended
       }
-      
+
       // Booking is allowed (between cutoff time and session end time)
       return true;
     } else {
@@ -307,13 +308,13 @@ export default function NewAppointmentDialog({
       // Calculate the cutoff time on the selected date
       const cutoffDateTime = new Date(selectedDay);
       cutoffDateTime.setHours(Math.floor(bookingCutoffMinutes / 60), bookingCutoffMinutes % 60, 0, 0);
-      
+
       // Check if current date/time is before the cutoff time on the selected date
       if (now < cutoffDateTime) {
         // Booking hasn't opened yet - session is disabled
         return false;
       }
-      
+
       // For future dates, booking is allowed once the booking window opens
       // (3 hours before session starts) until the session ends on that day
       return true;
@@ -323,20 +324,20 @@ export default function NewAppointmentDialog({
   // Get helper text for disabled sessions
   const getSessionHelperText = () => {
     if (!formData.date || !selectedDoctor) return null;
-    
+
     const now = currentTime;
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDate = new Date(formData.date);
     const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-    
+
     // Calculate days difference
     const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     // Only show helper text for today and future dates
     if (daysDiff < 0) {
       return null;
     }
-    
+
     // Get morning session start and end time
     const morningStartTime = normalizeTime(selectedDoctor.morningStartTime, '09:00');
     const morningEndTime = normalizeTime(selectedDoctor.morningEndTime, '13:00');
@@ -345,7 +346,7 @@ export default function NewAppointmentDialog({
     const morningStartMinutesTotal = morningStartHours * 60 + morningStartMinutes;
     const morningEndMinutesTotal = morningEndHours * 60 + morningEndMinutes;
     const morningCutoffMinutes = morningStartMinutesTotal - (3 * 60);
-    
+
     // Get evening session start and end time
     const eveningStartTime = normalizeTime(selectedDoctor.eveningStartTime, '14:00');
     const eveningEndTime = normalizeTime(selectedDoctor.eveningEndTime, '18:00');
@@ -354,46 +355,46 @@ export default function NewAppointmentDialog({
     const eveningStartMinutesTotal = eveningStartHours * 60 + eveningStartMinutes;
     const eveningEndMinutesTotal = eveningEndHours * 60 + eveningEndMinutes;
     const eveningCutoffMinutes = eveningStartMinutesTotal - (3 * 60);
-    
+
     // Format cutoff time for display (12-hour format)
     const formatCutoffTime = (minutes: number): string => {
       const hour = minutes % (24 * 60); // Handle hours > 24
       const cutoffHour = Math.floor(hour / 60);
       const cutoffMinute = hour % 60;
-      
+
       const period = cutoffHour >= 12 ? 'PM' : 'AM';
       const displayHour = cutoffHour > 12 ? cutoffHour - 12 : cutoffHour === 0 ? 12 : cutoffHour;
       return `${displayHour}:${String(cutoffMinute).padStart(2, '0')} ${period}`;
     };
-    
+
     const selectedDateStr = selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     const morningCutoffDisplay = formatCutoffTime(morningCutoffMinutes);
     const eveningCutoffDisplay = formatCutoffTime(eveningCutoffMinutes);
-    
+
     // Check availability for both sessions
     let morningAvailable = false;
     let eveningAvailable = false;
-    
+
     if (daysDiff === 0) {
       // Today's date - check if current time is between cutoff and session end
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
-      
+
       morningAvailable = currentTimeInMinutes >= morningCutoffMinutes && currentTimeInMinutes < morningEndMinutesTotal;
       eveningAvailable = currentTimeInMinutes >= eveningCutoffMinutes && currentTimeInMinutes < eveningEndMinutesTotal;
     } else {
       // Future date (tomorrow or later)
       const morningCutoffDateTime = new Date(selectedDay);
       morningCutoffDateTime.setHours(Math.floor(morningCutoffMinutes / 60), morningCutoffMinutes % 60, 0, 0);
-      
+
       const eveningCutoffDateTime = new Date(selectedDay);
       eveningCutoffDateTime.setHours(Math.floor(eveningCutoffMinutes / 60), eveningCutoffMinutes % 60, 0, 0);
-      
+
       morningAvailable = now >= morningCutoffDateTime;
       eveningAvailable = now >= eveningCutoffDateTime;
     }
-    
+
     // Generate helper text based on availability
     if (!morningAvailable && !eveningAvailable) {
       if (daysDiff === 0) {
@@ -414,14 +415,14 @@ export default function NewAppointmentDialog({
         return `Evening session closed. Booking opens at ${eveningCutoffDisplay} on ${selectedDateStr} (3 hours before session starts). Morning session available.`;
       }
     }
-    
+
     return null;
   };
 
   // Handle input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    
+
     // If date changes, reset session if it's no longer available
     if (name === 'date' && formData.session) {
       const sessionStillAvailable = isSessionAvailable(formData.session as 'morning' | 'evening');
@@ -430,8 +431,24 @@ export default function NewAppointmentDialog({
         return;
       }
     }
-    
+
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Handle patient name change with validation
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Regex to allow only letters and spaces
+    const regex = /^[a-zA-Z\s]*$/;
+
+    if (regex.test(value)) {
+      setFormData(prev => ({ ...prev, patientName: value }));
+      setPatientNameError(false);
+    } else {
+      setPatientNameError(true);
+      // Auto-hide error after 3 seconds
+      setTimeout(() => setPatientNameError(false), 3000);
+    }
   };
 
   // Email validation function
@@ -456,41 +473,41 @@ export default function NewAppointmentDialog({
   // Handle phone number input with +91 validation
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    
+
     if (!value.startsWith('+91 ')) {
       value = '+91 ';
     }
-    
+
     const numberPart = value.slice(4).replace(/\D/g, '');
     const limitedNumber = numberPart.slice(0, 10);
     const formattedValue = '+91 ' + limitedNumber;
-    
+
     setFormData(prev => ({ ...prev, phone: formattedValue }));
   };
 
- // Handle email input with validation
-const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const email = e.target.value.trim();
+  // Handle email input with validation
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const email = e.target.value.trim();
 
-  // If empty, clear error and skip validation
-  if (email === '') {
-    setEmailErrorShown(false);
-    setFormData(prev => ({ ...prev, email }));
-    return;
-  }
-
-  // Only validate when user types something
-  if (!validateEmail(email) || !isValidDomain(email)) {
-    if (!emailErrorShown) {
-      toast.error("Please enter a valid email");
-      setEmailErrorShown(true);
+    // If empty, clear error and skip validation
+    if (email === '') {
+      setEmailErrorShown(false);
+      setFormData(prev => ({ ...prev, email }));
+      return;
     }
-  } else {
-    setEmailErrorShown(false);
-  }
 
-  setFormData(prev => ({ ...prev, email }));
-};
+    // Only validate when user types something
+    if (!validateEmail(email) || !isValidDomain(email)) {
+      if (!emailErrorShown) {
+        toast.error("Please enter a valid email");
+        setEmailErrorShown(true);
+      }
+    } else {
+      setEmailErrorShown(false);
+    }
+
+    setFormData(prev => ({ ...prev, email }));
+  };
 
   // Validation function for required fields
   const validateRequiredFields = () => {
@@ -529,7 +546,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
     return true;
   };
-  
+
   // Generate token number for the appointment (per session)
   const generateTokenNumber = async (date: string, doctorId: string, session: string) => {
     try {
@@ -554,7 +571,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   const savePatient = async () => {
     try {
       const phoneId = formData.phone.replace(/\s/g, '').replace('+', '');
-      
+
       const patientData = {
         name: formData.patientName.trim(),
         phone: formData.phone.trim(),
@@ -595,7 +612,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
       const querySnapshot = await getDocs(q);
       const maxAppointmentsPerSession = 20;
-      
+
       if (querySnapshot.size >= maxAppointmentsPerSession) {
         toast.error(`This ${formData.session} session is fully booked. Please choose another session or date.`);
         return false;
@@ -611,7 +628,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
   // Get session start time based on doctor and session
   const getSessionStartTime = () => {
     if (!selectedDoctor) return '09:00';
-    
+
     if (formData.session === 'morning') {
       return normalizeTime(selectedDoctor.morningStartTime, '09:00');
     } else {
@@ -630,24 +647,24 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDate = new Date(date);
     const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-    
+
     // Get session start and end time from doctor's config
-    const sessionStartTime = session === 'morning' 
+    const sessionStartTime = session === 'morning'
       ? normalizeTime(selectedDoctor.morningStartTime, '09:00')
       : normalizeTime(selectedDoctor.eveningStartTime, '14:00');
     const sessionEndTime = session === 'morning'
       ? normalizeTime(selectedDoctor.morningEndTime, '13:00')
       : normalizeTime(selectedDoctor.eveningEndTime, '18:00');
-    
+
     // Parse session start and end time
     const [startHours, startMinutes] = sessionStartTime.split(':').map(Number);
     const [endHours, endMinutes] = sessionEndTime.split(':').map(Number);
     const sessionStartMinutes = startHours * 60 + startMinutes;
     const sessionEndMinutes = endHours * 60 + endMinutes;
-    
+
     // Calculate days difference between selected date and today
     const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     // For past dates, don't allow booking
     if (daysDiff < 0) {
       return {
@@ -655,34 +672,34 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         reason: 'Cannot book appointments for past dates'
       };
     }
-    
+
     const hoursBeforeBooking = 3; // Must book at least 3 hours before session starts
     const hoursBeforeBookingMinutes = hoursBeforeBooking * 60; // 3 hours = 180 minutes
     const bookingCutoffMinutes = sessionStartMinutes - hoursBeforeBookingMinutes;
-    
+
     // Format time for display (12-hour format)
     const formatTime12Hour = (minutes: number): string => {
       const hours = Math.floor(minutes / 60);
       const mins = minutes % 60;
       const cutoffHour = hours % 24;
       const cutoffMinute = mins;
-      
+
       if (cutoffHour > 12) return `${cutoffHour - 12}:${String(cutoffMinute).padStart(2, '0')} PM`;
       if (cutoffHour === 12) return `12:${String(cutoffMinute).padStart(2, '0')} PM`;
       if (cutoffHour === 0) return `12:${String(cutoffMinute).padStart(2, '0')} AM`;
       return `${cutoffHour}:${String(cutoffMinute).padStart(2, '0')} AM`;
     };
-    
+
     const sessionName = session === 'morning' ? 'Morning' : 'Evening';
     const selectedDateStr = selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     const cutoffTime12Hour = formatTime12Hour(bookingCutoffMinutes);
-    
+
     if (daysDiff === 0) {
       // Selected date is TODAY - check current time against today's session
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
-      
+
       // Check if current time is before the cutoff time (booking window hasn't opened yet)
       if (currentTimeInMinutes < bookingCutoffMinutes) {
         return {
@@ -690,7 +707,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
           reason: `⏰ Booking opens at ${cutoffTime12Hour} (3 hours before ${sessionName.toLowerCase()} session starts)`
         };
       }
-      
+
       // Check if session has already ended (after session end time)
       if (currentTimeInMinutes >= sessionEndMinutes) {
         return {
@@ -698,7 +715,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
           reason: `❌ ${sessionName} session has already ended`
         };
       }
-      
+
       // Booking is allowed (between cutoff time and session end time)
       return { canBook: true };
     } else {
@@ -706,7 +723,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       // Calculate the cutoff time on the selected date
       const cutoffDateTime = new Date(selectedDay);
       cutoffDateTime.setHours(Math.floor(bookingCutoffMinutes / 60), bookingCutoffMinutes % 60, 0, 0);
-      
+
       // Check if current date/time is before the cutoff time on the selected date
       if (now < cutoffDateTime) {
         // Booking hasn't opened yet
@@ -715,7 +732,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
           reason: `⏰ Booking opens at ${cutoffTime12Hour} on ${selectedDateStr} (3 hours before ${sessionName.toLowerCase()} session starts)`
         };
       }
-      
+
       // For future dates, booking is allowed once the booking window opens
       // (3 hours before session starts) until the session ends on that day
       return { canBook: true };
@@ -772,7 +789,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       );
       const snapshot = await getDocs(q);
       const existingAppointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      
+
       // Get booked slots for this session
       const bookedSlots = existingAppointments
         .filter((apt: any) => {
@@ -788,7 +805,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
       // Generate token number per session
       const tokenNumber = await generateTokenNumber(formData.date, formData.doctor, formData.session);
-      
+
       // Get next available slot based on doctor's slot duration
       const { getNextAvailableSlot } = await import('@/lib/utils/slotAssignmentHelper');
       const doctorData = {
@@ -801,7 +818,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         eveningStartTime: doctor.eveningStartTime,
         eveningEndTime: doctor.eveningEndTime
       };
-      
+
       const appointmentTime = getNextAvailableSlot(
         doctorData,
         formData.date,
@@ -844,10 +861,10 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         `Appointment created successfully! Token #${tokenNumber} for ${formData.session === 'morning' ? 'Morning' : 'Evening'} session`,
         { duration: 5000 }
       );
-      
+
       resetForm();
       onCloseAction();
-      
+
       setTimeout(() => {
         if (onAppointmentCreated) {
           onAppointmentCreated();
@@ -864,11 +881,11 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div 
+      <div
         className="absolute inset-0 bg-white/30 backdrop-blur-sm"
         onClick={onCloseAction}
       ></div>
-      
+
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200">
           <div>
@@ -898,11 +915,16 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                   type="text"
                   name="patientName"
                   value={formData.patientName}
-                  onChange={handleInputChange}
+                  onChange={handleNameChange}
                   placeholder="Enter patient name"
-                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className={`w-full pl-11 pr-4 py-3 border ${patientNameError ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-teal-500'} rounded-lg focus:outline-none focus:ring-2 focus:border-transparent`}
                 />
               </div>
+              {patientNameError && (
+                <p className="text-xs text-red-500 mt-1 ml-1">
+                  Only letters and spaces are allowed
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -959,24 +981,24 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                   </option>
                 ))}
               </select>
-              
+
               {/* Show upcoming leave dates for selected doctor */}
               {formData.doctor && overrides.length > 0 && (() => {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                
+
                 const upcomingLeaves = overrides
                   .filter(override => {
-                    const overrideDate = override.date.includes('T') 
-                      ? override.date.split('T')[0] 
+                    const overrideDate = override.date.includes('T')
+                      ? override.date.split('T')[0]
                       : override.date;
                     const leaveDate = new Date(overrideDate);
                     leaveDate.setHours(0, 0, 0, 0);
-                    
-                    const isHoliday = override.type === 'holiday' || 
-                                     (override as any).displayType === 'holiday' ||
-                                     (override as any).displayType === 'special-event';
-                    
+
+                    const isHoliday = override.type === 'holiday' ||
+                      (override as any).displayType === 'holiday' ||
+                      (override as any).displayType === 'special-event';
+
                     return isHoliday && leaveDate >= today;
                   })
                   .sort((a, b) => {
@@ -985,7 +1007,7 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                     return dateA.getTime() - dateB.getTime();
                   })
                   .slice(0, 5); // Show up to 5 upcoming leaves
-                
+
                 if (upcomingLeaves.length > 0) {
                   return (
                     <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -997,21 +1019,21 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                           </p>
                           <div className="space-y-1">
                             {upcomingLeaves.map((leave, index) => {
-                              const leaveDate = leave.date.includes('T') 
-                                ? leave.date.split('T')[0] 
+                              const leaveDate = leave.date.includes('T')
+                                ? leave.date.split('T')[0]
                                 : leave.date;
                               const dateObj = new Date(leaveDate);
-                              const formattedDate = dateObj.toLocaleDateString('en-US', { 
+                              const formattedDate = dateObj.toLocaleDateString('en-US', {
                                 weekday: 'short',
-                                month: 'short', 
+                                month: 'short',
                                 day: 'numeric',
                                 year: 'numeric'
                               });
-                              
+
                               const sessionInfo = leave.startTime && leave.endTime
                                 ? ` (${leave.startTime} - ${leave.endTime})`
                                 : ' (Full Day)';
-                              
+
                               return (
                                 <p key={index} className="text-xs text-amber-800">
                                   📅 {formattedDate}{sessionInfo} - {leave.reason}
@@ -1058,24 +1080,23 @@ const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                     value={formData.session}
                     onChange={handleInputChange}
                     disabled={!formData.doctor || !formData.date}
-                    className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent appearance-none cursor-pointer ${
-                      !formData.doctor || !formData.date
+                    className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent appearance-none cursor-pointer ${!formData.doctor || !formData.date
                         ? 'border-gray-300 opacity-50 cursor-not-allowed'
                         : formData.session && !isSessionAvailable(formData.session as 'morning' | 'evening')
-                        ? 'border-red-300 bg-red-50'
-                        : 'border-gray-300'
-                    }`}
+                          ? 'border-red-300 bg-red-50'
+                          : 'border-gray-300'
+                      }`}
                   >
                     <option value="">Select session</option>
-                    <option 
-                      value="morning" 
+                    <option
+                      value="morning"
                       disabled={!isSessionAvailable('morning')}
                       style={!isSessionAvailable('morning') ? { color: '#9ca3af', backgroundColor: '#f3f4f6' } : {}}
                     >
                       Morning {!isSessionAvailable('morning') ? '(Closed)' : ''}
                     </option>
-                    <option 
-                      value="evening" 
+                    <option
+                      value="evening"
                       disabled={!isSessionAvailable('evening')}
                       style={!isSessionAvailable('evening') ? { color: '#9ca3af', backgroundColor: '#f3f4f6' } : {}}
                     >
