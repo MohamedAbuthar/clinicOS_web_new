@@ -26,6 +26,7 @@ export default function AppointmentsPage() {
   const [selectedDate] = useState<string>(getTodayDate());
   const [selectedDoctor, setSelectedDoctor] = useState<string>('');
   const [showDoctorFilter, setShowDoctorFilter] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
   const [morningAppointments, setMorningAppointments] = useState<Appointment[]>([]);
   const [eveningAppointments, setEveningAppointments] = useState<Appointment[]>([]);
@@ -33,12 +34,12 @@ export default function AppointmentsPage() {
   const [itemsPerPage] = useState(10);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  const { 
-    appointments, 
-    loading, 
-    error, 
-    createAppointment, 
-    cancelAppointment, 
+  const {
+    appointments,
+    loading,
+    error,
+    createAppointment,
+    cancelAppointment,
     completeAppointment,
     markNoShow,
     checkInAppointment,
@@ -46,7 +47,7 @@ export default function AppointmentsPage() {
     rejectAppointment,
     refreshAppointments
   } = useAppointments();
-  
+
   const { doctors } = useDoctors();
   const { patients, createPatient } = usePatients();
   const { assistants } = useAssistants();
@@ -77,7 +78,7 @@ export default function AppointmentsPage() {
   // Filter doctors based on user role
   const getFilteredDoctors = () => {
     if (!isAuthenticated || !currentUser) return doctors;
-    
+
     if (currentUser.role === 'doctor') {
       return doctors.filter(doctor => doctor.userId === currentUser.id);
     } else if (currentUser.role === 'assistant') {
@@ -87,7 +88,7 @@ export default function AppointmentsPage() {
       }
       return [];
     }
-    
+
     return doctors;
   };
 
@@ -100,18 +101,14 @@ export default function AppointmentsPage() {
   useEffect(() => {
     // Always use today's date
     const todayDate = getTodayDate();
-    
+
     // For doctors, require at least date selection (doctor is auto-selected)
     // For admins/assistants, require doctor selection (date is always today)
     const isDoctorRole = currentUser?.role === 'doctor';
-    const requiresDoctorFilter = !isDoctorRole;
 
-    if (requiresDoctorFilter && !selectedDoctor) {
-      setFilteredAppointments([]);
-      setMorningAppointments([]);
-      setEveningAppointments([]);
-      return;
-    }
+
+    // REMOVED: The block that forced empty state when no doctor was selected.
+    // Now we default to showing all appointments if no doctor is selected.
 
     let roleFilteredAppointments = [...appointments];
 
@@ -130,7 +127,7 @@ export default function AppointmentsPage() {
       } else if (currentUser.role === 'assistant') {
         const assistant = assistants.find(a => a.userId === currentUser.id);
         if (assistant && assistant.assignedDoctors) {
-          roleFilteredAppointments = appointments.filter(apt => 
+          roleFilteredAppointments = appointments.filter(apt =>
             assistant.assignedDoctors.includes(apt.doctorId)
           );
         } else {
@@ -143,44 +140,58 @@ export default function AppointmentsPage() {
     const finalFiltered = roleFilteredAppointments.filter(appointment => {
       const matchesDate = appointment.appointmentDate === todayDate;
       // For doctors, we already filtered by their doctor ID above
-      // For others, check the selectedDoctor filter
-      const matchesDoctor = isDoctorRole || appointment.doctorId === selectedDoctor;
-      return matchesDate && matchesDoctor;
+      // For others, check the selectedDoctor filter (if a doctor is selected)
+      // If no doctor is selected (!selectedDoctor), we show ALL doctors' appointments
+      const matchesDoctor = isDoctorRole || !selectedDoctor || appointment.doctorId === selectedDoctor;
+
+      // Search filter
+      const searchLower = searchQuery.toLowerCase();
+      const patient = patients.find(p => p.id === appointment.patientId);
+      const patientName = (appointment.patientName || patient?.name || '').toLowerCase();
+      const patientPhone = (appointment.patientPhone || patient?.phone || '');
+      const tokenNumber = (appointment.tokenNumber || '').toString();
+
+      const matchesSearch = !searchQuery ||
+        patientName.includes(searchLower) ||
+        patientPhone.includes(searchQuery) ||
+        tokenNumber.includes(searchQuery);
+
+      return matchesDate && matchesDoctor && matchesSearch;
     });
 
     // Sort appointments to show newest first (recently added at top)
     const sortedAppointments = finalFiltered.sort((a, b) => {
       const timestampA = a.createdAt;
       const timestampB = b.createdAt;
-      
+
       if (timestampA && timestampB) {
         const dateA = timestampA.toDate ? timestampA.toDate() : new Date(timestampA);
         const dateB = timestampB.toDate ? timestampB.toDate() : new Date(timestampB);
         return dateB.getTime() - dateA.getTime();
       }
-      
+
       const dateA = new Date(`${a.appointmentDate}T${a.appointmentTime}`);
       const dateB = new Date(`${b.appointmentDate}T${b.appointmentTime}`);
       return dateB.getTime() - dateA.getTime();
     });
 
     setFilteredAppointments(sortedAppointments);
-    
+
     // Split appointments into morning and evening sessions
     const morning = sortedAppointments.filter(apt => {
       const appointmentTime = new Date(`${apt.appointmentDate}T${apt.appointmentTime}`);
       return appointmentTime.getHours() < 14; // Before 2 PM
     });
-    
+
     const evening = sortedAppointments.filter(apt => {
       const appointmentTime = new Date(`${apt.appointmentDate}T${apt.appointmentTime}`);
       return appointmentTime.getHours() >= 14; // 2 PM and after
     });
-    
+
     setMorningAppointments(morning);
     setEveningAppointments(evening);
     setCurrentPage(1);
-  }, [appointments, currentUser, isAuthenticated, assistants, selectedDoctor, doctors]);
+  }, [appointments, currentUser, isAuthenticated, assistants, selectedDoctor, doctors, searchQuery]);
 
   // Get appointments to display based on current time
   const getAppointmentsToDisplay = () => {
@@ -227,7 +238,7 @@ export default function AppointmentsPage() {
     try {
       console.log('🔄 Starting token migration...');
       const result = await migrateAppointmentTokens();
-      
+
       if (result.success) {
         toast.success(`Token migration completed! Updated: ${result.updated}, Skipped: ${result.skipped}`);
         await refreshAppointments();
@@ -248,7 +259,7 @@ export default function AppointmentsPage() {
       console.log('=== APPOINTMENT ACTION ===');
       console.log('Appointment ID:', appointmentId);
       console.log('Action:', action);
-      
+
       const appointment = appointments.find(apt => apt.id === appointmentId);
       if (appointment) {
         console.log('Appointment Details:', {
@@ -261,9 +272,9 @@ export default function AppointmentsPage() {
           checkedInAt: appointment.checkedInAt
         });
       }
-      
+
       let success = false;
-      
+
       switch (action) {
         case 'cancel':
           success = await cancelAppointment(appointmentId, 'Cancelled by admin');
@@ -336,11 +347,11 @@ export default function AppointmentsPage() {
     const date = new Date(dateString);
     const today = new Date();
     const isToday = date.toDateString() === today.toDateString();
-    
+
     if (isToday) {
       return 'Today';
     }
-    
+
     return date.toLocaleDateString();
   };
 
@@ -355,23 +366,23 @@ export default function AppointmentsPage() {
 
   const formatTimestamp = (timestamp: unknown) => {
     if (!timestamp) return '';
-    
+
     if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof (timestamp as any).toDate === 'function') {
       const date = (timestamp as any).toDate();
-      return date.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: true 
+        hour12: true
       });
     }
-    
+
     try {
       const date = new Date(timestamp as string | number | Date);
       if (isNaN(date.getTime())) return '';
-      return date.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: true 
+        hour12: true
       });
     } catch {
       return '';
@@ -405,19 +416,19 @@ export default function AppointmentsPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            {currentUser?.role === 'doctor' 
-              ? 'Your Appointments' 
+            {currentUser?.role === 'doctor'
+              ? 'Your Appointments'
               : currentUser?.role === 'assistant'
-              ? 'Assigned Doctors Appointments'
-              : 'Appointments'
+                ? 'Assigned Doctors Appointments'
+                : 'Appointments'
             }
           </h1>
           <p className="text-gray-500 mt-1">
-            {currentUser?.role === 'doctor' 
-              ? 'Manage and track your patient appointments' 
+            {currentUser?.role === 'doctor'
+              ? 'Manage and track your patient appointments'
               : currentUser?.role === 'assistant'
-              ? 'Manage appointments for your assigned doctors'
-              : 'Manage and track all patient appointments'
+                ? 'Manage appointments for your assigned doctors'
+                : 'Manage and track all patient appointments'
             }
           </p>
           {currentUser && (
@@ -427,14 +438,13 @@ export default function AppointmentsPage() {
               {currentUser.role === 'admin' && '👨‍💼 Admin View'}
             </div>
           )}
-          
+
           {/* Session Indicator */}
           <div className="mt-3 flex items-center gap-4">
-            <div className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold ${
-              isMorningSession() 
-                ? 'bg-blue-100 text-blue-800 border border-blue-300' 
-                : 'bg-orange-100 text-orange-800 border border-orange-300'
-            }`}>
+            <div className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold ${isMorningSession()
+              ? 'bg-blue-100 text-blue-800 border border-blue-300'
+              : 'bg-orange-100 text-orange-800 border border-orange-300'
+              }`}>
               <Clock className="w-4 h-4 mr-2" />
               {isMorningSession() ? ' Morning Session' : ' Evening Session'}
             </div>
@@ -453,7 +463,7 @@ export default function AppointmentsPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={() => setIsDialogOpen(true)}
             disabled={actionLoading}
             className="flex items-center gap-2 bg-teal-500 text-white px-6 py-3 rounded-lg hover:bg-teal-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -469,6 +479,8 @@ export default function AppointmentsPage() {
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
             type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by patient name, phone, or token..."
             className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
           />
@@ -477,7 +489,7 @@ export default function AppointmentsPage() {
         {/* Hide doctor filter for doctors since they can only see their own appointments */}
         {currentUser?.role !== 'doctor' && (
           <div className="relative doctor-filter-container">
-            <button 
+            <button
               onClick={() => setShowDoctorFilter(!showDoctorFilter)}
               className="flex items-center gap-2 px-5 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-white"
             >
@@ -486,7 +498,7 @@ export default function AppointmentsPage() {
                 {selectedDoctor ? doctors.find(d => d.id === selectedDoctor)?.user?.name || 'Filter by Doctor' : 'Filter by Doctor'}
               </span>
             </button>
-            
+
             {showDoctorFilter && (
               <div className="absolute top-full right-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-10 min-w-[200px]">
                 <div className="space-y-2">
@@ -495,11 +507,10 @@ export default function AppointmentsPage() {
                       setSelectedDoctor('');
                       setShowDoctorFilter(false);
                     }}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      !selectedDoctor 
-                        ? 'bg-teal-100 text-teal-700 font-medium' 
-                        : 'hover:bg-gray-100 text-gray-700'
-                    }`}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${!selectedDoctor
+                      ? 'bg-teal-100 text-teal-700 font-medium'
+                      : 'hover:bg-gray-100 text-gray-700'
+                      }`}
                   >
                     All Doctors
                   </button>
@@ -510,11 +521,10 @@ export default function AppointmentsPage() {
                         setSelectedDoctor(doctor.id);
                         setShowDoctorFilter(false);
                       }}
-                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                        selectedDoctor === doctor.id 
-                          ? 'bg-teal-100 text-teal-700 font-medium' 
-                          : 'hover:bg-gray-100 text-gray-700'
-                      }`}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${selectedDoctor === doctor.id
+                        ? 'bg-teal-100 text-teal-700 font-medium'
+                        : 'hover:bg-gray-100 text-gray-700'
+                        }`}
                     >
                       {doctor.user?.name || 'Unknown'} - {doctor.specialty}
                     </button>
@@ -558,7 +568,7 @@ export default function AppointmentsPage() {
           paginatedAppointments.map((appointment) => {
             const patient = patients.find(p => p.id === appointment.patientId);
             const doctor = doctors.find(d => d.id === appointment.doctorId);
-            
+
             return (
               <div
                 key={appointment.id}
@@ -619,7 +629,7 @@ export default function AppointmentsPage() {
                     >
                       {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1).replace('_', ' ')}
                     </span>
-                    
+
                     {appointment.checkedInAt && (
                       <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                         <UserCheck className="w-3 h-3" />
@@ -631,7 +641,7 @@ export default function AppointmentsPage() {
 
                 <div className="col-span-2 flex items-center gap-2 flex-wrap">
                   {!appointment.checkedInAt && (
-                    <button 
+                    <button
                       onClick={() => handleAppointmentAction(appointment.id, 'check-in')}
                       disabled={actionLoading}
                       className="text-teal-600 hover:text-teal-800 font-medium transition-colors disabled:opacity-50"
@@ -640,7 +650,7 @@ export default function AppointmentsPage() {
                       <UserCheck className="w-5 h-5" />
                     </button>
                   )}
-                  
+
                   {appointment.checkedInAt && (
                     <span className="text-gray-400 text-sm">Already Checked In</span>
                   )}
@@ -671,7 +681,7 @@ export default function AppointmentsPage() {
             <span className="text-sm text-gray-500 mr-4">
               Showing {startIndex + 1}-{Math.min(endIndex, appointmentsToDisplay.length)} of {appointmentsToDisplay.length}
             </span>
-            
+
             <button
               onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage === 1}
@@ -679,23 +689,22 @@ export default function AppointmentsPage() {
             >
               ←
             </button>
-            
+
             <div className="flex items-center gap-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                 <button
                   key={page}
                   onClick={() => handlePageChange(page)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    currentPage === page
-                      ? 'bg-teal-500 text-white'
-                      : 'border border-gray-300 hover:bg-gray-50'
-                  }`}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${currentPage === page
+                    ? 'bg-teal-500 text-white'
+                    : 'border border-gray-300 hover:bg-gray-50'
+                    }`}
                 >
                   {page}
                 </button>
               ))}
             </div>
-            
+
             <button
               onClick={() => handlePageChange(currentPage + 1)}
               disabled={currentPage === totalPages}
