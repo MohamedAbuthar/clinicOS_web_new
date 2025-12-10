@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { X, User, Phone, Mail, Clock, MapPin, Users, UserPlus, Loader2, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { X, User, Phone, Mail, Clock, MapPin, Users, UserPlus, Loader2, ChevronDown, Eye, EyeOff, List } from 'lucide-react';
 import { useAssistants } from '@/lib/hooks/useAssistants';
 import { generateTimeSlots, formatScheduleDisplay } from '@/lib/utils/timeSlotGenerator';
 import { toast } from 'sonner';
@@ -57,7 +57,44 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
   const [showPassword, setShowPassword] = useState(false);
   const [emailErrorShown, setEmailErrorShown] = useState(false);
 
+  // Track custom input mode for each time field
+  const [customTimeModes, setCustomTimeModes] = useState({
+    morningStart: false,
+    morningEnd: false,
+    eveningStart: false,
+    eveningEnd: false
+  });
+
   const { assistants, loading: assistantsLoading } = useAssistants();
+
+  // Generate time options for dropdowns (15 min intervals)
+  const generateTimeOptions = (isMorning: boolean) => {
+    const options = [];
+    const startHour = isMorning ? 0 : 12;
+    const endHour = isMorning ? 11 : 23;
+
+    for (let hour = startHour; hour <= endHour; hour++) {
+      for (let minute = 0; minute < 60; minute += 15) {
+        // Value in 24h format for state
+        const h = hour.toString().padStart(2, '0');
+        const m = minute.toString().padStart(2, '0');
+        const value = `${h}:${m}`;
+
+        // Label in 12h format for display
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+        const label = `${displayHour.toString().padStart(2, '0')}:${m} ${period}`;
+
+        options.push({ value, label });
+      }
+    }
+
+    options.push({ value: 'custom', label: 'Custom Time' });
+    return options;
+  };
+
+  const morningOptions = generateTimeOptions(true);
+  const eveningOptions = generateTimeOptions(false);
 
   // Auto-generate slot preview when schedule changes
   useEffect(() => {
@@ -114,7 +151,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
   // Handle email input with validation
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const email = e.target.value;
-    
+
     // Only validate if email is not empty
     if (email) {
       if (!validateEmail(email) || !isValidDomain(email)) {
@@ -130,7 +167,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
       // Empty email, reset error state
       setEmailErrorShown(false);
     }
-    
+
     // Update the form state
     handleAddDoctorChange('email', email);
   };
@@ -138,21 +175,21 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
   // Handle phone number input with +91 validation
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    
+
     // Always ensure +91 prefix
     if (!value.startsWith('+91 ')) {
       value = '+91 ';
     }
-    
+
     // Extract only the number part after +91 
     const numberPart = value.slice(4).replace(/\D/g, '');
-    
+
     // Limit to 10 digits
     const limitedNumber = numberPart.slice(0, 10);
-    
+
     // Format as +91 XXXXXXXXXX
     const formattedValue = '+91 ' + limitedNumber;
-    
+
     // Update the input value
     e.target.value = formattedValue;
     handleAddDoctorChange('phone', formattedValue);
@@ -225,7 +262,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
     try {
       // Generate schedule string
       const scheduleString = formatScheduleDisplay(newDoctor.startTime, newDoctor.endTime);
-      
+
       // Generate time slots
       const slots = generateTimeSlots({
         startTime: newDoctor.startTime,
@@ -255,7 +292,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
       };
 
       await onSubmitAction(doctorData);
-      
+
       // Reset form after successful submission
       setNewDoctor({
         name: '',
@@ -322,7 +359,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
             <h2 className="text-2xl font-bold text-gray-900">Add New Doctor</h2>
             <p className="text-sm text-gray-600 mt-1">Fill in the details to add a new doctor</p>
           </div>
-          <button 
+          <button
             onClick={handleClose}
             className="p-2 hover:bg-gray-200 rounded-full transition-colors"
           >
@@ -353,7 +390,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Specialty <span className="text-red-500">*</span>
               </label>
-              <select 
+              <select
                 value={newDoctor.specialty}
                 onChange={(e) => handleAddDoctorChange('specialty', e.target.value)}
                 className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -423,6 +460,8 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
               </div>
             </div>
 
+
+
             {/* Morning Session */}
             <div>
               <label className="block text-sm font-semibold text-gray-900 mb-3">
@@ -436,13 +475,46 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
                   </label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    <input
-                      type="time"
-                      value={newDoctor.morningStartTime}
-                      onChange={(e) => handleAddDoctorChange('morningStartTime', e.target.value)}
-                      onClick={(e) => e.currentTarget.showPicker?.()}
-                      className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
-                    />
+                    {customTimeModes.morningStart ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="time"
+                          value={newDoctor.morningStartTime}
+                          onChange={(e) => handleAddDoctorChange('morningStartTime', e.target.value)}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCustomTimeModes(prev => ({ ...prev, morningStart: false }))}
+                          className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                          title="Switch to list"
+                        >
+                          <List size={20} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          value={newDoctor.morningStartTime}
+                          onChange={(e) => {
+                            if (e.target.value === 'custom') {
+                              setCustomTimeModes(prev => ({ ...prev, morningStart: true }));
+                            } else {
+                              handleAddDoctorChange('morningStartTime', e.target.value);
+                            }
+                          }}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer appearance-none bg-white"
+                        >
+                          {morningOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -451,13 +523,46 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
                   </label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    <input
-                      type="time"
-                      value={newDoctor.morningEndTime}
-                      onChange={(e) => handleAddDoctorChange('morningEndTime', e.target.value)}
-                      onClick={(e) => e.currentTarget.showPicker?.()}
-                      className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
-                    />
+                    {customTimeModes.morningEnd ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="time"
+                          value={newDoctor.morningEndTime}
+                          onChange={(e) => handleAddDoctorChange('morningEndTime', e.target.value)}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCustomTimeModes(prev => ({ ...prev, morningEnd: false }))}
+                          className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                          title="Switch to list"
+                        >
+                          <List size={20} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          value={newDoctor.morningEndTime}
+                          onChange={(e) => {
+                            if (e.target.value === 'custom') {
+                              setCustomTimeModes(prev => ({ ...prev, morningEnd: true }));
+                            } else {
+                              handleAddDoctorChange('morningEndTime', e.target.value);
+                            }
+                          }}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer appearance-none bg-white"
+                        >
+                          {morningOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -476,13 +581,46 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
                   </label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    <input
-                      type="time"
-                      value={newDoctor.eveningStartTime}
-                      onChange={(e) => handleAddDoctorChange('eveningStartTime', e.target.value)}
-                      onClick={(e) => e.currentTarget.showPicker?.()}
-                      className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
-                    />
+                    {customTimeModes.eveningStart ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="time"
+                          value={newDoctor.eveningStartTime}
+                          onChange={(e) => handleAddDoctorChange('eveningStartTime', e.target.value)}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCustomTimeModes(prev => ({ ...prev, eveningStart: false }))}
+                          className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                          title="Switch to list"
+                        >
+                          <List size={20} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          value={newDoctor.eveningStartTime}
+                          onChange={(e) => {
+                            if (e.target.value === 'custom') {
+                              setCustomTimeModes(prev => ({ ...prev, eveningStart: true }));
+                            } else {
+                              handleAddDoctorChange('eveningStartTime', e.target.value);
+                            }
+                          }}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer appearance-none bg-white"
+                        >
+                          {eveningOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -491,13 +629,46 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
                   </label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    <input
-                      type="time"
-                      value={newDoctor.eveningEndTime}
-                      onChange={(e) => handleAddDoctorChange('eveningEndTime', e.target.value)}
-                      onClick={(e) => e.currentTarget.showPicker?.()}
-                      className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
-                    />
+                    {customTimeModes.eveningEnd ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="time"
+                          value={newDoctor.eveningEndTime}
+                          onChange={(e) => handleAddDoctorChange('eveningEndTime', e.target.value)}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCustomTimeModes(prev => ({ ...prev, eveningEnd: false }))}
+                          className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+                          title="Switch to list"
+                        >
+                          <List size={20} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          value={newDoctor.eveningEndTime}
+                          onChange={(e) => {
+                            if (e.target.value === 'custom') {
+                              setCustomTimeModes(prev => ({ ...prev, eveningEnd: true }));
+                            } else {
+                              handleAddDoctorChange('eveningEndTime', e.target.value);
+                            }
+                          }}
+                          className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer appearance-none bg-white"
+                        >
+                          {eveningOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -524,7 +695,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
                 <Clock size={16} className="inline mr-1" />
                 Slot Duration <span className="text-red-500">*</span>
               </label>
-              <select 
+              <select
                 value={newDoctor.slotDuration}
                 onChange={(e) => handleAddDoctorChange('slotDuration', e.target.value)}
                 className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -550,7 +721,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
                 </p>
                 <div className="grid grid-cols-6 gap-2 max-h-32 overflow-y-auto">
                   {previewSlots.map((slot, idx) => (
-                    <div 
+                    <div
                       key={idx}
                       className="bg-white px-2 py-1.5 rounded text-center text-xs font-medium text-gray-700 border border-gray-200 shadow-sm"
                     >
@@ -567,7 +738,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
                 <Users size={16} className="inline mr-1" />
                 Assistants <span className="text-gray-500 text-xs font-normal">(Optional)</span> {assistantsLoading && <span className="text-xs text-gray-500">(Loading...)</span>}
               </label>
-              
+
               {/* Dropdown Button */}
               <button
                 type="button"
@@ -597,7 +768,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
                         <input
                           type="checkbox"
                           checked={newDoctor.assistants.includes(assistant.id)}
-                          onChange={() => {}} // Handled by parent onClick
+                          onChange={() => { }} // Handled by parent onClick
                           className="w-4 h-4 text-teal-600 rounded focus:ring-teal-500"
                         />
                         <div className="flex-1">
@@ -626,7 +797,7 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Initial Status
               </label>
-              <select 
+              <select
                 value={newDoctor.status}
                 onChange={(e) => handleAddDoctorChange('status', e.target.value)}
                 className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -641,13 +812,13 @@ export default function AddDoctorDialog({ isOpen, onCloseAction, onSubmitAction,
 
         {/* Dialog Footer */}
         <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
-          <button 
+          <button
             onClick={handleClose}
             className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
           >
             Cancel
           </button>
-          <button 
+          <button
             onClick={handleSubmit}
             disabled={!newDoctor.name || !newDoctor.specialty || !newDoctor.phone || !newDoctor.email || !newDoctor.password || actionLoading}
             className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Clock, ToggleLeft, ToggleRight } from 'lucide-react';
+import { X, ToggleLeft, ToggleRight } from 'lucide-react';
 
 interface EditScheduleDialogProps {
   isOpen: boolean;
@@ -44,10 +44,22 @@ const EditScheduleDialog: React.FC<EditScheduleDialogProps> = ({
   };
 
   const toggleStatus = () => {
-    setFormData({
-      ...formData,
-      status: formData.status === 'active' ? 'off' : 'active',
-    });
+    const newStatus = formData.status === 'active' ? 'off' : 'active';
+
+    // Set default values if switching to active and no values exist
+    if (newStatus === 'active') {
+      setFormData({
+        ...formData,
+        status: newStatus,
+        timeRange: formData.timeRange || '09:00 - 17:00',
+        slotDuration: formData.slotDuration || '15 min slots',
+      });
+    } else {
+      setFormData({
+        ...formData,
+        status: newStatus,
+      });
+    }
   };
 
   if (!isOpen) return null;
@@ -55,11 +67,11 @@ const EditScheduleDialog: React.FC<EditScheduleDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Blur Background */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/20 backdrop-blur-sm"
         onClick={handleClose}
       />
-      
+
       {/* Dialog */}
       <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}

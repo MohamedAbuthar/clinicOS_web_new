@@ -8,10 +8,10 @@ const LogoutButton: React.FC = () => {
   const { user, logout } = useAuth();
 
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2 text-sm text-gray-600">
+    <div className="flex items-center gap-2 md:gap-3">
+      <div className="hidden md:flex items-center gap-2 text-sm text-gray-600">
         <User className="w-4 h-4" />
-        <span>{user?.name || 'User'}</span>
+        <span className="truncate max-w-[100px]">{user?.name || 'User'}</span>
         <span className="text-gray-400">•</span>
         <span className="capitalize">{user?.role || 'User'}</span>
       </div>
@@ -21,7 +21,7 @@ const LogoutButton: React.FC = () => {
         title="Logout"
       >
         <LogOut className="w-4 h-4" />
-        Logout
+        <span className="hidden sm:inline">Logout</span>
       </button>
     </div>
   );

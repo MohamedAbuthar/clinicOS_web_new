@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { apiUtils } from '@/lib/api';
 import { sendPasswordEmailWithRetry } from '@/lib/services/assistantPasswordService';
 import { toast } from 'sonner';
+import DeleteConfirmationDialog from './DeleteConfirmationDialog';
 
 interface AssistantCardProps {
   assistant: AssistantWithUser;
@@ -42,9 +43,8 @@ const AssistantCard = ({ assistant, onEdit, onDelete, loading }: AssistantCardPr
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-            isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-          }`}>
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+            }`}>
             {isActive ? 'Active' : 'Inactive'}
           </span>
           <div className="flex gap-2">
@@ -77,8 +77,8 @@ const AssistantCard = ({ assistant, onEdit, onDelete, loading }: AssistantCardPr
         <div>
           <p className="text-gray-500">Assigned Doctors</p>
           <p className="text-gray-900 mt-1">
-            {assignedDoctorNames && assignedDoctorNames.length > 0 
-              ? assignedDoctorNames.join(', ') 
+            {assignedDoctorNames && assignedDoctorNames.length > 0
+              ? assignedDoctorNames.join(', ')
               : 'None'}
           </p>
         </div>
@@ -107,7 +107,9 @@ const AssistantsPage = () => {
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedAssistant, setSelectedAssistant] = useState<AssistantWithUser | null>(null);
+  const [assistantToDelete, setAssistantToDelete] = useState<AssistantWithUser | null>(null);
   const [formData, setFormData] = useState<AssistantForm>({
     name: '',
     email: '',
@@ -167,17 +169,17 @@ const AssistantsPage = () => {
     if (currentUser.role === 'doctor') {
       console.log('Doctor filtering assistants - currentUser:', currentUser);
       console.log('Available assistants:', assistants);
-      
+
       const doctorRecord = doctors.find(d => d.userId === currentUser.id);
       console.log('Doctor record found:', doctorRecord);
-      
+
       if (doctorRecord) {
         filtered = assistants.filter(assistant => {
           const hasDoctor = assistant.assignedDoctors && assistant.assignedDoctors.includes(doctorRecord.id);
           console.log(`Assistant ${assistant.user.name}: assignedDoctors=${assistant.assignedDoctors}, doctorRecord.id=${doctorRecord.id}, hasDoctor=${hasDoctor}`);
           return hasDoctor;
         });
-        
+
         console.log('Filtered assistants for doctor:', filtered.map(a => ({ name: a.user.name, assignedDoctors: a.assignedDoctors })));
       } else {
         console.log('No doctor record found for current user');
@@ -187,10 +189,10 @@ const AssistantsPage = () => {
     else if (currentUser.role === 'assistant') {
       console.log('Assistant filtering - currentUser:', currentUser);
       console.log('Available assistants:', assistants);
-      
+
       const currentAssistant = assistants.find(a => a.userId === currentUser.id);
       console.log('Current assistant found:', currentAssistant);
-      
+
       if (currentAssistant) {
         filtered = [currentAssistant];
         console.log('Showing assistant own profile:', currentAssistant.user.name);
@@ -224,28 +226,38 @@ const AssistantsPage = () => {
     setShowEditDialog(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this assistant?')) {
-      setActionLoading(true);
-      try {
-        const success = await deleteAssistant(id);
-        
-        if (success) {
-          toast.success('✅ Assistant deleted successfully');
-        } else {
-          toast.error('❌ Failed to delete assistant. Please try again.');
-        }
-      } catch (error: any) {
-        console.error('Error deleting assistant:', error);
-        
-        if (error.message?.includes('permission-denied') || error.message?.includes('permissions')) {
-          toast.error('❌ Permission denied. You do not have access to delete this assistant.');
-        } else {
-          toast.error(`❌ ${error.message || 'Failed to delete assistant. Please try again.'}`);
-        }
-      } finally {
-        setActionLoading(false);
+  const handleDelete = (id: string) => {
+    const assistant = assistants.find(a => a.id === id);
+    if (assistant) {
+      setAssistantToDelete(assistant);
+      setShowDeleteDialog(true);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!assistantToDelete) return;
+
+    setActionLoading(true);
+    try {
+      const success = await deleteAssistant(assistantToDelete.id);
+
+      if (success) {
+        toast.success('✅ Assistant deleted successfully');
+        setShowDeleteDialog(false);
+        setAssistantToDelete(null);
+      } else {
+        toast.error('❌ Failed to delete assistant. Please try again.');
       }
+    } catch (error: any) {
+      console.error('Error deleting assistant:', error);
+
+      if (error.message?.includes('permission-denied') || error.message?.includes('permissions')) {
+        toast.error('❌ Permission denied. You do not have access to delete this assistant.');
+      } else {
+        toast.error(`❌ ${error.message || 'Failed to delete assistant. Please try again.'}`);
+      }
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -258,7 +270,7 @@ const AssistantsPage = () => {
         initialAssignedDoctors = doctorRecord.id;
       }
     }
-    
+
     setFormData({
       name: '',
       email: '',
@@ -277,15 +289,15 @@ const AssistantsPage = () => {
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    
+
     if (!value.startsWith('+91 ')) {
       value = '+91 ';
     }
-    
+
     const numberPart = value.slice(4).replace(/\D/g, '');
     const limitedNumber = numberPart.slice(0, 10);
     const formattedValue = '+91 ' + limitedNumber;
-    
+
     e.target.value = formattedValue;
     handleFormChange('phone', formattedValue);
   };
@@ -304,7 +316,7 @@ const AssistantsPage = () => {
   const toggleDoctorSelection = (doctorId: string) => {
     const selected = getSelectedDoctors();
     const isSelected = selected.includes(doctorId);
-    
+
     if (isSelected) {
       const updated = selected.filter(id => id !== doctorId);
       handleFormChange('assignedDoctors', updated.join(','));
@@ -340,7 +352,7 @@ const AssistantsPage = () => {
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const email = e.target.value;
-    
+
     if (email) {
       if (!validateEmail(email) || !isValidDomain(email)) {
         if (!emailErrorShown) {
@@ -353,13 +365,13 @@ const AssistantsPage = () => {
     } else {
       setEmailErrorShown(false);
     }
-    
+
     handleFormChange('email', email);
   };
 
   const handleAddSubmit = async () => {
     setActionLoading(true);
-    
+
     if (formData.email && formData.email.trim() !== '') {
       if (!validateEmail(formData.email)) {
         toast.error('Please enter a valid email format');
@@ -372,19 +384,31 @@ const AssistantsPage = () => {
         return;
       }
     }
-    
-    if (!formData.name.trim() || !formData.email.trim() || !formData.phone.trim()) {
-      toast.error('Please fill in all required fields');
+
+    if (!formData.name.trim()) {
+      toast.error('Full Name is required');
       setActionLoading(false);
       return;
     }
-    
+
+    if (!formData.email.trim()) {
+      toast.error('Email is required');
+      setActionLoading(false);
+      return;
+    }
+
+    if (!formData.phone.trim() || formData.phone.trim() === '+91') {
+      toast.error('Phone Number is required');
+      setActionLoading(false);
+      return;
+    }
+
     if (!formData.password.trim()) {
-      toast.error('Please enter a password for the assistant');
+      toast.error('Password is required');
       setActionLoading(false);
       return;
     }
-    
+
     // FIX 1: Get assigned doctors array
     let assignedDoctorsArray = formData.assignedDoctors
       .split(',')
@@ -398,14 +422,14 @@ const AssistantsPage = () => {
         assignedDoctorsArray = [doctorRecord.id];
       }
     }
-    
+
     // Validate: One assistant can only be assigned to ONE doctor
     if (assignedDoctorsArray.length > 1) {
       toast.error('❌ One assistant can only be assigned to one doctor. Please select only one doctor.');
       setActionLoading(false);
       return;
     }
-    
+
     // If assigning a doctor, check if that doctor already has this assistant assigned
     // (This shouldn't happen on create, but check for consistency)
     if (assignedDoctorsArray.length === 1) {
@@ -414,10 +438,10 @@ const AssistantsPage = () => {
       // Note: On create, assistant doesn't exist yet, so we can't check if assistant is already assigned
       // This check is mainly for edit, but we include it here for consistency
     }
-    
+
     console.log('Assigned doctors:', assignedDoctorsArray);
     console.log('Creating assistant with email:', formData.email);
-    
+
     try {
       const result = await createAssistant({
         name: formData.name,
@@ -427,7 +451,7 @@ const AssistantsPage = () => {
         role: formData.role,
         assignedDoctors: assignedDoctorsArray,
       });
-      
+
       if (result.success) {
         console.log('Sending login credentials to assistant email...');
         try {
@@ -436,7 +460,7 @@ const AssistantsPage = () => {
             formData.password,
             formData.name
           );
-          
+
           if (emailResult.success) {
             toast.success('✅ Assistant created successfully! Login credentials sent to their email.');
           } else {
@@ -453,10 +477,10 @@ const AssistantsPage = () => {
           );
           console.warn('Error sending password email:', emailError);
         }
-        
+
         // FIX 1: Refresh the assistants list after successful creation
         await fetchAssistants();
-        
+
         closeDialogs();
       } else {
         if (result.errorCode === 'email-already-in-use') {
@@ -479,29 +503,29 @@ const AssistantsPage = () => {
 
   const handleEditSubmit = async () => {
     if (!selectedAssistant) return;
-    
+
     setActionLoading(true);
-    
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       toast.error('Please enter a valid email address');
       setActionLoading(false);
       return;
     }
-    
+
     if (!formData.name.trim() || !formData.email.trim() || !formData.phone.trim()) {
       toast.error('Please fill in all required fields');
       setActionLoading(false);
       return;
     }
-    
+
     try {
       // Get assigned doctors array
       let assignedDoctorsArray = formData.assignedDoctors
         .split(',')
         .map(doctor => doctor.trim())
         .filter(doctor => doctor.length > 0);
-      
+
       // If doctor is logged in, automatically assign them
       if (currentUser?.role === 'doctor') {
         const doctorRecord = doctors.find(d => d.userId === currentUser.id);
@@ -509,17 +533,17 @@ const AssistantsPage = () => {
           assignedDoctorsArray = [doctorRecord.id];
         }
       }
-      
+
       // Validate: One assistant can only be assigned to ONE doctor
       if (assignedDoctorsArray.length > 1) {
         toast.error('❌ One assistant can only be assigned to one doctor. Please select only one doctor.');
         setActionLoading(false);
         return;
       }
-      
+
       // Note: Changing assignment is allowed - the sync logic will handle removing from old doctor
       // and adding to new doctor. We just prevent multiple doctors at once (checked above).
-      
+
       console.log('Updating assistant:', selectedAssistant.id, {
         assignedDoctors: assignedDoctorsArray,
         isActive: formData.status === 'active',
@@ -529,7 +553,7 @@ const AssistantsPage = () => {
           phone: formData.phone,
         }
       });
-      
+
       const success = await updateAssistant(selectedAssistant.id, {
         assignedDoctors: assignedDoctorsArray,
         isActive: formData.status === 'active',
@@ -539,7 +563,7 @@ const AssistantsPage = () => {
           phone: formData.phone,
         }
       });
-      
+
       if (success) {
         toast.success('✅ Assistant updated successfully');
         closeDialogs();
@@ -548,7 +572,7 @@ const AssistantsPage = () => {
       }
     } catch (err: any) {
       console.error('Error updating assistant:', err);
-      
+
       if (err.message?.includes('email-already-in-use') || err.message?.includes('already exists')) {
         toast.error('❌ Email already exists. Please use a different email address.');
       } else if (err.message?.includes('permission-denied') || err.message?.includes('permissions')) {
@@ -613,19 +637,19 @@ const AssistantsPage = () => {
           <div className="flex items-center justify-between mb-2">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {currentUser?.role === 'doctor' 
-                  ? 'Your Assigned Assistants' 
+                {currentUser?.role === 'doctor'
+                  ? 'Your Assigned Assistants'
                   : currentUser?.role === 'assistant'
-                  ? 'Your Profile'
-                  : 'Assistants'
+                    ? 'Your Profile'
+                    : 'Assistants'
                 }
               </h1>
               <p className="text-sm text-gray-600 mt-1">
-                {currentUser?.role === 'doctor' 
-                  ? 'Assistants assigned to you for patient management' 
+                {currentUser?.role === 'doctor'
+                  ? 'Assistants assigned to you for patient management'
                   : currentUser?.role === 'assistant'
-                  ? 'Your assistant profile and information'
-                  : 'Manage assistant profiles and doctor assignments'
+                    ? 'Your assistant profile and information'
+                    : 'Manage assistant profiles and doctor assignments'
                 }
               </p>
               {currentUser && (
@@ -685,9 +709,9 @@ const AssistantsPage = () => {
             ) : (
               <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
                 <p className="text-gray-500">
-                  {searchQuery ? 'No assistants match your search.' : 
-                   currentUser?.role === 'doctor' ? 'No assistants are assigned to you.' :
-                   'No assistants found.'}
+                  {searchQuery ? 'No assistants match your search.' :
+                    currentUser?.role === 'doctor' ? 'No assistants are assigned to you.' :
+                      'No assistants found.'}
                 </p>
               </div>
             )}
@@ -841,7 +865,7 @@ const AssistantsPage = () => {
                     <Users className="inline w-4 h-4 mr-1" />
                     Assigned Doctors
                   </label>
-                  
+
                   {currentUser?.role === 'doctor' ? (
                     // For doctor: Show only their name (non-editable)
                     <div>
@@ -849,8 +873,8 @@ const AssistantsPage = () => {
                         type="text"
                         value={(() => {
                           const doctorRecord = doctors.find(d => d.userId === currentUser.id);
-                          return doctorRecord 
-                            ? `${doctorRecord.user?.name || 'Unknown'} - ${doctorRecord.specialty}` 
+                          return doctorRecord
+                            ? `${doctorRecord.user?.name || 'Unknown'} - ${doctorRecord.specialty}`
                             : 'Loading...';
                         })()}
                         disabled
@@ -900,7 +924,7 @@ const AssistantsPage = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
-                      
+
                       {showDoctorDropdown && (
                         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
                           {doctorsLoading ? (
@@ -911,15 +935,14 @@ const AssistantsPage = () => {
                             doctors.map((doctor) => (
                               <div
                                 key={doctor.id}
-                                className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${
-                                  isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
-                                }`}
+                                className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
+                                  }`}
                                 onClick={() => toggleDoctorSelection(doctor.id)}
                               >
                                 <input
                                   type="checkbox"
                                   checked={isDoctorSelected(doctor.id)}
-                                  onChange={() => {}}
+                                  onChange={() => { }}
                                   className="mr-3 text-teal-600 focus:ring-teal-500"
                                 />
                                 <span className="text-sm">
@@ -961,7 +984,7 @@ const AssistantsPage = () => {
               </button>
               <button
                 onClick={handleAddSubmit}
-                disabled={!formData.name || !formData.email || !formData.phone || !formData.password || actionLoading}
+                disabled={actionLoading}
                 className="flex items-center gap-2 px-5 py-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 {actionLoading ? (
@@ -1063,7 +1086,7 @@ const AssistantsPage = () => {
                     <Users className="inline w-4 h-4 mr-1" />
                     Assigned Doctors
                   </label>
-                  
+
                   {currentUser?.role === 'doctor' ? (
                     // For doctor: Show only their name (non-editable)
                     <div>
@@ -1071,8 +1094,8 @@ const AssistantsPage = () => {
                         type="text"
                         value={(() => {
                           const doctorRecord = doctors.find(d => d.userId === currentUser.id);
-                          return doctorRecord 
-                            ? `${doctorRecord.user?.name || 'Unknown'} - ${doctorRecord.specialty}` 
+                          return doctorRecord
+                            ? `${doctorRecord.user?.name || 'Unknown'} - ${doctorRecord.specialty}`
                             : 'Loading...';
                         })()}
                         disabled
@@ -1122,7 +1145,7 @@ const AssistantsPage = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </div>
-                      
+
                       {showDoctorDropdown && (
                         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
                           {doctorsLoading ? (
@@ -1133,15 +1156,14 @@ const AssistantsPage = () => {
                             doctors.map((doctor) => (
                               <div
                                 key={doctor.id}
-                                className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${
-                                  isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
-                                }`}
+                                className={`px-4 py-2 cursor-pointer hover:bg-gray-100 flex items-center ${isDoctorSelected(doctor.id) ? 'bg-teal-50' : ''
+                                  }`}
                                 onClick={() => toggleDoctorSelection(doctor.id)}
                               >
                                 <input
                                   type="checkbox"
                                   checked={isDoctorSelected(doctor.id)}
-                                  onChange={() => {}}
+                                  onChange={() => { }}
                                   className="mr-3 text-teal-600 focus:ring-teal-500"
                                 />
                                 <span className="text-sm">
@@ -1193,6 +1215,20 @@ const AssistantsPage = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false);
+          setAssistantToDelete(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        title="Delete Assistant"
+        message="Are you sure you want to delete this assistant? This will remove their access to the system."
+        itemName={assistantToDelete?.user.name}
+        loading={actionLoading}
+      />
     </div>
   );
 };

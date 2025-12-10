@@ -1,13 +1,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Bell, AlertCircle } from 'lucide-react';
+import { Calendar, Bell, AlertCircle, Menu } from 'lucide-react';
 import LogoutButton from '@/lib/components/LogoutButton';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import EmergencyAppointmentDialog from '../Admin/appoinment/EmergencyAppointmentDialog';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 
-export default function Header() {
+interface HeaderProps {
+  onMenuClick?: () => void;
+}
+
+export default function Header({ onMenuClick }: HeaderProps) {
   const [currentDate, setCurrentDate] = useState('');
   const [showEmergencyDialog, setShowEmergencyDialog] = useState(false);
   const { user } = useAuth();
@@ -32,14 +36,22 @@ export default function Header() {
     <>
       <header className="w-full h-[73.4px] bg-white border-b border-gray-200 px-8 py-4">
         <div className="flex items-center justify-between">
-          {/* Left side - Date */}
           <div className="flex items-center gap-3">
-            <Calendar className="w-5 h-5 text-gray-400" strokeWidth={2} />
-            <span className="text-gray-600 text-base">{currentDate}</span>
+            <button
+              onClick={onMenuClick}
+              className="p-2 -ml-2 mr-2 lg:hidden text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              <Menu size={24} />
+            </button>
+            {/* Left side - Date */}
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-gray-400" strokeWidth={2} />
+              <span className="text-gray-600 text-base hidden sm:block">{currentDate}</span>
+            </div>
           </div>
 
           {/* Right side - Live indicator, Emergency Button, Notification, and User */}
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2 md:gap-4 lg:gap-6">
             {/* Live Indicator */}
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></div>
@@ -58,7 +70,7 @@ export default function Header() {
             )}
 
             {/* Notification Bell */}
-            
+
 
             {/* User Info and Logout */}
             <LogoutButton />

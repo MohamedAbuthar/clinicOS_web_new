@@ -50,13 +50,13 @@ const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
     if (!timeRange || timeRange === 'Full Day') {
       return 'both';
     }
-    
+
     const [startTime] = timeRange.split(' - ');
     if (!startTime) return 'both';
-    
+
     // Convert time to hours for comparison
     const [hours] = startTime.split(':').map(Number);
-    
+
     // Morning session typically starts before 13:00 (1 PM)
     // Evening session typically starts at or after 13:00 (1 PM)
     if (hours < 13) {
@@ -69,10 +69,10 @@ const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
   useEffect(() => {
     if (initialData) {
       // Convert timeRange to session if it exists (for backward compatibility)
-      const session = (initialData as any).session || 
-                     (initialData as any).timeRange ? 
-                     timeRangeToSession((initialData as any).timeRange) : 'both';
-      
+      const session = (initialData as any).session ||
+        (initialData as any).timeRange ?
+        timeRangeToSession((initialData as any).timeRange) : 'both';
+
       setFormData({
         ...initialData,
         session,
@@ -96,11 +96,11 @@ const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Blur Background */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/20 backdrop-blur-sm"
         onClick={handleClose}
       />
-      
+
       {/* Dialog */}
       <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
@@ -166,6 +166,7 @@ const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
                 type="date"
                 value={formData.date}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                min={new Date().toISOString().split('T')[0]}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 required
               />
