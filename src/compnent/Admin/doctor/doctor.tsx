@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { apiUtils, Doctor as ApiDoctor } from '@/lib/api';
 import { generateTimeSlots, formatScheduleDisplay } from '@/lib/utils/timeSlotGenerator';
 import AddDoctorDialog from './AddDoctorDialog';
+import DeleteConfirmationDialog from './DeleteConfirmationDialog';
 import { toast } from 'sonner';
 
 // TypeScript Interfaces
@@ -54,6 +55,8 @@ export default function DoctorDashboard() {
   const [showQueueDialog, setShowQueueDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [doctorToDelete, setDoctorToDelete] = useState<{ id: string, name: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -68,6 +71,7 @@ export default function DoctorDashboard() {
     room: string;
     specialty: string;
   } | null>(null);
+  const [editEmailErrorShown, setEditEmailErrorShown] = useState(false);
 
   const {
     doctors,
@@ -82,7 +86,7 @@ export default function DoctorDashboard() {
   } = useDoctors();
 
   const { appointments } = useAppointments();
-  
+
   const { assistants, loading: assistantsLoading, fetchAssistants } = useAssistants();
 
   // Make test function available globally for debugging
@@ -124,14 +128,14 @@ export default function DoctorDashboard() {
         const { db } = await import('@/lib/firebase/config');
         const auth = getAuth();
         const currentUser = auth.currentUser;
-        
+
         if (!currentUser) {
           console.log('No user logged in');
           return null;
         }
-        
+
         console.log('Current user:', currentUser.uid, currentUser.email);
-        
+
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
         if (userDoc.exists()) {
           const userData = userDoc.data();
@@ -184,89 +188,89 @@ export default function DoctorDashboard() {
   // Transform API doctors to display format
   const transformedDoctors: DoctorDisplay[] = useMemo(() => {
     return doctors.map((doctor, index) => {
-    const doctorAppointments = appointments.filter(apt => apt.doctorId === doctor.id);
-    const todayAppointments = doctorAppointments.filter(apt => {
-      const aptDate = new Date(apt.appointmentDate);
-      const today = new Date();
-      return aptDate.toDateString() === today.toDateString();
-    });
+      const doctorAppointments = appointments.filter(apt => apt.doctorId === doctor.id);
+      const todayAppointments = doctorAppointments.filter(apt => {
+        const aptDate = new Date(apt.appointmentDate);
+        const today = new Date();
+        return aptDate.toDateString() === today.toDateString();
+      });
 
-    const completed = todayAppointments.filter(apt => apt.status === 'completed').length;
-    const waiting = todayAppointments.filter(apt => 
-      apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'approved'
-    ).length;
+      const completed = todayAppointments.filter(apt => apt.status === 'completed').length;
+      const waiting = todayAppointments.filter(apt =>
+        apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'approved'
+      ).length;
 
-    // Create queue from today's appointments
-    const queue: Patient[] = todayAppointments
-      .filter(apt => apt.status !== 'completed' && apt.status !== 'cancelled')
-      .sort((a, b) => {
-        // Sort by queueOrder if available, otherwise by appointment time
-        const aOrder = a.queueOrder ?? null;
-        const bOrder = b.queueOrder ?? null;
-        
-        if (aOrder !== null && bOrder !== null) {
-          return aOrder - bOrder;
-        }
-        if (aOrder !== null) return -1;
-        if (bOrder !== null) return 1;
-        return new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime();
-      })
-      .map((apt, idx) => ({
-        id: parseInt(apt.id) || idx + 1,
-        token: apt.tokenNumber || `T${idx + 1}`,
-        name: apt.patientName || 'Unknown Patient',
-        age: 0, // Age not available in appointment data
-        type: apt.checkedInAt ? 'Checked In' : 'Scheduled',
-        status: apt.checkedInAt ? 'waiting' : apt.status,
-        time: apt.appointmentTime ? new Date(apt.appointmentTime).toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: true 
-        }) : 'N/A'
-      }));
+      // Create queue from today's appointments
+      const queue: Patient[] = todayAppointments
+        .filter(apt => apt.status !== 'completed' && apt.status !== 'cancelled')
+        .sort((a, b) => {
+          // Sort by queueOrder if available, otherwise by appointment time
+          const aOrder = a.queueOrder ?? null;
+          const bOrder = b.queueOrder ?? null;
 
-    // Get assigned assistant names
-    const assignedAssistantIds = doctor.assignedAssistants || [];
-    let assistantsText = 'No assistants assigned';
-    
-    if (assignedAssistantIds.length > 0 && assistants.length > 0) {
-      const assistantNames = assignedAssistantIds
-        .map(assistantId => {
-          const assistant = assistants.find(a => a.id === assistantId);
-          return assistant?.user?.name || null;
+          if (aOrder !== null && bOrder !== null) {
+            return aOrder - bOrder;
+          }
+          if (aOrder !== null) return -1;
+          if (bOrder !== null) return 1;
+          return new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime();
         })
-        .filter(name => name !== null);
-      
-      if (assistantNames.length > 0) {
-        assistantsText = assistantNames.join(', ');
-      }
-    }
+        .map((apt, idx) => ({
+          id: parseInt(apt.id) || idx + 1,
+          token: apt.tokenNumber || `T${idx + 1}`,
+          name: apt.patientName || 'Unknown Patient',
+          age: 0, // Age not available in appointment data
+          type: apt.checkedInAt ? 'Checked In' : 'Scheduled',
+          status: apt.checkedInAt ? 'waiting' : apt.status,
+          time: apt.appointmentTime ? new Date(apt.appointmentTime).toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }) : 'N/A'
+        }));
 
-    return {
-      id: doctor.id, // Keep as string (UUID)
-      name: doctor.user?.name || 'Loading...',
-      specialty: doctor.specialty,
-      initials: doctor.user?.name ? doctor.user.name.split(' ').map(n => n[0]).join('').toUpperCase() : '...',
-      bgColor: index % 2 === 0 ? 'bg-teal-600' : 'bg-teal-700',
-      status: doctor.status === 'In' ? 'In' : 
-              doctor.status === 'Break' ? 'Break' : 'Out',
-      statusColor: doctor.status === 'In' ? 'bg-emerald-500' : 
-                   doctor.status === 'Break' ? 'bg-amber-500' : 'bg-gray-400',
-      stats: { 
-        total: todayAppointments.length, 
-        done: completed, 
-        waiting: waiting 
-      },
-      slotDuration: `${doctor.consultationDuration} min slots`,
-      assistants: assistantsText,
-      online: doctor.isActive,
-      phone: doctor.user?.phone || 'N/A',
-      email: doctor.user?.email || 'N/A',
-      schedule: 'Mon-Fri, 9:00 AM - 5:00 PM', // This would come from schedule API
-      room: 'Room 101', // This would come from doctor profile
-      queue: queue // Populate with actual appointments
-    };
-  });
+      // Get assigned assistant names
+      const assignedAssistantIds = doctor.assignedAssistants || [];
+      let assistantsText = 'No assistants assigned';
+
+      if (assignedAssistantIds.length > 0 && assistants.length > 0) {
+        const assistantNames = assignedAssistantIds
+          .map(assistantId => {
+            const assistant = assistants.find(a => a.id === assistantId);
+            return assistant?.user?.name || null;
+          })
+          .filter(name => name !== null);
+
+        if (assistantNames.length > 0) {
+          assistantsText = assistantNames.join(', ');
+        }
+      }
+
+      return {
+        id: doctor.id, // Keep as string (UUID)
+        name: doctor.user?.name || 'Loading...',
+        specialty: doctor.specialty,
+        initials: doctor.user?.name ? doctor.user.name.split(' ').map(n => n[0]).join('').toUpperCase() : '...',
+        bgColor: index % 2 === 0 ? 'bg-teal-600' : 'bg-teal-700',
+        status: doctor.status === 'In' ? 'In' :
+          doctor.status === 'Break' ? 'Break' : 'Out',
+        statusColor: doctor.status === 'In' ? 'bg-emerald-500' :
+          doctor.status === 'Break' ? 'bg-amber-500' : 'bg-gray-400',
+        stats: {
+          total: todayAppointments.length,
+          done: completed,
+          waiting: waiting
+        },
+        slotDuration: `${doctor.consultationDuration} min slots`,
+        assistants: assistantsText,
+        online: doctor.isActive,
+        phone: doctor.user?.phone || 'N/A',
+        email: doctor.user?.email || 'N/A',
+        schedule: 'Mon-Fri, 9:00 AM - 5:00 PM', // This would come from schedule API
+        room: 'Room 101', // This would come from doctor profile
+        queue: queue // Populate with actual appointments
+      };
+    });
   }, [doctors, appointments, assistants]);
 
   // Filter doctors based on user role and search query
@@ -288,7 +292,7 @@ export default function DoctorDashboard() {
     if (currentUser.role === 'doctor') {
       console.log('Doctor filtering - currentUser:', currentUser);
       console.log('Available doctors:', transformedDoctors);
-      
+
       roleFiltered = transformedDoctors.filter(doctor => {
         // Find the original doctor data to match by userId
         const originalDoctor = doctors.find(d => d.id === doctor.id);
@@ -296,26 +300,26 @@ export default function DoctorDashboard() {
         console.log(`Doctor ${doctor.name}: userId=${originalDoctor?.userId}, currentUser.id=${currentUser.id}, isOwnProfile=${isOwnProfile}`);
         return isOwnProfile;
       });
-      
+
       console.log('Filtered doctors for doctor:', roleFiltered.map(d => ({ name: d.name, id: d.id })));
     }
-    
+
     // If assistant is authenticated, show only doctors assigned to them
     else if (currentUser.role === 'assistant') {
       console.log('Assistant filtering doctors - currentUser:', currentUser);
       console.log('Available assistants:', assistants);
       console.log('Assistants loading:', assistantsLoading);
-      
+
       // Wait for assistants to load before filtering
       if (assistantsLoading) {
         console.log('Assistants are still loading, waiting...');
         setFilteredDoctors([]);
         return;
       }
-      
+
       const assistant = assistants.find(a => a.userId === currentUser.id);
       console.log('Found assistant:', assistant);
-      
+
       if (!assistant) {
         console.warn('Assistant not found for userId:', currentUser.id);
         console.log('All assistants:', assistants.map(a => ({ id: a.id, userId: a.userId, name: a.user?.name })));
@@ -323,7 +327,7 @@ export default function DoctorDashboard() {
       } else if (!assistant.assignedDoctors || assistant.assignedDoctors.length === 0) {
         console.log('Assistant found but assignedDoctors is empty. Checking doctors for reverse lookup...');
         console.log('Assistant ID:', assistant.id);
-        
+
         // Fallback: Check if any doctors have this assistant in their assignedAssistants
         // This handles legacy data where assignments might be one-way
         const doctorsWithThisAssistant = transformedDoctors.filter(doctor => {
@@ -332,12 +336,12 @@ export default function DoctorDashboard() {
           console.log(`Doctor ${doctor.name}: assignedAssistants=${JSON.stringify(originalDoctor?.assignedAssistants)}, hasAssistant=${hasAssistant}`);
           return hasAssistant;
         });
-        
+
         if (doctorsWithThisAssistant.length > 0) {
           console.log('⚠️ Found doctors via reverse lookup (doctor.assignedAssistants). This indicates data sync issue.');
           console.log('Found doctors:', doctorsWithThisAssistant.map(d => ({ name: d.name, id: d.id })));
           console.log('Attempting to fix assistant.assignedDoctors...');
-          
+
           // Auto-fix: Update assistant's assignedDoctors array (async, but don't block rendering)
           const doctorIds = doctorsWithThisAssistant.map(d => d.id);
           (async () => {
@@ -355,7 +359,7 @@ export default function DoctorDashboard() {
               console.error('❌ Error fixing assistant.assignedDoctors:', error);
             }
           })();
-          
+
           // Use the fixed data immediately (don't wait for async fix)
           roleFiltered = doctorsWithThisAssistant;
         } else {
@@ -365,17 +369,17 @@ export default function DoctorDashboard() {
       } else {
         console.log('Assistant assigned doctors:', assistant.assignedDoctors);
         console.log('Available doctors to filter:', transformedDoctors.map(d => ({ id: d.id, name: d.name })));
-        
+
         roleFiltered = transformedDoctors.filter(doctor => {
           const isAssigned = assistant.assignedDoctors.includes(doctor.id);
           console.log(`Doctor ${doctor.name}: id=${doctor.id}, isAssigned=${isAssigned}, assignedDoctors=${JSON.stringify(assistant.assignedDoctors)}`);
           return isAssigned;
         });
-        
+
         console.log('Filtered doctors for assistant:', roleFiltered.map(d => ({ name: d.name, id: d.id })));
       }
     }
-    
+
     // If admin is authenticated, show all doctors
     else if (currentUser.role === 'admin') {
       roleFiltered = transformedDoctors;
@@ -397,13 +401,13 @@ export default function DoctorDashboard() {
 
   const openEditDialog = async (doctor: DoctorDisplay) => {
     setSelectedDoctor(doctor);
-    
+
     // Fetch doctor data from Firestore to get assignedAssistants and timing data
     try {
       const { getDoc, doc } = await import('firebase/firestore');
       const { db } = await import('@/lib/firebase/config');
       const doctorDoc = await getDoc(doc(db, 'doctors', doctor.id));
-      
+
       if (doctorDoc.exists()) {
         const doctorData = doctorDoc.data();
         // Load existing assistants if available
@@ -412,7 +416,7 @@ export default function DoctorDashboard() {
         } else {
           setEditAssistants([]);
         }
-        
+
         // Load timing, room, and specialty data
         // Ensure times are in HH:MM format (24-hour format for HTML time inputs)
         const formatTime = (time: string | undefined): string => {
@@ -423,7 +427,7 @@ export default function DoctorDashboard() {
           // For now, just return default if invalid format
           return time;
         };
-        
+
         setEditDoctorData({
           morningStartTime: formatTime(doctorData.morningStartTime) || '09:00',
           morningEndTime: formatTime(doctorData.morningEndTime) || '12:00',
@@ -432,7 +436,7 @@ export default function DoctorDashboard() {
           room: doctorData.room || 'Room 101',
           specialty: doctorData.specialty || doctor.specialty || ''
         });
-        
+
         console.log('Loaded doctor data for editing:', {
           morningStartTime: doctorData.morningStartTime,
           morningEndTime: doctorData.morningEndTime,
@@ -464,7 +468,7 @@ export default function DoctorDashboard() {
         specialty: doctor.specialty || ''
       });
     }
-    
+
     setShowEditDialog(true);
   };
 
@@ -476,6 +480,8 @@ export default function DoctorDashboard() {
     setShowQueueDialog(false);
     setShowEditDialog(false);
     setShowAddDialog(false);
+    setShowDeleteDialog(false);
+    setDoctorToDelete(null);
     setSelectedDoctor(null);
     setEditAssistants([]);
     setShowEditAssistantsDropdown(false);
@@ -514,7 +520,7 @@ export default function DoctorDashboard() {
               const doc = doctors.find(d => d.id === docId);
               return doc?.user?.name || 'Unknown Doctor';
             }).join(', ');
-            
+
             const assistantName = assistant.user?.name || 'Unknown Assistant';
             toast.error(`❌ ${assistantName} is already assigned to ${assignedDoctors}. One assistant can only be assigned to one doctor.`);
             setActionLoading(false);
@@ -522,7 +528,7 @@ export default function DoctorDashboard() {
           }
         }
       }
-      
+
       const createdDoctor = await createDoctor(doctorData);
 
       if (createdDoctor) {
@@ -539,7 +545,7 @@ export default function DoctorDashboard() {
           endTime: createdDoctor.eveningEndTime
         });
         console.log('📋 Complete Doctor Data:', JSON.stringify(createdDoctor, null, 2));
-        
+
         toast.success(`✅ Doctor created successfully!`);
         closeDialogs();
       } else {
@@ -552,16 +558,78 @@ export default function DoctorDashboard() {
     }
   };
 
+  // Email validation function
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Valid email domains
+  const validDomains = [
+    'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
+    'protonmail.com', 'aol.com', 'live.com', 'msn.com', 'yandex.com',
+    'zoho.com', 'mail.com', 'gmx.com', 'web.de', 'tutanota.com'
+  ];
+
+  // Check if email domain is valid
+  const isValidDomain = (email: string) => {
+    const domain = email.split('@')[1]?.toLowerCase();
+    return validDomains.includes(domain);
+  };
+
+  // Handle email input with validation for Edit Dialog
+  const handleEditEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const email = e.target.value;
+
+    // Only validate if email is not empty
+    if (email) {
+      if (!validateEmail(email) || !isValidDomain(email)) {
+        if (!editEmailErrorShown) {
+          toast.error("Please enter a valid email");
+          setEditEmailErrorShown(true);
+        }
+      } else {
+        // Valid email entered, reset error state
+        setEditEmailErrorShown(false);
+      }
+    } else {
+      // Empty email, reset error state
+      setEditEmailErrorShown(false);
+    }
+  };
+
+  // Handle phone number input with +91 validation for Edit Dialog
+  const handleEditPhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+
+    // Always ensure +91 prefix
+    if (!value.startsWith('+91 ')) {
+      value = '+91 ';
+    }
+
+    // Extract only the number part after +91 
+    const numberPart = value.slice(4).replace(/\D/g, '');
+
+    // Limit to 10 digits
+    const limitedNumber = numberPart.slice(0, 10);
+
+    // Format as +91 XXXXXXXXXX
+    const formattedValue = '+91 ' + limitedNumber;
+
+    // Update the input value directly
+    e.target.value = formattedValue;
+  };
+
   const handleEditDoctorSubmit = async () => {
     if (!selectedDoctor) return;
 
     // Clear any previous errors
     setError(null);
     setActionLoading(true);
-    
+
     try {
       console.log('Starting doctor edit for ID:', selectedDoctor.id);
-      
+
       // Get form values from the edit dialog
       const form = document.querySelector('#edit-doctor-form') as HTMLFormElement;
       if (!form) {
@@ -591,6 +659,26 @@ export default function DoctorDashboard() {
         return;
       }
 
+      // Validate phone number
+      const phoneNumber = phone.replace('+91 ', '').replace(/\D/g, '');
+      if (phoneNumber.length < 10) {
+        toast.error('❌ Phone number must be exactly 10 digits');
+        setActionLoading(false);
+        return;
+      }
+
+      // Validate email
+      if (!validateEmail(email)) {
+        toast.error('❌ Please enter a valid email format');
+        setActionLoading(false);
+        return;
+      }
+      if (!isValidDomain(email)) {
+        toast.error('❌ Please use a valid email provider (Gmail, Yahoo, Outlook, etc.)');
+        setActionLoading(false);
+        return;
+      }
+
       // Use morning start time as overall start time and evening end time as overall end time for schedule
       const startTime = morningStartTime;
       const endTime = eveningEndTime;
@@ -604,7 +692,7 @@ export default function DoctorDashboard() {
 
       // Generate schedule string
       const scheduleString = formatScheduleDisplay(startTime, endTime);
-      
+
       // Generate time slots
       const slots = generateTimeSlots({
         startTime,
@@ -616,7 +704,7 @@ export default function DoctorDashboard() {
       // But one doctor can have multiple assistants
       if (editAssistants.length > 0) {
         const currentDoctorId = selectedDoctor.id;
-        
+
         // Check each selected assistant to see if they're already assigned to a different doctor
         for (const assistantId of editAssistants) {
           const assistant = assistants.find(a => a.id === assistantId);
@@ -625,14 +713,14 @@ export default function DoctorDashboard() {
             const assignedToDifferentDoctor = assistant.assignedDoctors.some(
               doctorId => doctorId !== currentDoctorId
             );
-            
+
             if (assignedToDifferentDoctor) {
               const otherDoctorIds = assistant.assignedDoctors.filter(docId => docId !== currentDoctorId);
               const otherDoctors = otherDoctorIds.map(docId => {
                 const doc = doctors.find(d => d.id === docId);
                 return doc?.user?.name || 'Unknown Doctor';
               }).join(', ');
-              
+
               const assistantName = assistant.user?.name || 'Unknown Assistant';
               toast.error(`❌ ${assistantName} is already assigned to ${otherDoctors}. One assistant can only be assigned to one doctor.`);
               setActionLoading(false);
@@ -671,7 +759,7 @@ export default function DoctorDashboard() {
           'Break': 'break',
           'Out': 'offline'
         };
-        
+
         console.log('Updating doctor status:', newStatus, 'to', statusMap[newStatus]);
         const statusSuccess = await updateDoctorStatus(selectedDoctor.id, statusMap[newStatus]);
         if (!statusSuccess) {
@@ -701,22 +789,31 @@ export default function DoctorDashboard() {
     }
   };
 
-  const handleDeleteDoctor = async (doctorId: string) => {
-    if (window.confirm('Are you sure you want to delete this doctor?')) {
-      setActionLoading(true);
-      try {
-        const success = await deleteDoctor(doctorId);
-        
-        if (success) {
-          toast.success('✅ Doctor deleted successfully');
-        } else {
-          toast.error('❌ Failed to delete doctor');
-        }
-      } catch (err) {
-        toast.error(`❌ ${apiUtils.handleError(err)}`);
-      } finally {
-        setActionLoading(false);
+  const handleDeleteDoctor = (doctorId: string) => {
+    const doctor = transformedDoctors.find(d => d.id === doctorId);
+    if (doctor) {
+      setDoctorToDelete({ id: doctor.id, name: doctor.name });
+      setShowDeleteDialog(true);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!doctorToDelete) return;
+
+    setActionLoading(true);
+    try {
+      const success = await deleteDoctor(doctorToDelete.id);
+
+      if (success) {
+        toast.success(`✅ Doctor ${doctorToDelete.name} deleted successfully`);
+        closeDialogs();
+      } else {
+        toast.error('❌ Failed to delete doctor');
       }
+    } catch (err) {
+      toast.error(`❌ ${apiUtils.handleError(err)}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -730,7 +827,7 @@ export default function DoctorDashboard() {
       };
 
       const success = await updateDoctorStatus(doctorId, statusMap[newStatus]);
-      
+
       if (success) {
         toast.success('✅ Doctor status updated successfully');
       } else {
@@ -758,22 +855,22 @@ export default function DoctorDashboard() {
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-full mx-auto">
         {/* Header */}
-        <div className="flex items-start justify-between mb-6">
+        <div className="flex flex-col md:flex-row md:items-start justify-between mb-6 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-1">
-              {currentUser?.role === 'doctor' 
-                ? 'Your Profile' 
+              {currentUser?.role === 'doctor'
+                ? 'Your Profile'
                 : currentUser?.role === 'assistant'
-                ? 'Your Assigned Doctors'
-                : 'Doctors'
+                  ? 'Your Assigned Doctors'
+                  : 'Doctors'
               }
             </h1>
             <p className="text-gray-500">
-              {currentUser?.role === 'doctor' 
-                ? 'Your professional profile and information' 
+              {currentUser?.role === 'doctor'
+                ? 'Your professional profile and information'
                 : currentUser?.role === 'assistant'
-                ? 'Doctors assigned to you for patient management'
-                : 'Manage doctor profiles and schedules'
+                  ? 'Doctors assigned to you for patient management'
+                  : 'Manage doctor profiles and schedules'
               }
             </p>
             {/* User context indicator */}
@@ -786,10 +883,10 @@ export default function DoctorDashboard() {
             )}
           </div>
           {currentUser?.role !== 'assistant' && (
-            <button 
+            <button
               onClick={openAddDialog}
               disabled={actionLoading}
-              className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full md:w-auto flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <UserPlus size={18} />
               Add Doctor
@@ -815,98 +912,98 @@ export default function DoctorDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {searchFilteredDoctors.length > 0 ? (
             searchFilteredDoctors.map((doctor) => (
-            <div key={doctor.id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
-              {/* Doctor Header */}
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <div className={`${doctor.bgColor} w-14 h-14 rounded-full flex items-center justify-center text-white font-semibold text-lg`}>
-                      {doctor.initials}
+              <div key={doctor.id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
+                {/* Doctor Header */}
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <div className={`${doctor.bgColor} w-14 h-14 rounded-full flex items-center justify-center text-white font-semibold text-lg`}>
+                        {doctor.initials}
+                      </div>
+                      {doctor.online && (
+                        <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-400 border-2 border-white rounded-full"></div>
+                      )}
                     </div>
-                    {doctor.online && (
-                      <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-400 border-2 border-white rounded-full"></div>
-                    )}
+                    <div>
+                      <h3 className="font-semibold text-gray-900 text-base">{doctor.name}</h3>
+                      <p className="text-sm text-gray-500">{doctor.specialty}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900 text-base">{doctor.name}</h3>
-                    <p className="text-sm text-gray-500">{doctor.specialty}</p>
+                  <span className={`${doctor.statusColor} text-white text-xs font-medium px-3 py-1 rounded-full`}>
+                    {doctor.status}
+                  </span>
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-gray-900">{doctor.stats.total}</div>
+                    <div className="text-xs text-gray-500 mt-1">Total</div>
+                  </div>
+                  <div className="bg-emerald-50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-emerald-600">{doctor.stats.done}</div>
+                    <div className="text-xs text-gray-500 mt-1">Done</div>
+                  </div>
+                  <div className="bg-cyan-50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-cyan-600">{doctor.stats.waiting}</div>
+                    <div className="text-xs text-gray-500 mt-1">Waiting</div>
                   </div>
                 </div>
-                <span className={`${doctor.statusColor} text-white text-xs font-medium px-3 py-1 rounded-full`}>
-                  {doctor.status}
-                </span>
-              </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-3 mb-6">
-                <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-gray-900">{doctor.stats.total}</div>
-                  <div className="text-xs text-gray-500 mt-1">Total</div>
+                {/* Additional Info */}
+                <div className="space-y-2 mb-6">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Clock size={16} className="text-gray-400" />
+                    <span>{doctor.slotDuration}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Users size={16} className="text-gray-400" />
+                    <span>{doctor.assistants}</span>
+                  </div>
                 </div>
-                <div className="bg-emerald-50 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-emerald-600">{doctor.stats.done}</div>
-                  <div className="text-xs text-gray-500 mt-1">Done</div>
-                </div>
-                <div className="bg-cyan-50 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-cyan-600">{doctor.stats.waiting}</div>
-                  <div className="text-xs text-gray-500 mt-1">Waiting</div>
-                </div>
-              </div>
 
-              {/* Additional Info */}
-              <div className="space-y-2 mb-6">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Clock size={16} className="text-gray-400" />
-                  <span>{doctor.slotDuration}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Users size={16} className="text-gray-400" />
-                  <span>{doctor.assistants}</span>
+                {/* Action Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => openQueueDialog(doctor)}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Eye size={16} />
+                    View Queue
+                  </button>
+                  {/* Hide Edit and Delete buttons for assistants */}
+                  {currentUser?.role !== 'assistant' && (
+                    <>
+                      <button
+                        onClick={() => openEditDialog(doctor)}
+                        disabled={actionLoading}
+                        className="p-2.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDoctor(doctor.id)}
+                        disabled={actionLoading}
+                        className="p-2.5 border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => openQueueDialog(doctor)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <Eye size={16} />
-                  View Queue
-                </button>
-                {/* Hide Edit and Delete buttons for assistants */}
-                {currentUser?.role !== 'assistant' && (
-                  <>
-                    <button 
-                      onClick={() => openEditDialog(doctor)}
-                      disabled={actionLoading}
-                      className="p-2.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                    >
-                      <Edit size={16} />
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteDoctor(doctor.id)}
-                      disabled={actionLoading}
-                      className="p-2.5 border border-red-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
             ))
           ) : (
             <div className="col-span-full bg-white rounded-lg shadow-sm p-12 text-center">
               <p className="text-gray-500">
-                {searchQuery ? 'No doctors match your search.' : 
-                 currentUser?.role === 'doctor' ? 'Your profile is not available.' :
-                 currentUser?.role === 'assistant' ? (
-                   assistantsLoading 
-                     ? 'Loading assigned doctors...' 
-                     : 'No doctors are assigned to you. Please contact an administrator to assign doctors to your account.'
-                 ) :
-                 'No doctors found.'}
+                {searchQuery ? 'No doctors match your search.' :
+                  currentUser?.role === 'doctor' ? 'Your profile is not available.' :
+                    currentUser?.role === 'assistant' ? (
+                      assistantsLoading
+                        ? 'Loading assigned doctors...'
+                        : 'No doctors are assigned to you. Please contact an administrator to assign doctors to your account.'
+                    ) :
+                      'No doctors found.'}
               </p>
               {currentUser?.role === 'assistant' && assistantsLoading && (
                 <Loader2 className="w-6 h-6 animate-spin text-teal-500 mx-auto mt-4" />
@@ -934,7 +1031,7 @@ export default function DoctorDashboard() {
                 <h2 className="text-xl font-bold text-gray-900">{selectedDoctor.name} - Queue</h2>
                 <p className="text-sm text-gray-500 mt-1">{selectedDoctor.specialty}</p>
               </div>
-              <button 
+              <button
                 onClick={closeDialogs}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
@@ -982,20 +1079,18 @@ export default function DoctorDashboard() {
                               )}
                             </div>
                             <div className="flex items-center gap-3 mt-1">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                patient.type === 'Checked In' 
-                                  ? 'bg-green-100 text-green-700' 
-                                  : 'bg-blue-100 text-blue-700'
-                              }`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${patient.type === 'Checked In'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-blue-100 text-blue-700'
+                                }`}>
                                 {patient.type}
                               </span>
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                patient.status === 'waiting' 
-                                  ? 'bg-amber-100 text-amber-700' 
-                                  : patient.status === 'confirmed' || patient.status === 'approved'
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${patient.status === 'waiting'
+                                ? 'bg-amber-100 text-amber-700'
+                                : patient.status === 'confirmed' || patient.status === 'approved'
                                   ? 'bg-green-100 text-green-700'
                                   : 'bg-gray-100 text-gray-700'
-                              }`}>
+                                }`}>
                                 {patient.status.charAt(0).toUpperCase() + patient.status.slice(1).replace('_', ' ')}
                               </span>
                             </div>
@@ -1041,7 +1136,7 @@ export default function DoctorDashboard() {
                 <h2 className="text-2xl font-bold text-gray-900">Edit Doctor Profile</h2>
                 <p className="text-sm text-gray-600 mt-1">Update doctor information and schedule</p>
               </div>
-              <button 
+              <button
                 onClick={closeDialogs}
                 className="p-2 hover:bg-gray-200 rounded-full transition-colors"
               >
@@ -1071,7 +1166,7 @@ export default function DoctorDashboard() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Specialty <span className="text-red-500">*</span>
                   </label>
-                  <select 
+                  <select
                     name="specialty"
                     value={editDoctorData.specialty}
                     onChange={(e) => setEditDoctorData(prev => prev ? { ...prev, specialty: e.target.value } : null)}
@@ -1099,6 +1194,7 @@ export default function DoctorDashboard() {
                       type="tel"
                       name="phone"
                       defaultValue={selectedDoctor.phone}
+                      onChange={handleEditPhoneChange}
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
                   </div>
@@ -1111,6 +1207,7 @@ export default function DoctorDashboard() {
                       type="email"
                       name="email"
                       defaultValue={selectedDoctor.email}
+                      onChange={handleEditEmailChange}
                       className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                     />
                   </div>
@@ -1122,15 +1219,15 @@ export default function DoctorDashboard() {
                     <Clock size={16} className="inline mr-1" />
                     Morning Session
                   </label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Start Time <span className="text-red-500">*</span>
-                    </label>
+                      </label>
                       <div className="relative">
                         <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    <input
-                      type="time"
+                        <input
+                          type="time"
                           name="morningStartTime"
                           value={editDoctorData.morningStartTime}
                           onChange={(e) => setEditDoctorData(prev => prev ? { ...prev, morningStartTime: e.target.value } : null)}
@@ -1138,9 +1235,9 @@ export default function DoctorDashboard() {
                           className="w-full pl-11 pr-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent cursor-pointer"
                         />
                       </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         End Time <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
@@ -1161,9 +1258,9 @@ export default function DoctorDashboard() {
                 {/* Evening Session */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-3">
-                      <Clock size={16} className="inline mr-1" />
+                    <Clock size={16} className="inline mr-1" />
                     Evening Session
-                    </label>
+                  </label>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1171,8 +1268,8 @@ export default function DoctorDashboard() {
                       </label>
                       <div className="relative">
                         <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-                    <input
-                      type="time"
+                        <input
+                          type="time"
                           name="eveningStartTime"
                           value={editDoctorData.eveningStartTime}
                           onChange={(e) => setEditDoctorData(prev => prev ? { ...prev, eveningStartTime: e.target.value } : null)}
@@ -1221,11 +1318,11 @@ export default function DoctorDashboard() {
                     <Clock size={16} className="inline mr-1" />
                     Slot Duration <span className="text-red-500">*</span>
                   </label>
-                  <select 
+                  <select
                     name="consultationDuration"
-                    defaultValue={selectedDoctor.slotDuration.includes('20') ? '20' : 
-                                  selectedDoctor.slotDuration.includes('15') ? '15' : 
-                                  selectedDoctor.slotDuration.includes('30') ? '30' : '10'}
+                    defaultValue={selectedDoctor.slotDuration.includes('20') ? '20' :
+                      selectedDoctor.slotDuration.includes('15') ? '15' :
+                        selectedDoctor.slotDuration.includes('30') ? '30' : '10'}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   >
                     <option value="10">10 minutes</option>
@@ -1241,7 +1338,7 @@ export default function DoctorDashboard() {
                     <Users size={16} className="inline mr-1" />
                     Assistants <span className="text-gray-500 text-xs font-normal">(Optional)</span> {assistantsLoading && <span className="text-xs text-gray-500">(Loading...)</span>}
                   </label>
-                  
+
                   {/* Dropdown Button */}
                   <button
                     type="button"
@@ -1271,7 +1368,7 @@ export default function DoctorDashboard() {
                             <input
                               type="checkbox"
                               checked={editAssistants.includes(assistant.id)}
-                              onChange={() => {}} // Handled by parent onClick
+                              onChange={() => { }} // Handled by parent onClick
                               className="w-4 h-4 text-teal-600 rounded focus:ring-teal-500"
                             />
                             <div className="flex-1">
@@ -1300,7 +1397,7 @@ export default function DoctorDashboard() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Current Status
                   </label>
-                  <select 
+                  <select
                     name="status"
                     defaultValue={selectedDoctor.status}
                     className="w-full px-4 py-2.5 text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
@@ -1315,13 +1412,13 @@ export default function DoctorDashboard() {
 
             {/* Dialog Footer */}
             <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
-              <button 
+              <button
                 onClick={closeDialogs}
                 className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleEditDoctorSubmit}
                 disabled={actionLoading}
                 className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1342,6 +1439,15 @@ export default function DoctorDashboard() {
           </div>
         </div>
       )}
+      <DeleteConfirmationDialog
+        isOpen={showDeleteDialog}
+        onClose={closeDialogs}
+        onConfirm={handleConfirmDelete}
+        title="Delete Doctor"
+        message="Are you sure you want to delete this doctor? You will lose all data including their schedule and appointment history."
+        itemName={doctorToDelete?.name}
+        loading={actionLoading}
+      />
     </div>
   );
 }

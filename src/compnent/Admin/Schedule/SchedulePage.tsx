@@ -9,9 +9,10 @@ import ScheduleOverrideCard, {
 import AddOverrideDialog from './AddOverrideDialog';
 import EditOverrideDialog from './EditOverrideDialog';
 import EditScheduleDialog from './EditScheduleDialog';
+import DeleteOverrideDialog from './DeleteOverrideDialog';
 import { useDoctors } from '@/lib/hooks/useDoctors';
 import { useSchedule } from '@/lib/hooks/useSchedule';
-import { useScheduleOverrides } from '@/lib/hooks/useScheduleOverrides';
+import { useScheduleOverrides, ScheduleOverride } from '@/lib/hooks/useScheduleOverrides';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useAssistants } from '@/lib/hooks/useAssistants';
 import { apiUtils } from '@/lib/api';
@@ -28,23 +29,27 @@ const SchedulePage: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Delete Dialog State
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [overrideToDelete, setOverrideToDelete] = useState<string | null>(null);
+
   const { doctors, loading, error } = useDoctors();
   const { assistants } = useAssistants();
-  const { 
-    schedules, 
-    loading: scheduleLoading, 
-    error: scheduleError, 
+  const {
+    schedules,
+    loading: scheduleLoading,
+    error: scheduleError,
     setError: setScheduleError,
-    fetchSchedules, 
-    createSchedule, 
-    updateSchedule, 
-    deleteSchedule 
+    fetchSchedules,
+    createSchedule,
+    updateSchedule,
+    deleteSchedule
   } = useSchedule();
 
   // Filter doctors based on user role
   const getFilteredDoctors = () => {
     if (!isAuthenticated || !currentUser) return doctors;
-    
+
     if (currentUser.role === 'doctor') {
       // Doctor sees only themselves
       return doctors.filter(doctor => doctor.userId === currentUser.id);
@@ -56,7 +61,7 @@ const SchedulePage: React.FC = () => {
       }
       return []; // No assigned doctors
     }
-    
+
     // Admin sees all doctors
     return doctors;
   };
@@ -125,10 +130,10 @@ const SchedulePage: React.FC = () => {
   // Convert backend schedule data to frontend format
   const getWeeklySchedule = (): ScheduleRowProps[] => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    
+
     return days.map((day, index) => {
       const schedule = schedules.find(s => s.dayOfWeek === index);
-      
+
       if (schedule && schedule.isActive) {
         return {
           day,
@@ -153,9 +158,9 @@ const SchedulePage: React.FC = () => {
     if (!startTime || !endTime) {
       return 'Both Sessions';
     }
-    
+
     const [hours] = startTime.split(':').map(Number);
-    
+
     // Morning session typically starts before 13:00 (1 PM)
     // Evening session typically starts at or after 13:00 (1 PM)
     if (hours < 13) {
@@ -167,7 +172,12 @@ const SchedulePage: React.FC = () => {
 
   // Convert backend override data to frontend format
   const getScheduleOverrides = (): ScheduleOverrideCardProps[] => {
-    return overrides.map(override => ({
+    // Sort overrides by date (ascending)
+    const sortedOverrides = [...overrides].sort((a, b) => {
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+
+    return sortedOverrides.map(override => ({
       id: override.id,
       title: override.reason,
       date: new Date(override.date).toLocaleDateString('en-US', {
@@ -195,9 +205,9 @@ const SchedulePage: React.FC = () => {
     if (!startTime || !endTime) {
       return 'both';
     }
-    
+
     const [hours] = startTime.split(':').map(Number);
-    
+
     // Morning session typically starts before 13:00 (1 PM)
     // Evening session typically starts at or after 13:00 (1 PM)
     if (hours < 13) {
@@ -224,7 +234,7 @@ const SchedulePage: React.FC = () => {
     const override = overrides.find(o => o.id === id);
     if (override) {
       const session = timeRangeToSession(override.startTime, override.endTime);
-      
+
       // Map backend type to UI type
       // Use displayType if available (stored when creating), otherwise infer from backend type
       let uiType: 'special-event' | 'holiday' | 'extended-hours';
@@ -243,7 +253,7 @@ const SchedulePage: React.FC = () => {
           uiType = 'special-event';
         }
       }
-      
+
       setEditingOverride({
         id: override.id,
         title: override.reason,
@@ -257,24 +267,28 @@ const SchedulePage: React.FC = () => {
     }
   };
 
-  const handleDeleteOverride = async (id: string) => {
+  const handleDeleteOverride = (id: string) => {
     if (!selectedDoctor) {
       toast.error('❌ Please select a doctor first');
       return;
     }
+    setOverrideToDelete(id);
+    setDeleteDialogOpen(true);
+  };
 
-    if (!window.confirm('Are you sure you want to delete this schedule override?')) {
-      return;
-    }
+  const handleConfirmDelete = async () => {
+    if (!overrideToDelete || !selectedDoctor) return;
 
     setActionLoading(true);
     setOverridesError(null);
-    
+
     try {
-      const success = await deleteOverride(selectedDoctor, id);
-      
+      const success = await deleteOverride(selectedDoctor, overrideToDelete);
+
       if (success) {
         toast.success('✅ Schedule override deleted successfully');
+        setDeleteDialogOpen(false);
+        setOverrideToDelete(null);
       } else {
         toast.error('❌ Failed to delete schedule override');
       }
@@ -293,7 +307,7 @@ const SchedulePage: React.FC = () => {
   const handleSaveEditOverride = async (data: { id: string; title: string; date: string; session: 'morning' | 'evening' | 'both'; type: 'special-event' | 'holiday' | 'extended-hours'; description?: string; doctorId?: string }) => {
     // Use doctorId from data if provided (admin), otherwise use selectedDoctor (doctor/assistant)
     const doctorIdToUse = data.doctorId || selectedDoctor;
-    
+
     if (!doctorIdToUse) {
       toast.error('❌ Please select a doctor first');
       return;
@@ -301,37 +315,181 @@ const SchedulePage: React.FC = () => {
 
     setActionLoading(true);
     setOverridesError(null);
-    
+
     try {
-      const { startTime, endTime } = sessionToTimeRange(data.session);
-      
       // Map UI types to backend types
-      const overrideType = data.type === 'special-event' || data.type === 'extended-hours' 
-        ? 'extended_hours' 
-        : data.type === 'holiday' 
-        ? 'holiday' 
-        : 'extended_hours'; // Default fallback
-      
-      const success = await updateOverride(doctorIdToUse, data.id, {
-        date: data.date,
-        startTime,
-        endTime,
-        reason: data.title,
-        type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
-        description: data.description || '',
-        displayType: data.type, // Store the original UI type for correct mapping when editing
-      });
-      
-      if (success) {
-        toast.success('✅ Schedule override updated successfully');
-        setIsEditOverrideOpen(false);
-        setEditingOverride(null);
-        // Refresh the selected doctor's overrides
-        if (doctorIdToUse === selectedDoctor) {
-          await fetchOverrides(selectedDoctor);
+      const overrideType = data.type === 'special-event' || data.type === 'extended-hours'
+        ? 'extended_hours'
+        : data.type === 'holiday'
+          ? 'holiday'
+          : 'extended_hours'; // Default fallback
+
+      // If switching to "both" sessions during edit
+      if (data.session === 'both') {
+        const overridesOnDate = overrides.filter(o => o.doctorId === doctorIdToUse && o.date.split('T')[0] === data.date);
+
+        let existingMorning: ScheduleOverride | undefined = overridesOnDate.find(o => {
+          if (!o.startTime) return false;
+          const [h] = o.startTime.split(':').map(Number);
+          return h < 13;
+        });
+
+        let existingEvening: ScheduleOverride | undefined = overridesOnDate.find(o => {
+          if (!o.startTime) return false;
+          const [h] = o.startTime.split(':').map(Number);
+          return h >= 13;
+        });
+
+        // Slot Assignment Logic:
+        // We want to ensure we have exactly one Morning and one Evening override with the new details.
+
+        // 1. Handle Morning Slot
+        let morningSuccess = false;
+        if (existingMorning) {
+          // Update existing Morning override
+          morningSuccess = await updateOverride(doctorIdToUse, existingMorning.id, {
+            date: data.date,
+            startTime: '09:00',
+            endTime: '12:00',
+            reason: data.title,
+            type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+            description: data.description || '',
+            displayType: data.type,
+          });
+        } else {
+          // No morning exists. Can we use data.id?
+          // Only use data.id if it's NOT the evening override we found later (though evening check is independent)
+          // Strict check: if data.id is NOT existingEvening's ID, we can repurpose it for Morning.
+          // If data.id IS existingEvening's ID, we should let Evening keep it and create new Morning.
+
+          if (data.id !== existingEvening?.id) {
+            // Repurpose data.id for Morning
+            morningSuccess = await updateOverride(doctorIdToUse, data.id, {
+              date: data.date,
+              startTime: '09:00',
+              endTime: '12:00',
+              reason: data.title,
+              type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+              description: data.description || '',
+              displayType: data.type,
+            });
+          } else {
+            // data.id is busy being Evening. Create new Morning.
+            morningSuccess = await createOverride(doctorIdToUse, {
+              date: data.date,
+              startTime: '09:00',
+              endTime: '12:00',
+              reason: data.title,
+              type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+              description: data.description || '',
+              displayType: data.type,
+            });
+          }
+        }
+
+        // 2. Handle Evening Slot
+        let eveningSuccess = false;
+        if (existingEvening) {
+          // Update existing Evening override
+          eveningSuccess = await updateOverride(doctorIdToUse, existingEvening.id, {
+            date: data.date,
+            startTime: '14:00',
+            endTime: '18:00',
+            reason: data.title,
+            type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+            description: data.description || '',
+            displayType: data.type,
+          });
+        } else {
+          // No evening exists. Can we use data.id?
+          // Use data.id if we didn't use it for Morning (check if existingMorning was found, meaning data.id wasn't consumed for M unless data.id == existingMorning.id)
+          // Basically: if data.id wasn't already updated as Morning in step 1.
+
+          // Simpler: If data.id !== existingMorning?.id AND we haven't just repurposed it above.
+          // If we repurposed data.id above (because existingMorning was null and data.id != existingEvening?.id), then we can't use it here.
+
+          let usedForMorning = false;
+          if (existingMorning) {
+            usedForMorning = (data.id === existingMorning.id);
+          } else {
+            // If no morning exists, we used data.id for morning IF we didn't save it for evening.
+            // But we are deciding that NOW.
+            // If data.id is NOT existingEvening's ID, we use it for Morning.
+            if (existingEvening) {
+              usedForMorning = data.id !== (existingEvening as any).id;
+            } else {
+              usedForMorning = true;
+            }
+          }
+
+          if (!usedForMorning) {
+            // Repurpose data.id for Evening
+            eveningSuccess = await updateOverride(doctorIdToUse, data.id, {
+              date: data.date,
+              startTime: '14:00',
+              endTime: '18:00',
+              reason: data.title,
+              type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+              description: data.description || '',
+              displayType: data.type,
+            });
+          } else {
+            // Create new Evening
+            eveningSuccess = await createOverride(doctorIdToUse, {
+              date: data.date,
+              startTime: '14:00',
+              endTime: '18:00',
+              reason: data.title,
+              type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+              description: data.description || '',
+              displayType: data.type,
+            });
+          }
+        }
+
+        if (morningSuccess && eveningSuccess) {
+          toast.success('✅ Schedule updated to cover both sessions');
+          setIsEditOverrideOpen(false);
+          setEditingOverride(null);
+          // Explicitly refresh to ensure UI sees the correct cards
+          if (doctorIdToUse === selectedDoctor) {
+            await fetchOverrides(selectedDoctor);
+          }
+        } else {
+          toast.error('❌ Failed to update schedule for both sessions');
         }
       } else {
-        toast.error('❌ Failed to update schedule override');
+        // Normal update for single session
+        const { startTime, endTime } = sessionToTimeRange(data.session);
+
+        // Safety check
+        if (!startTime || !endTime) {
+          toast.error('❌ Invalid session time range');
+          setActionLoading(false);
+          return;
+        }
+
+        const success = await updateOverride(doctorIdToUse, data.id, {
+          date: data.date,
+          startTime,
+          endTime,
+          reason: data.title,
+          type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+          description: data.description || '',
+          displayType: data.type, // Store the original UI type for correct mapping when editing
+        });
+
+        if (success) {
+          toast.success('✅ Schedule override updated successfully');
+          setIsEditOverrideOpen(false);
+          setEditingOverride(null);
+          // Refresh the selected doctor's overrides
+          if (doctorIdToUse === selectedDoctor) {
+            await fetchOverrides(selectedDoctor);
+          }
+        } else {
+          toast.error('❌ Failed to update schedule override');
+        }
       }
     } catch (err) {
       const errorMessage = apiUtils.handleError(err);
@@ -344,23 +502,67 @@ const SchedulePage: React.FC = () => {
   const handleSaveOverride = async (data: { title: string; date: string; session: 'morning' | 'evening' | 'both'; type: 'special-event' | 'holiday' | 'extended-hours'; description?: string; doctorId?: string }) => {
     // Use doctorId from data if provided (admin), otherwise use selectedDoctor (doctor/assistant)
     const doctorIdToUse = data.doctorId || selectedDoctor;
-    
+
     if (!doctorIdToUse) {
       toast.error('❌ Please select a doctor first');
       return;
     }
 
+    // Check for duplicate overrides
+    const normalizedTargetDate = data.date.trim();
+
+    const overridesOnDate = overrides.filter(o => {
+      // Robust date match: Handle ISO 'T' and ensure trimming
+      const oDate = (o.date || '').split('T')[0].trim();
+
+      // Doctor check: If stored override has doctorId, match it. 
+      // If missing, assume it belongs to the currently loaded list (selectedDoctor).
+      const oDoctorId = o.doctorId;
+      const isDoctorMatch = oDoctorId ? oDoctorId === doctorIdToUse : true;
+
+      return isDoctorMatch && oDate === normalizedTargetDate;
+    });
+
+    let conflict = false;
+
+    if (data.session === 'both') {
+      // If adding "Both", conflict if ANY override exists (Morning OR Evening)
+      if (overridesOnDate.length > 0) conflict = true;
+    } else if (data.session === 'morning') {
+      // Conflict if any existing override is Morning (start < 13)
+      const hasMorning = overridesOnDate.some(o => {
+        if (!o.startTime) return false;
+        // Parse "09:00" -> 9. Use base 10.
+        const h = parseInt(o.startTime.split(':')[0], 10);
+        return h < 13;
+      });
+      if (hasMorning) conflict = true;
+    } else if (data.session === 'evening') {
+      // Conflict if any existing override is Evening (start >= 13)
+      const hasEvening = overridesOnDate.some(o => {
+        if (!o.startTime) return false;
+        const h = parseInt(o.startTime.split(':')[0], 10);
+        return h >= 13;
+      });
+      if (hasEvening) conflict = true;
+    }
+
+    if (conflict) {
+      toast.error('❌ already Schedule in this date');
+      return;
+    }
+
     setActionLoading(true);
     setOverridesError(null);
-    
+
     try {
       // Map UI types to backend types
-      const overrideType = data.type === 'special-event' || data.type === 'extended-hours' 
-        ? 'extended_hours' 
-        : data.type === 'holiday' 
-        ? 'holiday' 
-        : 'extended_hours'; // Default fallback
-      
+      const overrideType = data.type === 'special-event' || data.type === 'extended-hours'
+        ? 'extended_hours'
+        : data.type === 'holiday'
+          ? 'holiday'
+          : 'extended_hours'; // Default fallback
+
       // If "both" is selected, create two separate overrides (morning and evening)
       if (data.session === 'both') {
         // Create morning session override
@@ -373,7 +575,7 @@ const SchedulePage: React.FC = () => {
           description: data.description || '',
           displayType: data.type,
         });
-        
+
         // Create evening session override
         const eveningSuccess = await createOverride(doctorIdToUse, {
           date: data.date,
@@ -384,7 +586,7 @@ const SchedulePage: React.FC = () => {
           description: data.description || '',
           displayType: data.type,
         });
-        
+
         if (morningSuccess && eveningSuccess) {
           toast.success('✅ Schedule override saved successfully for both sessions');
           setIsAddOverrideOpen(false);
@@ -401,7 +603,7 @@ const SchedulePage: React.FC = () => {
       } else {
         // For single session (morning or evening)
         const { startTime, endTime } = sessionToTimeRange(data.session);
-        
+
         const success = await createOverride(doctorIdToUse, {
           date: data.date,
           startTime,
@@ -411,7 +613,7 @@ const SchedulePage: React.FC = () => {
           description: data.description || '',
           displayType: data.type, // Store the original UI type for correct mapping when editing
         });
-        
+
         if (success) {
           toast.success('✅ Schedule override saved successfully');
           setIsAddOverrideOpen(false);
@@ -442,13 +644,19 @@ const SchedulePage: React.FC = () => {
 
     setActionLoading(true);
     setScheduleError(null);
-    
+
     try {
-      const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].indexOf(data.day);
-      
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayIndex = days.indexOf(data.day);
+
+      if (dayIndex === -1) {
+        throw new Error('Invalid day selection');
+      }
+
+      const existingSchedule = schedules.find(s => s.dayOfWeek === dayIndex);
+
       if (data.status === 'off') {
         // If setting to off, delete the schedule if it exists
-        const existingSchedule = schedules.find(s => s.dayOfWeek === dayIndex);
         if (existingSchedule) {
           const success = await deleteSchedule(selectedDoctor, existingSchedule.id);
           if (success) {
@@ -458,29 +666,46 @@ const SchedulePage: React.FC = () => {
             toast.error('❌ Failed to update schedule');
           }
         } else {
-          toast.success('✅ Schedule updated successfully');
-          await fetchSchedules(selectedDoctor);
+          // Already off, nothing to do but close dialog
+          setIsEditScheduleOpen(false);
+          setEditingSchedule(null);
+          return;
         }
       } else {
         // If setting to active, create or update schedule
-        if (!data.timeRange) {
-          toast.error('❌ Please provide time range for active schedule');
+        if (!data.timeRange || !data.timeRange.includes('-')) {
+          toast.error('❌ Please provide a valid time range for active schedule');
+          setActionLoading(false);
           return;
         }
 
-        const [startTime, endTime] = data.timeRange.split(' - ');
-        
-        const existingSchedule = schedules.find(s => s.dayOfWeek === dayIndex);
-        
+        if (!data.slotDuration) {
+          toast.error('❌ Please select a slot duration');
+          setActionLoading(false);
+          return;
+        }
+
+        // Robust time parsing
+        const timeParts = data.timeRange.split('-').map(part => part.trim());
+        if (timeParts.length !== 2 || !timeParts[0] || !timeParts[1]) {
+          toast.error('❌ Invalid time format. Please set both start and end times.');
+          setActionLoading(false);
+          return;
+        }
+
+        const [startTime, endTime] = timeParts;
+
+        const scheduleData = {
+          dayOfWeek: dayIndex,
+          startTime,
+          endTime,
+          slotDuration: data.slotDuration,
+        };
+
         if (existingSchedule) {
           // Update existing schedule
-          const success = await updateSchedule(selectedDoctor, existingSchedule.id, {
-            dayOfWeek: dayIndex,
-            startTime,
-            endTime,
-            slotDuration: data.slotDuration,
-          });
-          
+          const success = await updateSchedule(selectedDoctor, existingSchedule.id, scheduleData);
+
           if (success) {
             toast.success('✅ Schedule updated successfully');
             await fetchSchedules(selectedDoctor);
@@ -489,13 +714,8 @@ const SchedulePage: React.FC = () => {
           }
         } else {
           // Create new schedule
-          const success = await createSchedule(selectedDoctor, {
-            dayOfWeek: dayIndex,
-            startTime,
-            endTime,
-            slotDuration: data.slotDuration,
-          });
-          
+          const success = await createSchedule(selectedDoctor, scheduleData);
+
           if (success) {
             toast.success('✅ Schedule created successfully');
             await fetchSchedules(selectedDoctor);
@@ -504,10 +724,11 @@ const SchedulePage: React.FC = () => {
           }
         }
       }
-      
+
       setIsEditScheduleOpen(false);
       setEditingSchedule(null);
     } catch (err) {
+      console.error('Error saving schedule:', err);
       const errorMessage = apiUtils.handleError(err);
       toast.error(`❌ ${errorMessage}`);
     } finally {
@@ -546,19 +767,19 @@ const SchedulePage: React.FC = () => {
           <div className="flex items-center justify-between mb-2">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {currentUser?.role === 'doctor' 
-                  ? 'Your Schedule' 
+                {currentUser?.role === 'doctor'
+                  ? 'Your Schedule'
                   : currentUser?.role === 'assistant'
-                  ? 'Assigned Doctors Schedule'
-                  : 'Schedule'
+                    ? 'Assigned Doctors Schedule'
+                    : 'Schedule'
                 }
               </h1>
               <p className="text-sm text-gray-600 mt-1">
-                {currentUser?.role === 'doctor' 
-                  ? 'Manage your schedule and slot durations' 
+                {currentUser?.role === 'doctor'
+                  ? 'Manage your schedule and slot durations'
                   : currentUser?.role === 'assistant'
-                  ? 'Manage schedules for your assigned doctors'
-                  : 'Manage doctor schedules and slot durations'
+                    ? 'Manage schedules for your assigned doctors'
+                    : 'Manage doctor schedules and slot durations'
                 }
               </p>
               {/* User context indicator */}
@@ -605,7 +826,7 @@ const SchedulePage: React.FC = () => {
         </div>
 
         {/* Weekly Schedule Section */}
-       
+
 
         {/* Schedule Overrides Section */}
         <div className="bg-white border border-gray-200 rounded-lg p-6">
@@ -666,6 +887,19 @@ const SchedulePage: React.FC = () => {
         }}
         onSave={handleSaveSchedule}
         initialData={editingSchedule || undefined}
+      />
+      {/* Delete Confirmation Dialog */}
+      <DeleteOverrideDialog
+        isOpen={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setOverrideToDelete(null);
+        }}
+        onConfirm={handleConfirmDelete}
+        title="Delete Schedule Override"
+        message="Are you sure you want to delete this schedule override? It will be removed from the doctor's calendar."
+        itemName={overrides.find(o => o.id === overrideToDelete)?.reason || 'Schedule Override'}
+        loading={actionLoading}
       />
     </div>
   );

@@ -149,18 +149,31 @@ export default function AppointmentsPage() {
       const patient = patients.find(p => p.id === appointment.patientId);
       const patientName = (appointment.patientName || patient?.name || '').toLowerCase();
       const patientPhone = (appointment.patientPhone || patient?.phone || '');
-      const tokenNumber = (appointment.tokenNumber || '').toString();
+      const tokenNumber = (appointment.tokenNumber ?? '').toString();
 
       const matchesSearch = !searchQuery ||
         patientName.includes(searchLower) ||
         patientPhone.includes(searchQuery) ||
-        tokenNumber.includes(searchQuery);
+        tokenNumber.toLowerCase().includes(searchLower);
 
       return matchesDate && matchesDoctor && matchesSearch;
     });
 
     // Sort appointments to show newest first (recently added at top)
     const sortedAppointments = finalFiltered.sort((a, b) => {
+      // Prioritize exact token matches if searching
+      if (searchQuery) {
+        const searchLower = searchQuery.toLowerCase();
+        const tokenA = (a.tokenNumber ?? '').toString().toLowerCase();
+        const tokenB = (b.tokenNumber ?? '').toString().toLowerCase();
+
+        const exactA = tokenA === searchLower;
+        const exactB = tokenB === searchLower;
+
+        if (exactA && !exactB) return -1;
+        if (!exactA && exactB) return 1;
+      }
+
       const timestampA = a.createdAt;
       const timestampB = b.createdAt;
 

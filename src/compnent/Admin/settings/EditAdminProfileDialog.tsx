@@ -73,10 +73,10 @@ const EditAdminProfileDialog: React.FC<EditAdminProfileDialogProps> = ({
   const handlePhoneNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Extract only digits
     const digitsOnly = e.target.value.replace(/\D/g, '');
-    
+
     // Limit to 10 digits
     const limitedNumber = digitsOnly.slice(0, 10);
-    
+
     setPhoneNumber(limitedNumber);
     // Update formData with full phone number including +91 prefix
     handleChange('phone', '+91 ' + limitedNumber);
@@ -84,7 +84,7 @@ const EditAdminProfileDialog: React.FC<EditAdminProfileDialogProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validation
     if (!formData.name.trim()) {
       toast.error('Name is required');
@@ -120,11 +120,11 @@ const EditAdminProfileDialog: React.FC<EditAdminProfileDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Blur Background */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/20 backdrop-blur-sm"
         onClick={onClose}
       />
-      
+
       {/* Dialog */}
       <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
@@ -179,9 +179,9 @@ const EditAdminProfileDialog: React.FC<EditAdminProfileDialogProps> = ({
               <Phone size={16} className="inline mr-1" />
               Phone Number
             </label>
-            <div className="flex items-center">
+            <div className="flex items-stretch h-10">
               {/* Fixed +91 prefix */}
-              <div className="px-4 py-2 bg-gray-50 border border-gray-300 border-r-0 rounded-l-lg text-gray-700 font-medium text-sm">
+              <div className="px-4 bg-gray-50 border border-gray-300 border-r-0 rounded-l-lg text-gray-700 font-medium text-sm flex items-center justify-center">
                 +91
               </div>
               {/* Phone number input - only 10 digits */}
@@ -190,7 +190,7 @@ const EditAdminProfileDialog: React.FC<EditAdminProfileDialogProps> = ({
                 value={phoneNumber}
                 onChange={handlePhoneNumberChange}
                 maxLength={10}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg rounded-l-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="flex-1 px-3 border border-gray-300 rounded-r-lg rounded-l-none focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 h-full"
                 placeholder="XXXXXXXXXX"
               />
             </div>

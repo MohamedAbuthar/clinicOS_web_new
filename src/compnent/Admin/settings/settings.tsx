@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw, Shield, User, Edit } from 'lucide-react';
+import { AlertCircle, RefreshCw, Shield, User, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRecentActivity } from '@/lib/hooks/useRecentActivity';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useAssistants } from '@/lib/hooks/useAssistants';
@@ -17,16 +17,18 @@ export default function SettingsPage() {
   const [isEditAdminDialogOpen, setIsEditAdminDialogOpen] = useState(false);
   const [isEditAssistantDialogOpen, setIsEditAssistantDialogOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+
   const { user: currentUser, isAuthenticated, refreshUser } = useAuth();
   const { assistants, updateAssistant, fetchAssistants } = useAssistants();
   const { doctors, updateDoctor, fetchDoctors, loading: doctorsLoading } = useDoctors();
   const isAdmin = currentUser?.role === 'admin';
   const isDoctor = currentUser?.role === 'doctor';
   const isAssistant = currentUser?.role === 'assistant';
-  
+
   // Get current doctor data if user is a doctor
-  const currentDoctor = isDoctor 
+  const currentDoctor = isDoctor
     ? doctors.find(d => d.userId === currentUser?.id)
     : null;
 
@@ -34,9 +36,9 @@ export default function SettingsPage() {
   const currentAssistant = isAssistant
     ? assistants.find(a => a.userId === currentUser?.id)
     : null;
-  
+
   // Only fetch audit logs for admin users
-  const { auditLogs, loading, error: apiError } = useRecentActivity(isAdmin ? 20 : 0);
+  const { auditLogs, loading, error: apiError } = useRecentActivity(isAdmin ? 50 : 0);
 
   // Fetch doctors when component loads if user is a doctor
   useEffect(() => {
@@ -55,14 +57,14 @@ export default function SettingsPage() {
   // Filter audit logs based on user role
   const getFilteredAuditLogs = () => {
     if (!isAuthenticated || !currentUser) return [];
-    
+
     if (currentUser.role === 'admin') {
       // Admin sees all audit logs
       return auditLogs;
     } else if (currentUser.role === 'doctor') {
       // Doctor sees only their own activities
-      return auditLogs.filter(log => 
-        log.userId === currentUser.id || 
+      return auditLogs.filter(log =>
+        log.userId === currentUser.id ||
         log.action?.includes('doctor') ||
         log.action?.includes(currentUser.name || '')
       );
@@ -70,18 +72,24 @@ export default function SettingsPage() {
       // Assistant sees their own activities and activities related to their assigned doctors
       const assistant = assistants.find(a => a.userId === currentUser.id);
       const assignedDoctorIds = assistant?.assignedDoctors || [];
-      
-      return auditLogs.filter(log => 
-        log.userId === currentUser.id || 
+
+      return auditLogs.filter(log =>
+        log.userId === currentUser.id ||
         (log.userId && assignedDoctorIds.includes(log.userId)) ||
         log.action?.includes('assistant') ||
         log.action?.includes(currentUser.name || '')
       );
     }
-    
+
     return [];
   };
-  
+
+  const filteredLogs = getFilteredAuditLogs();
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentLogs = filteredLogs.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
+
   // Show success message and hide after 3 seconds
   useEffect(() => {
     if (successMessage) {
@@ -136,13 +144,13 @@ export default function SettingsPage() {
       };
 
       const success = await updateDoctor(currentDoctor.id, updates);
-      
+
       if (success) {
         // Refresh doctors list first to get updated specialty data
         await fetchDoctors();
         // Then refresh user data from AuthContext to show updated name, email, phone
         await refreshUser();
-        
+
         toast.success('✅ Profile updated successfully');
         setIsEditDialogOpen(false);
         setSuccessMessage('Profile updated successfully');
@@ -171,10 +179,10 @@ export default function SettingsPage() {
       };
 
       await updateUserProfile(updates);
-      
+
       // Refresh user data from AuthContext to show updated data
       await refreshUser();
-      
+
       toast.success('✅ Profile updated successfully');
       setIsEditAdminDialogOpen(false);
       setSuccessMessage('Profile updated successfully');
@@ -202,13 +210,13 @@ export default function SettingsPage() {
       };
 
       const success = await updateAssistant(currentAssistant.id, updates);
-      
+
       if (success) {
         // Refresh assistants list
         await fetchAssistants();
         // Refresh user data from AuthContext to show updated name, email, phone
         await refreshUser();
-        
+
         toast.success('✅ Profile updated successfully');
         setIsEditAssistantDialogOpen(false);
         setSuccessMessage('Profile updated successfully');
@@ -224,7 +232,7 @@ export default function SettingsPage() {
 
   const getInitialProfileData = (): DoctorProfileData | null => {
     if (!currentDoctor || !currentUser) return null;
-    
+
     return {
       name: currentUser.name || '',
       email: currentUser.email || '',
@@ -235,7 +243,7 @@ export default function SettingsPage() {
 
   const getInitialAdminProfileData = (): AdminProfileData | null => {
     if (!currentUser) return null;
-    
+
     // Ensure phone has +91 prefix
     let phoneValue = currentUser.phone || '';
     if (phoneValue && !phoneValue.startsWith('+91 ')) {
@@ -248,7 +256,7 @@ export default function SettingsPage() {
     } else if (!phoneValue) {
       phoneValue = '+91 ';
     }
-    
+
     return {
       name: currentUser.name || '',
       email: currentUser.email || '',
@@ -258,7 +266,7 @@ export default function SettingsPage() {
 
   const getInitialAssistantProfileData = (): AssistantProfileData | null => {
     if (!currentAssistant || !currentUser) return null;
-    
+
     // Ensure phone has +91 prefix
     let phoneValue = currentUser.phone || '';
     if (phoneValue && !phoneValue.startsWith('+91 ')) {
@@ -271,7 +279,7 @@ export default function SettingsPage() {
     } else if (!phoneValue) {
       phoneValue = '+91 ';
     }
-    
+
     return {
       name: currentUser.name || '',
       email: currentUser.email || '',
@@ -304,19 +312,19 @@ export default function SettingsPage() {
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 mb-1">
-            {currentUser?.role === 'doctor' 
-              ? 'Your Settings' 
-              : currentUser?.role === 'assistant'
+            {currentUser?.role === 'doctor'
               ? 'Your Settings'
-              : 'Settings'
+              : currentUser?.role === 'assistant'
+                ? 'Your Settings'
+                : 'Settings'
             }
           </h1>
           <p className="text-gray-500">
-            {currentUser?.role === 'doctor' 
-              ? 'Your profile settings and activity logs' 
-              : currentUser?.role === 'assistant'
+            {currentUser?.role === 'doctor'
               ? 'Your profile settings and activity logs'
-              : 'System settings and user management'
+              : currentUser?.role === 'assistant'
+                ? 'Your profile settings and activity logs'
+                : 'System settings and user management'
             }
           </p>
           {/* User context indicator */}
@@ -348,7 +356,7 @@ export default function SettingsPage() {
               </button>
             ) : null}
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div>
@@ -379,15 +387,15 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-gray-50 rounded-lg p-4">
               <h3 className="font-semibold text-gray-900 mb-2">Access Level</h3>
               <p className="text-sm text-gray-600">
-                {isAdmin 
+                {isAdmin
                   ? "You have full administrative access to all system features and data."
                   : currentUser?.role === 'doctor'
-                  ? "You have access to view and manage appointments, queues, and patient data."
-                  : "You have access to view appointments, queues, and assist with patient management."
+                    ? "You have access to view and manage appointments, queues, and patient data."
+                    : "You have access to view appointments, queues, and assist with patient management."
                 }
               </p>
             </div>
@@ -422,7 +430,7 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 <>
-                  {getFilteredAuditLogs().map((log) => (
+                  {currentLogs.map((log) => (
                     <div key={log.id} className="flex items-start justify-between p-4 border-b border-gray-200 last:border-0">
                       <div>
                         <h3 className="font-medium text-gray-900">{log.action}</h3>
@@ -431,6 +439,31 @@ export default function SettingsPage() {
                       <span className="text-sm text-gray-500">{log.timestamp}</span>
                     </div>
                   ))}
+
+                  {/* Pagination Controls */}
+                  {filteredLogs.length > itemsPerPage && (
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-200 mt-4">
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <ChevronLeft size={16} />
+                        Previous
+                      </button>
+                      <span className="text-sm text-gray-600">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -450,12 +483,12 @@ export default function SettingsPage() {
                 <div className="bg-blue-50 rounded-lg p-4">
                   <h3 className="font-semibold text-blue-900 mb-2">Your Access</h3>
                   <p className="text-sm text-blue-700">
-                    As a {currentUser?.role}, you have access to view and manage appointments, 
-                    patient queues, and relevant patient data. You can also update your 
+                    As a {currentUser?.role}, you have access to view and manage appointments,
+                    patient queues, and relevant patient data. You can also update your
                     own profile information.
                   </p>
                 </div>
-                
+
                 <div className="bg-green-50 rounded-lg p-4">
                   <h3 className="font-semibold text-green-900 mb-2">Available Features</h3>
                   <ul className="text-sm text-green-700 space-y-1">
@@ -467,16 +500,16 @@ export default function SettingsPage() {
                   </ul>
                 </div>
               </div>
-              
+
               <div className="space-y-4">
                 <div className="bg-yellow-50 rounded-lg p-4">
                   <h3 className="font-semibold text-yellow-900 mb-2">Need More Access?</h3>
                   <p className="text-sm text-yellow-700">
-                    If you need access to additional features or system settings, 
+                    If you need access to additional features or system settings,
                     please contact your system administrator.
                   </p>
                 </div>
-                
+
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="font-semibold text-gray-900 mb-2">System Status</h3>
                   <div className="flex items-center gap-2">
