@@ -20,18 +20,20 @@ export interface DoctorSchedule {
  */
 function timeToMinutes(timeStr: string): number {
   const cleanTime = timeStr.trim().toUpperCase();
-  let [time, period] = cleanTime.split(' ');
-  
+  const [time, period] = cleanTime.split(' ');
+
   if (!time) return 0;
-  
-  let [hours, minutes] = time.split(':').map(Number);
-  
+
+  const [rawHours, minutes] = time.split(':').map(Number);
+
+  let hours = rawHours;
+
   // Handle AM/PM format
   if (period) {
     if (period === 'PM' && hours !== 12) hours += 12;
     if (period === 'AM' && hours === 12) hours = 0;
   }
-  
+
   return hours * 60 + (minutes || 0);
 }
 
@@ -43,11 +45,11 @@ function timeToMinutes(timeStr: string): number {
 function minutesToTime(minutes: number, use24Hour: boolean = false): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
-  
+
   if (use24Hour) {
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
   }
-  
+
   // 12-hour format
   const period = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
@@ -65,7 +67,7 @@ export function generateTimeSlots(
   bookedSlots: string[] = []
 ): TimeSlot[] {
   const { startTime, endTime, slotDuration } = schedule;
-  
+
   if (!startTime || !endTime || !slotDuration || slotDuration <= 0) {
     return [];
   }
@@ -79,7 +81,7 @@ export function generateTimeSlots(
   while (currentMinutes + slotDuration <= endMinutes) {
     const timeStr = minutesToTime(currentMinutes);
     const time24 = minutesToTime(currentMinutes, true);
-    
+
     slots.push({
       time: timeStr,
       isBooked: bookedSlots.includes(timeStr) || bookedSlots.includes(time24)
@@ -106,7 +108,7 @@ export function parseScheduleString(scheduleStr: string): {
 
   // Remove day information if present
   const timePartMatch = scheduleStr.match(/(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*[-–]\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i);
-  
+
   if (!timePartMatch) return null;
 
   return {
@@ -133,7 +135,7 @@ export function isWithinWorkingHours(
   const slotMinutes = timeToMinutes(timeSlot);
   const startMinutes = timeToMinutes(startTime);
   const endMinutes = timeToMinutes(endTime);
-  
+
   return slotMinutes >= startMinutes && slotMinutes < endMinutes;
 }
 

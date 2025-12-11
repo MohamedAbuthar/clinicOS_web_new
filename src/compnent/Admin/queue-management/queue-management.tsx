@@ -97,20 +97,20 @@ const getAppointmentTimeDisplay = (source: any): string => {
   if (!source) {
     return 'N/A';
   }
-  
+
   // If source is already a string (direct time value), format it
   if (typeof source === 'string') {
     return formatTime(source);
   }
-  
+
   // Extract appointmentTime from object (handles multiple possible field names)
   const rawTime = source?.appointmentTime || source?.time || source?.appointment?.appointmentTime || null;
-  
+
   // If no time found, return N/A
   if (!rawTime) {
     return 'N/A';
   }
-  
+
   // Convert to string, trim whitespace, and format
   const timeString = String(rawTime).trim();
   return formatTime(timeString);
@@ -120,16 +120,16 @@ const formatTime = (timeString: string | undefined | null): string => {
   if (!timeString || timeString === 'N/A' || timeString === '') {
     return 'N/A';
   }
-  
+
   // Handle different time formats
   let hour: number, minute: string;
-  
+
   // If time is in HH:MM format (24-hour format like "21:00")
   if (timeString.includes(':')) {
     const parts = timeString.split(':');
     hour = parseInt(parts[0]);
     minute = parts[1] || '00';
-    
+
     // Remove any AM/PM suffix if present (for 12-hour format input)
     if (minute.includes(' ')) {
       minute = minute.split(' ')[0];
@@ -144,20 +144,20 @@ const formatTime = (timeString: string | undefined | null): string => {
       return 'N/A';
     }
   }
-  
+
   // Ensure hour is valid (0-23)
   if (isNaN(hour) || hour < 0 || hour > 23) {
     console.warn('Invalid hour in formatTime:', timeString, 'hour:', hour);
     return 'N/A';
   }
-  
+
   // Ensure minute is valid (0-59)
   const minuteNum = parseInt(minute);
   if (isNaN(minuteNum) || minuteNum < 0 || minuteNum > 59) {
     console.warn('Invalid minute in formatTime:', timeString, 'minute:', minute);
     return 'N/A';
   }
-  
+
   // Convert to 12-hour format
   const ampm = hour >= 12 ? 'PM' : 'AM';
   const displayHour = hour % 12 || 12;
@@ -169,33 +169,33 @@ const formatDate = (dateString: string) => {
   const date = new Date(dateString);
   const today = new Date();
   const isToday = date.toDateString() === today.toDateString();
-  
+
   if (isToday) {
     return 'Today';
   }
-  
+
   return date.toLocaleDateString();
 };
 
 const formatTimestamp = (timestamp: unknown): string => {
   if (!timestamp) return '';
-  
+
   if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof (timestamp as { toDate(): Date }).toDate === 'function') {
     const date = (timestamp as { toDate(): Date }).toDate();
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true 
+      hour12: true
     });
   }
-  
+
   try {
     const date = new Date(timestamp as string | number | Date);
     if (isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true 
+      hour12: true
     });
   } catch {
     return '';
@@ -236,7 +236,7 @@ const Button = ({ children, variant = 'primary', icon, onClick, disabled = false
     secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed",
     danger: "bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
   };
-  
+
   return (
     <button className={`${baseClasses} ${variants[variant]}`} onClick={onClick} disabled={disabled}>
       {icon}
@@ -331,23 +331,22 @@ const QueueItem = ({ patient, onSkip, onComplete, isSelected, onDragStart, onDra
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
       onDrop={handleDrop}
-      className={`flex items-center gap-4 p-4 rounded-lg border transition-all cursor-move ${
-        isSelected 
-          ? 'border-blue-500 bg-blue-50' 
+      className={`flex items-center gap-4 p-4 rounded-lg border transition-all cursor-move ${isSelected
+          ? 'border-blue-500 bg-blue-50'
           : isDragging
-          ? 'border-gray-300 bg-gray-100 opacity-50'
-          : 'border-gray-200 bg-white hover:border-gray-300'
-      }`}
+            ? 'border-gray-300 bg-gray-100 opacity-50'
+            : 'border-gray-200 bg-white hover:border-gray-300'
+        }`}
     >
       <GripVertical className="w-5 h-5 text-gray-400 flex-shrink-0" />
-      
+
       <div className="flex items-center justify-between flex-1">
         <div className="flex items-center gap-4 flex-1">
           <div className="text-center min-w-[60px]">
             <p className="text-2xl font-bold text-gray-900">{patient.tokenNumber}</p>
             <p className="text-xs text-gray-500">Token</p>
           </div>
-          
+
           <div className="flex-1">
             <p className="font-semibold text-gray-900">{patient.name}</p>
             <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -357,12 +356,12 @@ const QueueItem = ({ patient, onSkip, onComplete, isSelected, onDragStart, onDra
                   {patient.phone}
                 </div>
               )}
-            {patient.appointmentDate && (
-              <div className="flex items-center gap-1 text-xs text-gray-500">
-                <Calendar className="w-3 h-3" />
-                {formatDate(patient.appointmentDate)} • {getAppointmentTimeDisplay(patient)}
-              </div>
-            )}
+              {patient.appointmentDate && (
+                <div className="flex items-center gap-1 text-xs text-gray-500">
+                  <Calendar className="w-3 h-3" />
+                  {formatDate(patient.appointmentDate)} • {getAppointmentTimeDisplay(patient)}
+                </div>
+              )}
               {patient.category && (
                 <span className="text-xs text-gray-500">{patient.category}</span>
               )}
@@ -376,17 +375,16 @@ const QueueItem = ({ patient, onSkip, onComplete, isSelected, onDragStart, onDra
             {patient.acceptanceStatus && (
               <div className="mt-1">
                 <span
-                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                    patient.acceptanceStatus === 'accepted' 
-                      ? 'bg-teal-100 text-teal-700' 
+                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${patient.acceptanceStatus === 'accepted'
+                      ? 'bg-teal-100 text-teal-700'
                       : patient.acceptanceStatus === 'rejected'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-yellow-100 text-yellow-700'
-                  }`}
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}
                 >
-                  {patient.acceptanceStatus === 'accepted' ? '✓ Accepted' : 
-                   patient.acceptanceStatus === 'rejected' ? '✕ Rejected' : 
-                   '⏳ Pending'}
+                  {patient.acceptanceStatus === 'accepted' ? '✓ Accepted' :
+                    patient.acceptanceStatus === 'rejected' ? '✕ Rejected' :
+                      '⏳ Pending'}
                 </span>
               </div>
             )}
@@ -459,11 +457,10 @@ const QuickActionsCard = ({ actions }: { actions: QuickAction[] }) => (
         <button
           key={index}
           onClick={action.onClick}
-          className={`w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            action.variant === 'danger'
+          className={`w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors ${action.variant === 'danger'
               ? 'bg-red-50 text-red-600 hover:bg-red-100'
               : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-          }`}
+            }`}
         >
           {action.label}
         </button>
@@ -514,21 +511,21 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, onEndBreak, isOnBreak,
       const dropdownWidth = 320;
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
-      
+
       let top = buttonRect.bottom + 8;
       let left = buttonRect.left;
       let right: string | number = 'auto';
-      
+
       if (left + dropdownWidth > viewportWidth) {
         right = 16;
         left = viewportWidth - dropdownWidth - 16;
       }
-      
+
       const dropdownHeight = 280;
       if (top + dropdownHeight > viewportHeight) {
         top = buttonRect.top - dropdownHeight - 8;
       }
-      
+
       setPosition({ top, left, right });
     }
   }, [isOpen, buttonRef]);
@@ -536,7 +533,7 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, onEndBreak, isOnBreak,
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
-          buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
         onClose();
       }
     };
@@ -595,7 +592,7 @@ const DoctorBreakDropdown = ({ isOpen, onClose, onSubmit, onEndBreak, isOnBreak,
               Break ends at: <span className="font-semibold">{breakEndTime}</span>
             </p>
           </div>
-          
+
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
@@ -705,17 +702,16 @@ const PendingCheckInCard = ({ appointment, patient, onCheckIn, isLoading }: Pend
           {appointment.acceptanceStatus && (
             <div className="mt-1">
               <span
-                className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                  appointment.acceptanceStatus === 'accepted' 
-                    ? 'bg-teal-100 text-teal-700' 
+                className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${appointment.acceptanceStatus === 'accepted'
+                    ? 'bg-teal-100 text-teal-700'
                     : appointment.acceptanceStatus === 'rejected'
-                    ? 'bg-red-100 text-red-700'
-                    : 'bg-yellow-100 text-yellow-700'
-                }`}
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-yellow-100 text-yellow-700'
+                  }`}
               >
-                {appointment.acceptanceStatus === 'accepted' ? '✓ Accepted' : 
-                 appointment.acceptanceStatus === 'rejected' ? '✕ Rejected' : 
-                 '⏳ Pending'}
+                {appointment.acceptanceStatus === 'accepted' ? '✓ Accepted' :
+                  appointment.acceptanceStatus === 'rejected' ? '✕ Rejected' :
+                    '⏳ Pending'}
               </span>
             </div>
           )}
@@ -746,19 +742,19 @@ interface AllAppointmentsTableProps {
   actionLoading: boolean;
 }
 
-const AllAppointmentsTable = ({ 
-  appointments, 
-  patients, 
-  doctors, 
-  onAppointmentAction, 
-  actionLoading 
+const AllAppointmentsTable = ({
+  appointments,
+  patients,
+  doctors,
+  onAppointmentAction,
+  actionLoading
 }: AllAppointmentsTableProps) => {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">
         All Appointments ({appointments.length})
       </h2>
-      
+
       <div className="overflow-hidden">
         {/* Table Header */}
         <div className="grid grid-cols-11 gap-4 px-4 py-3 bg-gray-50 border-b border-gray-200 rounded-t-lg">
@@ -776,7 +772,7 @@ const AllAppointmentsTable = ({
             {appointments.map((appointment) => {
               const patient = patients.find(p => p.id === appointment.patientId);
               const doctor = doctors.find(d => d.id === appointment.doctorId);
-              
+
               return (
                 <div
                   key={appointment.id}
@@ -833,17 +829,16 @@ const AllAppointmentsTable = ({
                       </span>
                       {appointment.acceptanceStatus && (
                         <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            appointment.acceptanceStatus === 'accepted' 
-                              ? 'bg-teal-100 text-teal-700' 
+                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${appointment.acceptanceStatus === 'accepted'
+                              ? 'bg-teal-100 text-teal-700'
                               : appointment.acceptanceStatus === 'rejected'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-yellow-100 text-yellow-700'
-                          }`}
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-yellow-100 text-yellow-700'
+                            }`}
                         >
-                          {appointment.acceptanceStatus === 'accepted' ? '✓ Accepted' : 
-                           appointment.acceptanceStatus === 'rejected' ? '✕ Rejected' : 
-                           '⏳ Pending'}
+                          {appointment.acceptanceStatus === 'accepted' ? '✓ Accepted' :
+                            appointment.acceptanceStatus === 'rejected' ? '✕ Rejected' :
+                              '⏳ Pending'}
                         </span>
                       )}
                       {appointment.checkedInAt && (
@@ -857,21 +852,21 @@ const AllAppointmentsTable = ({
 
                   {/* Actions */}
                   <div className="col-span-2 flex items-center gap-2 flex-wrap">
-                    {appointment.status === 'completed' && 
-                     !appointment.checkedInAt && (
-                      <button 
-                        onClick={() => onAppointmentAction(appointment.id, 'check-in')}
-                        disabled={actionLoading}
-                        className="text-teal-600 hover:text-teal-800 font-medium transition-colors disabled:opacity-50"
-                        title="Check In"
-                      >
-                        <UserCheck className="w-5 h-5" />
-                      </button>
-                    )}
-                    
+                    {appointment.status === 'completed' &&
+                      !appointment.checkedInAt && (
+                        <button
+                          onClick={() => onAppointmentAction(appointment.id, 'check-in')}
+                          disabled={actionLoading}
+                          className="text-teal-600 hover:text-teal-800 font-medium transition-colors disabled:opacity-50"
+                          title="Check In"
+                        >
+                          <UserCheck className="w-5 h-5" />
+                        </button>
+                      )}
+
                     {(appointment.status === 'scheduled' || appointment.status === 'confirmed') ? (
                       <>
-                        <button 
+                        <button
                           onClick={() => onAppointmentAction(appointment.id, 'complete')}
                           disabled={actionLoading}
                           className="text-green-600 hover:text-green-800 font-medium transition-colors disabled:opacity-50"
@@ -879,7 +874,7 @@ const AllAppointmentsTable = ({
                         >
                           <CheckCircle className="w-5 h-5" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => onAppointmentAction(appointment.id, 'cancel')}
                           disabled={actionLoading}
                           className="text-red-600 hover:text-red-800 font-medium transition-colors disabled:opacity-50"
@@ -887,7 +882,7 @@ const AllAppointmentsTable = ({
                         >
                           <XCircle className="w-5 h-5" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => onAppointmentAction(appointment.id, 'no-show')}
                           disabled={actionLoading}
                           className="text-gray-600 hover:text-gray-800 font-medium transition-colors disabled:opacity-50"
@@ -939,11 +934,11 @@ export default function QueueManagementPage() {
     breakStartTime: '',
     breakEndTime: ''
   });
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
-  
+
   const breakButtonRef = useRef<HTMLDivElement>(null);
   const lastManualChangeTime = useRef<number>(0);
 
@@ -967,19 +962,19 @@ export default function QueueManagementPage() {
   const { doctors } = useDoctors();
   const { patients } = usePatients();
   const { assistants } = useAssistants();
-  const { 
-    appointments, 
-    cancelAppointment, 
+  const {
+    appointments,
+    cancelAppointment,
     completeAppointment,
     markNoShow,
     checkInAppointment,
-    refreshAppointments 
+    refreshAppointments
   } = useAppointments();
 
   // Filter doctors based on user role
   const getFilteredDoctors = () => {
     if (!isAuthenticated || !currentUser) return doctors;
-    
+
     if (currentUser.role === 'doctor') {
       return doctors.filter(doctor => doctor.userId === currentUser.id);
     } else if (currentUser.role === 'assistant') {
@@ -989,7 +984,7 @@ export default function QueueManagementPage() {
       }
       return [];
     }
-    
+
     return doctors;
   };
 
@@ -1015,7 +1010,7 @@ export default function QueueManagementPage() {
       if (doctorBreakStatus.isOnBreak && doctorBreakStatus.breakEndTime) {
         const now = new Date();
         const currentTimeStr = now.toTimeString().slice(0, 5);
-        
+
         if (currentTimeStr >= doctorBreakStatus.breakEndTime) {
           setDoctorBreakStatus({
             isOnBreak: false,
@@ -1062,19 +1057,19 @@ export default function QueueManagementPage() {
   }, [doctors, selectedDoctorId, setSelectedDoctorId, currentUser, assistants]);
 
   // Filter appointments for selected doctor - ensure we're filtering correctly
-  const doctorAppointments = selectedDoctorId 
+  const doctorAppointments = selectedDoctorId
     ? appointments.filter(apt => {
-        // Check if doctorId matches
-        const matches = apt.doctorId === selectedDoctorId;
-        if (!matches) {
-          console.log('Appointment filtered out - doctorId mismatch:', {
-            appointmentId: apt.id,
-            appointmentDoctorId: apt.doctorId,
-            selectedDoctorId: selectedDoctorId
-          });
-        }
-        return matches;
-      })
+      // Check if doctorId matches
+      const matches = apt.doctorId === selectedDoctorId;
+      if (!matches) {
+        console.log('Appointment filtered out - doctorId mismatch:', {
+          appointmentId: apt.id,
+          appointmentDoctorId: apt.doctorId,
+          selectedDoctorId: selectedDoctorId
+        });
+      }
+      return matches;
+    })
     : [];
 
   // Get today's appointments for the selected doctor
@@ -1084,7 +1079,7 @@ export default function QueueManagementPage() {
   console.log('Selected Doctor ID:', selectedDoctorId);
   console.log('Total appointments:', appointments.length);
   console.log('Doctor appointments (filtered):', doctorAppointments.length);
-  
+
   // Debug: Show all doctor appointments with their dates
   if (doctorAppointments.length > 0) {
     console.log('All doctor appointments dates:', doctorAppointments.map(apt => ({
@@ -1097,7 +1092,7 @@ export default function QueueManagementPage() {
       patientName: apt.patientName
     })));
   }
-  
+
   const todayAppointments = doctorAppointments.filter(apt => {
     // Normalize date format for comparison (handle both YYYY-MM-DD and other formats)
     let normalizedAptDate = apt.appointmentDate;
@@ -1111,11 +1106,11 @@ export default function QueueManagementPage() {
         normalizedAptDate = normalizedAptDate.substring(0, 10);
       }
     }
-    
+
     const isToday = normalizedAptDate === today;
     const isValidStatus = apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'approved';
     const matches = isToday && isValidStatus;
-    
+
     if (!matches) {
       if (isToday && !isValidStatus) {
         console.log('⚠️ Appointment filtered out - invalid status:', {
@@ -1135,10 +1130,10 @@ export default function QueueManagementPage() {
         });
       }
     }
-    
+
     return matches;
   });
-  
+
   console.log('✅ Today appointments (after filtering):', todayAppointments.length);
   if (todayAppointments.length > 0) {
     console.log('📋 Today appointments data:', todayAppointments.map(apt => ({
@@ -1164,7 +1159,7 @@ export default function QueueManagementPage() {
     console.log('=== CREATING QUEUE ITEMS ===');
     console.log('Today appointments count:', todayAppointments.length);
     console.log('Skipped items:', skippedItems.size);
-    
+
     const items = todayAppointments
       .filter(appointment => {
         const isSkipped = skippedItems.has(`apt-${appointment.id}`);
@@ -1176,7 +1171,7 @@ export default function QueueManagementPage() {
       .map((appointment, index) => {
         const patient = patients.find(p => p.id === appointment.patientId);
         let waitingTime = 0;
-        
+
         if (appointment.checkedInAt) {
           try {
             if (typeof appointment.checkedInAt === 'object' && appointment.checkedInAt !== null && 'toDate' in appointment.checkedInAt && typeof (appointment.checkedInAt as { toDate(): Date }).toDate === 'function') {
@@ -1192,11 +1187,11 @@ export default function QueueManagementPage() {
             waitingTime = 0;
           }
         }
-        
+
         // Extract appointmentTime dynamically - ensure it's always captured
         const rawAppointmentTime = appointment.appointmentTime || (appointment as any).time || null;
         const appointmentTime = rawAppointmentTime ? String(rawAppointmentTime).trim() : 'N/A';
-        
+
         const queueItem = {
           id: `apt-${appointment.id}`,
           appointmentId: appointment.id,
@@ -1212,7 +1207,7 @@ export default function QueueManagementPage() {
           checkedInAt: appointment.checkedInAt,
           queueOrder: (appointment as Appointment).queueOrder,
         };
-        
+
         console.log('Created queue item:', {
           id: queueItem.id,
           tokenNumber: queueItem.tokenNumber,
@@ -1222,13 +1217,13 @@ export default function QueueManagementPage() {
           formattedTime: formatTime(queueItem.appointmentTime),
           appointmentDate: queueItem.appointmentDate
         });
-        
+
         return queueItem;
       });
-    
+
     console.log('Total queue items created:', items.length);
     console.log('===========================');
-    
+
     return items;
   }, [todayAppointments, skippedItems, patients, currentTime]);
 
@@ -1270,15 +1265,15 @@ export default function QueueManagementPage() {
         console.log('=== FETCHING PENDING CHECK-INS ===');
         console.log('Selected Doctor ID:', selectedDoctorId);
         console.log('Today\'s Date:', today);
-        
+
         const pending = await getPendingCheckIns(selectedDoctorId, today);
         console.log('Pending Check-ins Found:', pending.length);
         console.log('Pending Check-ins Data:', pending);
-        
+
         setPendingCheckIns(pending);
       }
     };
-    
+
     fetchPendingCheckIns();
   }, [selectedDoctorId, getPendingCheckIns]);
 
@@ -1298,11 +1293,11 @@ export default function QueueManagementPage() {
     console.log('=== QUEUE ORDER LOADING ===');
     console.log('Selected Doctor ID:', selectedDoctorId);
     console.log('Appointment Queue Items Length:', appointmentQueueItems.length);
-    
+
     if (appointmentQueueItems.length > 0 && selectedDoctorId) {
       const hasQueueOrder = appointmentQueueItems.some(item => item.queueOrder !== undefined && item.queueOrder !== null);
       console.log('Has Queue Order:', hasQueueOrder);
-      
+
       if (hasQueueOrder) {
         if (reorderedQueueItems.length === 0) {
           setReorderedQueueItems([...appointmentQueueItems]);
@@ -1349,47 +1344,47 @@ export default function QueueManagementPage() {
   // Helper function to convert 12-hour time to 24-hour format
   const convertTo24Hour = (timeStr: string): string => {
     if (!timeStr) return '';
-    
+
     // If already in 24-hour format (HH:MM), return as is
     if (/^\d{2}:\d{2}$/.test(timeStr)) {
       return timeStr;
     }
-    
+
     // Parse 12-hour format (e.g., "9:00 AM", "9:20 AM")
     const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
     if (match) {
       let hours = parseInt(match[1]);
       const minutes = match[2];
       const period = match[3].toUpperCase();
-      
+
       if (period === 'PM' && hours !== 12) hours += 12;
       if (period === 'AM' && hours === 12) hours = 0;
-      
+
       return `${hours.toString().padStart(2, '0')}:${minutes}`;
     }
-    
+
     return timeStr;
   };
 
   // Helper function to convert 24-hour time to 12-hour format
   const convertTo12Hour = (timeStr: string): string => {
     if (!timeStr) return '';
-    
+
     // If already in 12-hour format, return as is
     if (/^\d{1,2}:\d{2}\s*(AM|PM)/i.test(timeStr)) {
       return timeStr;
     }
-    
+
     // Parse 24-hour format (HH:MM)
     const match = timeStr.match(/(\d{1,2}):(\d{2})/);
     if (match) {
-      let hours = parseInt(match[1]);
+      const hours = parseInt(match[1]);
       const minutes = match[2];
       const period = hours >= 12 ? 'PM' : 'AM';
       const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
       return `${displayHours}:${minutes} ${period}`;
     }
-    
+
     return timeStr;
   };
 
@@ -1410,7 +1405,7 @@ export default function QueueManagementPage() {
           slotDuration
         });
         const slotTimes = slots.map(slot => slot.time);
-        
+
         // Find first available slot
         for (const slot of slotTimes) {
           const slot24 = convertTo24Hour(slot);
@@ -1425,20 +1420,20 @@ export default function QueueManagementPage() {
       }
       return null;
     }
-    
+
     // Convert booked slots to 24-hour format for comparison
     const booked24 = bookedSlots.map(booked => convertTo24Hour(booked));
-    
+
     // Find first available slot from doctor's availableSlots
     for (const slot of doctorAvailableSlots) {
       const slot24 = convertTo24Hour(slot);
       const isBooked = booked24.some(booked24Time => booked24Time === slot24) ||
-                       bookedSlots.some(booked => booked === slot || booked === slot24);
+        bookedSlots.some(booked => booked === slot || booked === slot24);
       if (!isBooked) {
         return slot; // Return the slot as stored (could be 12-hour or 24-hour format)
       }
     }
-    
+
     return null;
   };
 
@@ -1485,13 +1480,13 @@ export default function QueueManagementPage() {
               queueOrder: null
             });
           });
-          
+
           await Promise.all(updates);
           console.log('✅ Queue orders cleared from database');
         } catch (error) {
           console.error('❌ Error clearing queue orders:', error);
         }
-        
+
         setReorderedQueueItems([]);
         setIsManualReorder(false);
         toast.success('✅ Queue order reset to original (by appointment time)');
@@ -1513,11 +1508,11 @@ export default function QueueManagementPage() {
 
   const handleComplete = async () => {
     if (!currentPatient) return;
-    
+
     setActionLoading(true);
     const success = await completePatient(currentPatient.id);
     setActionLoading(false);
-    
+
     if (success) {
       toast.success('✅ Patient consultation completed');
     } else {
@@ -1527,16 +1522,16 @@ export default function QueueManagementPage() {
 
   const handleSkip = async (queueItemId: string) => {
     setActionLoading(true);
-    
+
     try {
       if (queueItemId.startsWith('apt-')) {
         setSkippedItems(prev => new Set([...prev, queueItemId]));
-        
+
         if (reorderedQueueItems.length > 0) {
           const newReorderedItems = reorderedQueueItems.filter(item => item.id !== queueItemId);
           setReorderedQueueItems(newReorderedItems);
         }
-        
+
         const skippedItem = appointmentQueueItems.find(item => item.id === queueItemId);
         if (skippedItem) {
           console.log('Skipped appointment:', skippedItem);
@@ -1578,7 +1573,7 @@ export default function QueueManagementPage() {
   const handleDrop = async (e: React.DragEvent, dropItemId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (draggedItemId === null || draggedItemId === dropItemId) {
       setDraggedIndex(null);
       setDraggedItemId(null);
@@ -1593,39 +1588,39 @@ export default function QueueManagementPage() {
 
     const currentItems = reorderedQueueItems.length > 0 ? reorderedQueueItems : appointmentQueueItems;
     console.log('Current items before reorder:', currentItems.map(item => ({ name: item.name, id: item.id })));
-    
+
     const draggedIndex = currentItems.findIndex(item => item.id === draggedItemId);
     const dropIndex = currentItems.findIndex(item => item.id === dropItemId);
-    
+
     if (draggedIndex === -1 || dropIndex === -1) {
       console.error('Could not find dragged or drop item');
       setDraggedIndex(null);
       setDraggedItemId(null);
       return;
     }
-    
+
     console.log(`Found dragged item at index: ${draggedIndex}, drop item at index: ${dropIndex}`);
-    
+
     const newItems = [...currentItems];
     const draggedItem = newItems[draggedIndex];
-    
+
     newItems.splice(draggedIndex, 1);
-    
+
     const newDropIndex = newItems.findIndex(item => item.id === dropItemId);
-    
+
     newItems.splice(newDropIndex, 0, draggedItem);
-    
+
     console.log('New items after reorder:', newItems.map(item => ({ name: item.name, id: item.id })));
-    
+
     setReorderedQueueItems(newItems);
-    
+
     const updatedItems = newItems.map((item, index) => ({
       ...item,
       queueOrder: index + 1
     }));
-    
+
     setReorderedQueueItems(updatedItems);
-    
+
     try {
       const updates = updatedItems.map((item, index) => {
         const appointmentId = item.id.replace('apt-', '');
@@ -1639,11 +1634,11 @@ export default function QueueManagementPage() {
         console.log(`Could not find appointment for ID: ${appointmentId}`);
         return Promise.resolve();
       });
-      
+
       await Promise.all(updates);
       console.log('✅ Queue order saved to database');
       toast.success('✅ Queue order saved successfully');
-      
+
       setTimeout(() => {
         setIsManualReorder(false);
         console.log('Manual reorder flag reset - database should now have correct order');
@@ -1652,7 +1647,7 @@ export default function QueueManagementPage() {
       console.error('❌ Error saving queue order:', error);
       toast.error('❌ Failed to save queue order');
     }
-    
+
     console.log(`✅ Moved item ${draggedItemId} to position of ${dropItemId}`);
     setDraggedIndex(null);
     setDraggedItemId(null);
@@ -1660,7 +1655,7 @@ export default function QueueManagementPage() {
 
   const handleBreakSubmit = async (fromTime: string, toTime: string) => {
     console.log('Doctor break set from', fromTime, 'to', toTime);
-    
+
     if (fromTime >= toTime) {
       toast.error('❌ End time must be after start time');
       return;
@@ -1668,7 +1663,7 @@ export default function QueueManagementPage() {
 
     const now = new Date();
     const currentTimeStr = now.toTimeString().slice(0, 5);
-    
+
     if (fromTime <= currentTimeStr && toTime > currentTimeStr) {
       setDoctorBreakStatus({
         isOnBreak: true,
@@ -1720,7 +1715,7 @@ export default function QueueManagementPage() {
 
   const handleCheckIn = async (appointment: Appointment) => {
     if (!selectedDoctorId) return;
-    
+
     setActionLoading(true);
     const success = await checkInPatient(
       appointment.id,
@@ -1729,7 +1724,7 @@ export default function QueueManagementPage() {
       appointment.tokenNumber || ''
     );
     setActionLoading(false);
-    
+
     if (success) {
       toast.success(`✅ Patient ${appointment.tokenNumber} added to queue successfully`);
       const today = new Date().toISOString().split('T')[0];
@@ -1746,9 +1741,9 @@ export default function QueueManagementPage() {
       console.log('=== APPOINTMENT ACTION ===');
       console.log('Appointment ID:', appointmentId);
       console.log('Action:', action);
-      
+
       let success = false;
-      
+
       switch (action) {
         case 'cancel':
           success = await cancelAppointment(appointmentId, 'Cancelled by admin');
@@ -1776,7 +1771,7 @@ export default function QueueManagementPage() {
           'no-show': 'marked as no-show'
         };
         toast.success(`✅ Appointment ${actionMessages[action] || action + 'ed'} successfully`);
-        
+
         await refreshQueue();
         if (selectedDoctorId) {
           const today = new Date().toISOString().split('T')[0];
@@ -1799,12 +1794,12 @@ export default function QueueManagementPage() {
     try {
       console.log('=== COMPLETING APPOINTMENT ===');
       console.log('Appointment ID:', appointmentId);
-      
+
       const success = await completeAppointment(appointmentId);
-      
+
       if (success) {
         toast.success('✅ Appointment completed successfully and removed from queue');
-        
+
         await refreshQueue();
         if (selectedDoctorId) {
           const today = new Date().toISOString().split('T')[0];
@@ -1898,19 +1893,19 @@ export default function QueueManagementPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              {currentUser?.role === 'doctor' 
-                ? 'Your Queue Management' 
+              {currentUser?.role === 'doctor'
+                ? 'Your Queue Management'
                 : currentUser?.role === 'assistant'
-                ? 'Assigned Doctors Queue Management'
-                : 'Queue Management'
+                  ? 'Assigned Doctors Queue Management'
+                  : 'Queue Management'
               }
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              {currentUser?.role === 'doctor' 
+              {currentUser?.role === 'doctor'
                 ? `Real-time token board for ${selectedDoctor?.user?.name || 'your patients'}`
                 : currentUser?.role === 'assistant'
-                ? `Real-time token board for ${selectedDoctor?.user?.name || 'assigned doctors'}`
-                : `Real-time token board for ${selectedDoctor?.user?.name || 'Select a doctor'}`
+                  ? `Real-time token board for ${selectedDoctor?.user?.name || 'assigned doctors'}`
+                  : `Real-time token board for ${selectedDoctor?.user?.name || 'Select a doctor'}`
               }
             </p>
             {currentUser && (
@@ -2033,7 +2028,7 @@ export default function QueueManagementPage() {
 
             {/* Current Patient */}
             {currentPatient ? (
-              <CurrentPatientCard 
+              <CurrentPatientCard
                 patient={{
                   tokenNumber: currentPatient.tokenNumber,
                   name: patients.find(p => p.id === currentPatient.patientId)?.name || 'Loading...',
@@ -2084,7 +2079,7 @@ export default function QueueManagementPage() {
                   Showing {startIndex + 1} to {Math.min(endIndex, queueToDisplay.length)} of {queueToDisplay.length} patients
                 </div>
               )}
-              
+
               <div className="space-y-3">
                 {queueToDisplay.length > 0 ? (
                   <>
@@ -2099,7 +2094,7 @@ export default function QueueManagementPage() {
                               {actualIndex + 1}
                             </div>
                           </div>
-                          
+
                           <QueueItem
                             patient={{
                               id: queueItem.id,
@@ -2108,9 +2103,9 @@ export default function QueueManagementPage() {
                               phone: queueItem.phone,
                               category: queueItem.status === 'checked_in' ? 'Checked In' : 'Scheduled',
                               waitingTime: queueItem.waitingTime ? `${queueItem.waitingTime} min` : '0 min',
-                              status: (queueItem.status === 'checked_in' ? 'Arrived' : 
-                                      queueItem.status === 'waiting' ? 'Scheduled' : 
-                                      'Walk-in') as 'Arrived' | 'Late' | 'Walk-in' | 'Scheduled',
+                              status: (queueItem.status === 'checked_in' ? 'Arrived' :
+                                queueItem.status === 'waiting' ? 'Scheduled' :
+                                  'Walk-in') as 'Arrived' | 'Late' | 'Walk-in' | 'Scheduled',
                               appointmentDate: queueItem.appointmentDate,
                               appointmentTime: queueItem.appointmentTime,
                               acceptanceStatus: queueItem.acceptanceStatus,
@@ -2149,11 +2144,10 @@ export default function QueueManagementPage() {
                             <button
                               key={pageNum}
                               onClick={() => setCurrentPage(pageNum)}
-                              className={`px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
-                                currentPage === pageNum
+                              className={`px-3 py-2 rounded-lg font-medium transition-colors text-sm ${currentPage === pageNum
                                   ? 'bg-teal-600 text-white'
                                   : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                              }`}
+                                }`}
                             >
                               {pageNum}
                             </button>
@@ -2194,7 +2188,7 @@ export default function QueueManagementPage() {
                     Hide All Appointments
                   </button>
                 </div>
-              
+
                 <AllAppointmentsTable
                   appointments={doctorAppointments as Appointment[]}
                   patients={patients}
@@ -2210,9 +2204,9 @@ export default function QueueManagementPage() {
           <div className="space-y-6">
             {/* Doctor Status */}
             <DoctorStatusCard doctorStatus={{
-              status: doctorBreakStatus.isOnBreak ? 'On Break' : 
-                      selectedDoctor?.status === 'In' ? 'Active' : 
-                      selectedDoctor?.status === 'Break' ? 'Break' : 'Offline',
+              status: doctorBreakStatus.isOnBreak ? 'On Break' :
+                selectedDoctor?.status === 'In' ? 'Active' :
+                  selectedDoctor?.status === 'Break' ? 'Break' : 'Offline',
               avgConsultTime: selectedDoctor?.consultationDuration ? `${selectedDoctor.consultationDuration} min` : 'N/A',
               patientsServed: queueStats?.completed || 0,
               estimatedComplete: doctorBreakStatus.isOnBreak ? `Until ${doctorBreakStatus.breakEndTime}` : 'N/A'

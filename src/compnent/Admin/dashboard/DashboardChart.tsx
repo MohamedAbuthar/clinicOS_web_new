@@ -97,7 +97,7 @@ export default function DashboardChart({ data }: DashboardChartProps) {
                         📊 Clinic Activity
                     </h3>
                     <p className="text-sm text-gray-500 mt-1">
-                        Overview of today's key metrics
+                        Overview of today&apos;s key metrics
                     </p>
                 </div>
                 <div className="flex gap-2">
