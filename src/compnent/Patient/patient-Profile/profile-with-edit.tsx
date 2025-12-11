@@ -9,12 +9,19 @@ import { usePatientAuth } from '@/lib/contexts/PatientAuthContext';
 import { Patient } from '@/lib/api';
 import { toast } from 'sonner';
 
+// Valid email domains for validation
+const validDomains = [
+  'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
+  'protonmail.com', 'aol.com', 'live.com', 'msn.com', 'yandex.com',
+  'zoho.com', 'mail.com', 'gmx.com', 'web.de', 'tutanota.com'
+];
+
 export default function PatientProfileWithEdit() {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading, patient } = usePatientAuth();
   const { profile, isLoading, error, isEditing, updateProfile, refreshProfile, setIsEditing } = usePatientProfile();
   const { familyMembers, isLoading: familyLoading, error: familyError, addMember, updateMember, deleteMember } = useFamilyMembers();
-  
+
   // Form state
   const [formData, setFormData] = useState<Partial<Patient>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -69,6 +76,7 @@ export default function PatientProfileWithEdit() {
         weight: profile.weight,
         allergies: profile.allergies,
         chronicConditions: profile.chronicConditions,
+        dateOfBirth: profile.dateOfBirth,
       });
     }
   }, [profile]);
@@ -105,6 +113,7 @@ export default function PatientProfileWithEdit() {
         weight: profile.weight,
         allergies: profile.allergies,
         chronicConditions: profile.chronicConditions,
+        dateOfBirth: profile.dateOfBirth,
       });
     }
   };
@@ -116,21 +125,21 @@ export default function PatientProfileWithEdit() {
   // Handle phone number input with +91 prefix and 10 digit limit
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    
+
     // Always ensure +91 prefix
     if (!value.startsWith('+91 ')) {
       value = '+91 ';
     }
-    
+
     // Extract only the number part after +91 
     const numberPart = value.slice(4).replace(/\D/g, '');
-    
+
     // Limit to 10 digits
     const limitedNumber = numberPart.slice(0, 10);
-    
+
     // Format as +91 XXXXXXXXXX
     const formattedValue = '+91 ' + limitedNumber;
-    
+
     // Update the input value
     e.target.value = formattedValue;
     handleInputChange('phone', formattedValue);
@@ -145,12 +154,21 @@ export default function PatientProfileWithEdit() {
         throw new Error('Name must be at least 2 characters');
       }
 
-      if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        throw new Error('Invalid email format');
+      if (formData.email) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+          throw new Error('Invalid email format');
+        }
+
+        // Domain validation
+        const domain = formData.email.split('@')[1]?.toLowerCase();
+        if (!domain || !validDomains.includes(domain)) {
+          throw new Error('Please use a valid email provider (Gmail, Yahoo, Outlook, etc.)');
+        }
       }
 
       if (formData.phone) {
-        const phoneDigits = formData.phone.replace(/[^\d]/g, '');
+        // Remove +91 prefix and non-digits to check length
+        const phoneDigits = formData.phone.replace('+91 ', '').replace(/\D/g, '');
         if (phoneDigits.length !== 10) {
           throw new Error('Phone number must be 10 digits');
         }
@@ -195,11 +213,11 @@ export default function PatientProfileWithEdit() {
     const birthDate = new Date(dateOfBirth);
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -292,10 +310,10 @@ export default function PatientProfileWithEdit() {
       console.log('💾 Starting to save family member...');
       console.log('   Patient ID:', patient?.id);
       console.log('   Patient FamilyId:', patient?.familyId);
-      console.log('   Member Data:', { 
-        name: memberFormData.name, 
+      console.log('   Member Data:', {
+        name: memberFormData.name,
         dateOfBirth: memberFormData.dateOfBirth,
-        gender: memberFormData.gender 
+        gender: memberFormData.gender
       });
 
       // Validation
@@ -318,11 +336,11 @@ export default function PatientProfileWithEdit() {
 
       console.log('✅ Validation passed, calling addMember...');
       await addMember(cleanMemberData);
-      
+
       console.log('✅ Family member added, closing modal...');
       setShowAddMemberModal(false);
       toast.success('✅ Family member added successfully!');
-      
+
       // Clear form data
       setMemberFormData({
         name: '',
@@ -402,11 +420,11 @@ export default function PatientProfileWithEdit() {
     const birthDate = new Date(dateOfBirth);
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
-    
+
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    
+
     return age;
   };
 
@@ -485,9 +503,18 @@ export default function PatientProfileWithEdit() {
                 </label>
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-gray-400" />
-                  <p className="text-gray-900">
-                    {profile.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString() : 'Not provided'}
-                  </p>
+                  {isEditing ? (
+                    <input
+                      type="date"
+                      value={formData.dateOfBirth || ''}
+                      onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none"
+                    />
+                  ) : (
+                    <p className="text-gray-900">
+                      {profile.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString() : 'Not provided'}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -660,9 +687,9 @@ export default function PatientProfileWithEdit() {
                     <>
                       {bmi}
                       <span className="text-sm text-gray-500 ml-2">
-                        ({parseFloat(bmi) < 18.5 ? 'Underweight' : 
-                          parseFloat(bmi) < 25 ? 'Normal' : 
-                          parseFloat(bmi) < 30 ? 'Overweight' : 'Obese'})
+                        ({parseFloat(bmi) < 18.5 ? 'Underweight' :
+                          parseFloat(bmi) < 25 ? 'Normal' :
+                            parseFloat(bmi) < 30 ? 'Overweight' : 'Obese'})
                       </span>
                     </>
                   ) : (

@@ -588,8 +588,8 @@ export default function AppointmentsPage() {
                 className="grid grid-cols-11 gap-4 px-6 py-5 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center"
               >
                 <div className="col-span-1">
-                  <span className="text-2xl font-bold text-teal-500">
-                    {appointment.tokenNumber || 'N/A'}
+                  <span className="text-xl font-bold text-teal-600">
+                    {appointment.tokenNumber ? String(appointment.tokenNumber) : 'N/A'}
                   </span>
                 </div>
 

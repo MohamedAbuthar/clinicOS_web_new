@@ -555,12 +555,29 @@ export default function NewAppointmentDialog({
         appointmentsRef,
         where('appointmentDate', '==', date),
         where('doctorId', '==', doctorId),
-        where('session', '==', session),
-        where('status', 'in', ['scheduled', 'confirmed', 'approved'])
+        where('session', '==', session)
+        // Removed status filter to consider ALL appointments (including completed/cancelled) for token generation
       );
 
       const querySnapshot = await getDocs(q);
-      return querySnapshot.size + 1;
+
+      // Calculate max token number
+      let maxToken = 0;
+      querySnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.tokenNumber) {
+          // Parse token number (handle string, number, and # prefix)
+          const tokenVal = data.tokenNumber.toString();
+          // Extract digits from the token string
+          const match = tokenVal.match(/(\d+)/);
+          if (match) {
+            const num = parseInt(match[0], 10);
+            if (num > maxToken) maxToken = num;
+          }
+        }
+      });
+
+      return maxToken + 1;
     } catch (error) {
       console.error('Error generating token number:', error);
       return 1;
@@ -1081,10 +1098,10 @@ export default function NewAppointmentDialog({
                     onChange={handleInputChange}
                     disabled={!formData.doctor || !formData.date}
                     className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent appearance-none cursor-pointer ${!formData.doctor || !formData.date
-                        ? 'border-gray-300 opacity-50 cursor-not-allowed'
-                        : formData.session && !isSessionAvailable(formData.session as 'morning' | 'evening')
-                          ? 'border-red-300 bg-red-50'
-                          : 'border-gray-300'
+                      ? 'border-gray-300 opacity-50 cursor-not-allowed'
+                      : formData.session && !isSessionAvailable(formData.session as 'morning' | 'evening')
+                        ? 'border-red-300 bg-red-50'
+                        : 'border-gray-300'
                       }`}
                   >
                     <option value="">Select session</option>

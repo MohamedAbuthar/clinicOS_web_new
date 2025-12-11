@@ -52,10 +52,10 @@ export default function EmergencyAppointmentDialog({
   const [emailErrorShown, setEmailErrorShown] = useState(false);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [sessionTime, setSessionTime] = useState('');
-  
+
   // Force re-render to update session availability based on current time
   const [currentTime, setCurrentTime] = useState(new Date());
-  
+
   // Schedule overrides for checking doctor availability
   const { fetchOverrides, overrides } = useScheduleOverrides();
 
@@ -126,7 +126,7 @@ export default function EmergencyAppointmentDialog({
     if (selectedDoctor && formData.session) {
       const session = formData.session as 'morning' | 'evening';
       if (session === 'morning') {
-        const startTime = selectedDoctor.morningStartTime 
+        const startTime = selectedDoctor.morningStartTime
           ? formatTimeForDisplay(selectedDoctor.morningStartTime, '9:00 AM')
           : (selectedDoctor.morningTime ? selectedDoctor.morningTime.split(' - ')[0] : '9:00 AM');
         const endTime = selectedDoctor.morningEndTime
@@ -150,8 +150,8 @@ export default function EmergencyAppointmentDialog({
   // Helper function to format date as YYYY-MM-DD
   const formatDateForAPI = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.getFullYear() + '-' + 
-      String(date.getMonth() + 1).padStart(2, '0') + '-' + 
+    return date.getFullYear() + '-' +
+      String(date.getMonth() + 1).padStart(2, '0') + '-' +
       String(date.getDate()).padStart(2, '0');
   };
 
@@ -162,21 +162,21 @@ export default function EmergencyAppointmentDialog({
     }
 
     const dateStr = formatDateForAPI(date);
-    
+
     // Check for schedule overrides on this date
     const dateOverrides = overrides.filter(override => {
-      const overrideDate = override.date.includes('T') 
-        ? override.date.split('T')[0] 
+      const overrideDate = override.date.includes('T')
+        ? override.date.split('T')[0]
         : override.date;
-      
+
       const normalizedOverrideDate = overrideDate.substring(0, 10);
       const normalizedSelectedDate = dateStr.substring(0, 10);
-      
+
       // Check if it's a holiday (either by type or displayType)
-      const isHoliday = override.type === 'holiday' || 
-                       (override as any).displayType === 'holiday' ||
-                       (override as any).displayType === 'special-event';
-      
+      const isHoliday = override.type === 'holiday' ||
+        (override as any).displayType === 'holiday' ||
+        (override as any).displayType === 'special-event';
+
       return normalizedOverrideDate === normalizedSelectedDate && isHoliday;
     });
 
@@ -188,28 +188,28 @@ export default function EmergencyAppointmentDialog({
     for (const override of dateOverrides) {
       // If no startTime/endTime, it's a full day leave (affects both sessions)
       if (!override.startTime || !override.endTime) {
-        return { 
-          onLeave: true, 
-          reason: `Doctor is on leave: ${override.reason}` 
+        return {
+          onLeave: true,
+          reason: `Doctor is on leave: ${override.reason}`
         };
       }
 
       // Check if this session is affected by the override time range
       const overrideStartHour = parseInt(override.startTime.split(':')[0]);
       const overrideEndHour = parseInt(override.endTime.split(':')[0]);
-      
+
       if (session === 'morning') {
         if (overrideStartHour === 9 && overrideEndHour === 12) {
-          return { 
-            onLeave: true, 
-            reason: `Doctor is on leave: ${override.reason}` 
+          return {
+            onLeave: true,
+            reason: `Doctor is on leave: ${override.reason}`
           };
         }
       } else if (session === 'evening') {
         if (overrideStartHour === 14 && overrideEndHour === 18) {
-          return { 
-            onLeave: true, 
-            reason: `Doctor is on leave: ${override.reason}` 
+          return {
+            onLeave: true,
+            reason: `Doctor is on leave: ${override.reason}`
           };
         }
       }
@@ -240,52 +240,52 @@ export default function EmergencyAppointmentDialog({
   // For emergency appointments, sessions are always available (bypass 3-hour rule)
   const isSessionAvailable = (session: 'morning' | 'evening') => {
     if (!formData.date) return true;
-    
+
     // Check if doctor is on leave first
     const leaveCheck = isDoctorOnLeave(formData.date, session);
     if (leaveCheck.onLeave) {
       return false;
     }
-    
+
     // For emergency appointments, bypass the 3-hour rule - sessions are always available
     // as long as the session hasn't ended yet
     if (!selectedDoctor) return true;
-    
+
     const now = currentTime;
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDate = new Date(formData.date);
     const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-    
-    const sessionStartTime = session === 'morning' 
+
+    const sessionStartTime = session === 'morning'
       ? normalizeTime(selectedDoctor.morningStartTime, '09:00')
       : normalizeTime(selectedDoctor.eveningStartTime, '14:00');
     const sessionEndTime = session === 'morning'
       ? normalizeTime(selectedDoctor.morningEndTime, '13:00')
       : normalizeTime(selectedDoctor.eveningEndTime, '18:00');
-    
+
     const [startHours, startMinutes] = sessionStartTime.split(':').map(Number);
     const [endHours, endMinutes] = sessionEndTime.split(':').map(Number);
     const sessionEndMinutes = endHours * 60 + endMinutes;
-    
+
     const daysDiff = Math.floor((selectedDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     // For past dates, don't allow any bookings
     if (daysDiff < 0) {
       return false;
     }
-    
+
     if (daysDiff === 0) {
       // Today - check if session has already ended
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
-      
+
       // Emergency appointments can be booked even during the session (no 3-hour restriction)
       // Only check if session has ended
       if (currentTimeInMinutes >= sessionEndMinutes) {
         return false; // Session has ended
       }
-      
+
       return true; // Session is active or hasn't started yet - emergency booking allowed
     } else {
       // Future date - emergency appointments can always be booked
@@ -296,7 +296,7 @@ export default function EmergencyAppointmentDialog({
   // Handle input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    
+
     // If date changes, reset session if it's no longer available
     if (name === 'date' && formData.session) {
       const sessionStillAvailable = isSessionAvailable(formData.session as 'morning' | 'evening');
@@ -305,7 +305,7 @@ export default function EmergencyAppointmentDialog({
         return;
       }
     }
-    
+
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -331,15 +331,15 @@ export default function EmergencyAppointmentDialog({
   // Handle phone number input with +91 validation
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    
+
     if (!value.startsWith('+91 ')) {
       value = '+91 ';
     }
-    
+
     const numberPart = value.slice(4).replace(/\D/g, '');
     const limitedNumber = numberPart.slice(0, 10);
     const formattedValue = '+91 ' + limitedNumber;
-    
+
     setFormData(prev => ({ ...prev, phone: formattedValue }));
   };
 
@@ -402,7 +402,7 @@ export default function EmergencyAppointmentDialog({
     }
     return true;
   };
-  
+
   // Generate token number for the appointment (per session)
   const generateTokenNumber = async (date: string, doctorId: string, session: string) => {
     try {
@@ -411,12 +411,29 @@ export default function EmergencyAppointmentDialog({
         appointmentsRef,
         where('appointmentDate', '==', date),
         where('doctorId', '==', doctorId),
-        where('session', '==', session),
-        where('status', 'in', ['scheduled', 'confirmed', 'approved'])
+        where('session', '==', session)
+        // Removed status filter to consider ALL appointments (including completed/cancelled) for token generation
       );
 
       const querySnapshot = await getDocs(q);
-      return querySnapshot.size + 1;
+
+      // Calculate max token number
+      let maxToken = 0;
+      querySnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.tokenNumber) {
+          // Parse token number (handle string, number, and # prefix)
+          const tokenVal = data.tokenNumber.toString();
+          // Extract digits from the token string
+          const match = tokenVal.match(/(\d+)/);
+          if (match) {
+            const num = parseInt(match[0], 10);
+            if (num > maxToken) maxToken = num;
+          }
+        }
+      });
+
+      return maxToken + 1;
     } catch (error) {
       console.error('Error generating token number:', error);
       return 1;
@@ -427,7 +444,7 @@ export default function EmergencyAppointmentDialog({
   const savePatient = async () => {
     try {
       const phoneId = formData.phone.replace(/\s/g, '').replace('+', '');
-      
+
       const patientData = {
         name: formData.patientName.trim(),
         phone: formData.phone.trim(),
@@ -468,7 +485,7 @@ export default function EmergencyAppointmentDialog({
 
       const querySnapshot = await getDocs(q);
       const maxAppointmentsPerSession = 20;
-      
+
       if (querySnapshot.size >= maxAppointmentsPerSession) {
         toast.error(`This ${formData.session} session is fully booked. Please choose another session or date.`);
         return false;
@@ -484,7 +501,7 @@ export default function EmergencyAppointmentDialog({
   // Get session start time based on doctor and session
   const getSessionStartTime = () => {
     if (!selectedDoctor) return '09:00';
-    
+
     if (formData.session === 'morning') {
       return normalizeTime(selectedDoctor.morningStartTime, '09:00');
     } else {
@@ -535,7 +552,7 @@ export default function EmergencyAppointmentDialog({
       );
       const snapshot = await getDocs(q);
       const existingAppointments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      
+
       // Get booked slots for this session
       const bookedSlots = existingAppointments
         .filter((apt: any) => {
@@ -551,7 +568,7 @@ export default function EmergencyAppointmentDialog({
 
       // Generate token number per session
       const tokenNumber = await generateTokenNumber(formData.date, formData.doctor, formData.session);
-      
+
       // Get next available slot based on doctor's slot duration
       const { getNextAvailableSlot } = await import('@/lib/utils/slotAssignmentHelper');
       const doctorData = {
@@ -564,7 +581,7 @@ export default function EmergencyAppointmentDialog({
         eveningStartTime: doctor.eveningStartTime,
         eveningEndTime: doctor.eveningEndTime
       };
-      
+
       const appointmentTime = getNextAvailableSlot(
         doctorData,
         formData.date,
@@ -608,10 +625,10 @@ export default function EmergencyAppointmentDialog({
         `🚨 Emergency appointment created successfully! Token #${tokenNumber} for ${formData.session === 'morning' ? 'Morning' : 'Evening'} session`,
         { duration: 5000 }
       );
-      
+
       resetForm();
       onCloseAction();
-      
+
       setTimeout(() => {
         if (onAppointmentCreated) {
           onAppointmentCreated();
@@ -628,11 +645,11 @@ export default function EmergencyAppointmentDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div 
+      <div
         className="absolute inset-0 bg-white/30 backdrop-blur-sm"
         onClick={onCloseAction}
       ></div>
-      
+
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-5 border-b border-red-200 bg-red-50">
           <div>
@@ -658,7 +675,7 @@ export default function EmergencyAppointmentDialog({
             <div className="flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <p className="text-xs text-amber-800">
-                <strong>Emergency appointments</strong> can be booked at any time, even during active sessions. 
+                <strong>Emergency appointments</strong> can be booked at any time, even during active sessions.
                 Normal appointments require booking at least 3 hours before the session starts.
               </p>
             </div>
@@ -736,24 +753,24 @@ export default function EmergencyAppointmentDialog({
                   </option>
                 ))}
               </select>
-              
+
               {/* Show upcoming leave dates for selected doctor */}
               {formData.doctor && overrides.length > 0 && (() => {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                
+
                 const upcomingLeaves = overrides
                   .filter(override => {
-                    const overrideDate = override.date.includes('T') 
-                      ? override.date.split('T')[0] 
+                    const overrideDate = override.date.includes('T')
+                      ? override.date.split('T')[0]
                       : override.date;
                     const leaveDate = new Date(overrideDate);
                     leaveDate.setHours(0, 0, 0, 0);
-                    
-                    const isHoliday = override.type === 'holiday' || 
-                                     (override as any).displayType === 'holiday' ||
-                                     (override as any).displayType === 'special-event';
-                    
+
+                    const isHoliday = override.type === 'holiday' ||
+                      (override as any).displayType === 'holiday' ||
+                      (override as any).displayType === 'special-event';
+
                     return isHoliday && leaveDate >= today;
                   })
                   .sort((a, b) => {
@@ -762,7 +779,7 @@ export default function EmergencyAppointmentDialog({
                     return dateA.getTime() - dateB.getTime();
                   })
                   .slice(0, 5);
-                
+
                 if (upcomingLeaves.length > 0) {
                   return (
                     <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -774,21 +791,21 @@ export default function EmergencyAppointmentDialog({
                           </p>
                           <div className="space-y-1">
                             {upcomingLeaves.map((leave, index) => {
-                              const leaveDate = leave.date.includes('T') 
-                                ? leave.date.split('T')[0] 
+                              const leaveDate = leave.date.includes('T')
+                                ? leave.date.split('T')[0]
                                 : leave.date;
                               const dateObj = new Date(leaveDate);
-                              const formattedDate = dateObj.toLocaleDateString('en-US', { 
+                              const formattedDate = dateObj.toLocaleDateString('en-US', {
                                 weekday: 'short',
-                                month: 'short', 
+                                month: 'short',
                                 day: 'numeric',
                                 year: 'numeric'
                               });
-                              
+
                               const sessionInfo = leave.startTime && leave.endTime
                                 ? ` (${leave.startTime} - ${leave.endTime})`
                                 : ' (Full Day)';
-                              
+
                               return (
                                 <p key={index} className="text-xs text-amber-800">
                                   📅 {formattedDate}{sessionInfo} - {leave.reason}
@@ -835,24 +852,23 @@ export default function EmergencyAppointmentDialog({
                     value={formData.session}
                     onChange={handleInputChange}
                     disabled={!formData.doctor || !formData.date}
-                    className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent appearance-none cursor-pointer ${
-                      !formData.doctor || !formData.date
+                    className={`w-full pl-11 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent appearance-none cursor-pointer ${!formData.doctor || !formData.date
                         ? 'border-gray-300 opacity-50 cursor-not-allowed'
                         : formData.session && !isSessionAvailable(formData.session as 'morning' | 'evening')
-                        ? 'border-red-300 bg-red-50'
-                        : 'border-gray-300'
-                    }`}
+                          ? 'border-red-300 bg-red-50'
+                          : 'border-gray-300'
+                      }`}
                   >
                     <option value="">Select session</option>
-                    <option 
-                      value="morning" 
+                    <option
+                      value="morning"
                       disabled={!isSessionAvailable('morning')}
                       style={!isSessionAvailable('morning') ? { color: '#9ca3af', backgroundColor: '#f3f4f6' } : {}}
                     >
                       Morning {!isSessionAvailable('morning') ? '(Unavailable)' : ''}
                     </option>
-                    <option 
-                      value="evening" 
+                    <option
+                      value="evening"
                       disabled={!isSessionAvailable('evening')}
                       style={!isSessionAvailable('evening') ? { color: '#9ca3af', backgroundColor: '#f3f4f6' } : {}}
                     >
