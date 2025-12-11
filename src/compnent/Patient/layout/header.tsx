@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Bell, LogOut, User } from 'lucide-react';
+import { Calendar, Bell, LogOut, User, Menu } from 'lucide-react';
 import { Patient } from '@/lib/api';
 import { getNotifications } from '@/lib/firebase/firestore';
 
 interface PatientHeaderProps {
   patient: Patient | null;
   onLogout: () => void;
+  onMenuClick?: () => void;
 }
 
-export default function PatientHeader({ patient, onLogout }: PatientHeaderProps) {
+export default function PatientHeader({ patient, onLogout, onMenuClick }: PatientHeaderProps) {
   const [currentDate, setCurrentDate] = useState('');
   const [notificationCount, setNotificationCount] = useState(0);
 
@@ -39,12 +40,21 @@ export default function PatientHeader({ patient, onLogout }: PatientHeaderProps)
     loadNotificationCount();
   }, [patient?.id]);
   return (
-    <header className="w-full h-[73.4px] bg-white border-b border-gray-200 px-8 py-4">
+    <header className="w-full h-[73.4px] bg-white border-b border-gray-200 px-4 md:px-8 py-4">
       <div className="flex items-center justify-between">
-        {/* Left side - Date */}
+        {/* Left side - Menu & Date */}
         <div className="flex items-center gap-3">
-          <Calendar className="w-5 h-5 text-gray-400" strokeWidth={2} />
-          <span className="text-gray-600 text-base">{currentDate}</span>
+          <button
+            onClick={onMenuClick}
+            className="p-2 -ml-2 mr-2 lg:hidden text-gray-600 hover:bg-gray-100 rounded-lg"
+          >
+            <Menu size={24} />
+          </button>
+
+          <div className="flex items-center gap-3">
+            <Calendar className="w-5 h-5 text-gray-400" strokeWidth={2} />
+            <span className="text-gray-600 text-base hidden sm:block">{currentDate}</span>
+          </div>
         </div>
 
         {/* Right side - Live indicator, Notification, and User Menu */}
@@ -76,7 +86,7 @@ export default function PatientHeader({ patient, onLogout }: PatientHeaderProps)
               </div>
               <span className="text-gray-700 text-sm font-medium">{patient?.name || 'Patient'}</span>
             </button>
-            
+
             {/* Dropdown Menu */}
             <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
               <div className="py-2">

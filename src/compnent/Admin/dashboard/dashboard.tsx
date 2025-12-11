@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { Calendar, Users, Stethoscope, UserX, AlertCircle, Loader2 } from 'lucide-react';
-import { 
-  StatCard, 
-  QueueTable, 
+import {
+  StatCard,
   AlertItem,
-  Alert 
+  Alert
 } from '../../reusable';
+import DashboardChart from './DashboardChart';
 import QueueDetailsDialog from './QueueDetailsDialog';
 import { useAppointments } from '@/lib/hooks/useAppointments';
 import { useDoctors } from '@/lib/hooks/useDoctors';
@@ -60,7 +60,7 @@ export default function DashboardPage() {
     try {
       // Filter today's appointments
       const today = new Date().toISOString().split('T')[0];
-      let todayAppointments = appointments.filter(apt => 
+      let todayAppointments = appointments.filter(apt =>
         apt.appointmentDate === today
       );
 
@@ -79,7 +79,7 @@ export default function DashboardPage() {
           // Assistant sees appointments for their assigned doctors
           const assistant = assistants.find(a => a.userId === currentUser.id);
           if (assistant && assistant.assignedDoctors) {
-            todayAppointments = todayAppointments.filter(apt => 
+            todayAppointments = todayAppointments.filter(apt =>
               assistant.assignedDoctors.includes(apt.doctorId)
             );
           } else {
@@ -91,10 +91,10 @@ export default function DashboardPage() {
 
       // Calculate dashboard metrics
       const appointmentsToday = todayAppointments.length;
-      const patientsWaiting = todayAppointments.filter(apt => 
+      const patientsWaiting = todayAppointments.filter(apt =>
         apt.status === 'scheduled' || apt.status === 'confirmed'
       ).length;
-      
+
       // Apply role-based filtering to doctors
       let filteredDoctors = doctorsData;
       if (isAuthenticated && currentUser) {
@@ -105,7 +105,7 @@ export default function DashboardPage() {
           // Assistant sees only their assigned doctors
           const assistant = assistants.find(a => a.userId === currentUser.id);
           if (assistant && assistant.assignedDoctors) {
-            filteredDoctors = doctorsData.filter(doctor => 
+            filteredDoctors = doctorsData.filter(doctor =>
               assistant.assignedDoctors.includes(doctor.id)
             );
           } else {
@@ -121,12 +121,12 @@ export default function DashboardPage() {
       if (isAuthenticated && currentUser && currentUser.role === 'doctor' && currentDoctor) {
         doctorsActive = currentDoctor.status === 'In' ? 1 : 0;
       } else {
-        doctorsActive = filteredDoctors.filter(doctor => 
+        doctorsActive = filteredDoctors.filter(doctor =>
           doctor.status === 'In'
         ).length;
       }
 
-      const noShows = todayAppointments.filter(apt => 
+      const noShows = todayAppointments.filter(apt =>
         apt.status === 'no_show'
       ).length;
 
@@ -207,19 +207,19 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">
-            {currentUser?.role === 'doctor' 
-              ? 'Your Dashboard' 
+            {currentUser?.role === 'doctor'
+              ? 'Your Dashboard'
               : currentUser?.role === 'assistant'
-              ? 'Assigned Doctors Dashboard'
-              : 'Dashboard'
+                ? 'Assigned Doctors Dashboard'
+                : 'Dashboard'
             }
           </h1>
           <p className="text-gray-500 mt-1">
-            {currentUser?.role === 'doctor' 
-              ? 'Overview of your appointments and patients today' 
+            {currentUser?.role === 'doctor'
+              ? 'Overview of your appointments and patients today'
               : currentUser?.role === 'assistant'
-              ? 'Overview of your assigned doctors and their patients'
-              : 'Quick overview of today clinic operations'
+                ? 'Overview of your assigned doctors and their patients'
+                : 'Quick overview of today clinic operations'
             }
           </p>
           {/* User context indicator */}
@@ -260,7 +260,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="mb-8">
-          <QueueTable doctors={doctors} onViewQueue={handleViewQueue} />
+          <DashboardChart data={dashboardData} />
         </div>
 
         <div className="bg-white rounded-lg border border-gray-200 p-6">

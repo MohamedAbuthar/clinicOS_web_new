@@ -46,20 +46,20 @@ const getAppointmentTimeDisplay = (source: any): string => {
   if (!source) {
     return 'N/A';
   }
-  
+
   // If source is already a string (direct time value), format it
   if (typeof source === 'string') {
     return formatTime(source);
   }
-  
+
   // Extract appointmentTime from object (handles multiple possible field names)
   const rawTime = source?.appointmentTime || source?.time || source?.appointment?.appointmentTime || null;
-  
+
   // If no time found, return N/A
   if (!rawTime) {
     return 'N/A';
   }
-  
+
   // Convert to string, trim whitespace, and format
   const timeString = String(rawTime).trim();
   return formatTime(timeString);
@@ -69,16 +69,16 @@ const formatTime = (timeString: string | undefined | null): string => {
   if (!timeString || timeString === 'N/A' || timeString === '') {
     return 'N/A';
   }
-  
+
   // Handle different time formats
   let hour: number, minute: string;
-  
+
   // If time is in HH:MM format (24-hour format like "21:00")
   if (timeString.includes(':')) {
     const parts = timeString.split(':');
     hour = parseInt(parts[0]);
     minute = parts[1] || '00';
-    
+
     // Remove any AM/PM suffix if present (for 12-hour format input)
     if (minute.includes(' ')) {
       minute = minute.split(' ')[0];
@@ -93,20 +93,20 @@ const formatTime = (timeString: string | undefined | null): string => {
       return 'N/A';
     }
   }
-  
+
   // Ensure hour is valid (0-23)
   if (isNaN(hour) || hour < 0 || hour > 23) {
     console.warn('Invalid hour in formatTime:', timeString, 'hour:', hour);
     return 'N/A';
   }
-  
+
   // Ensure minute is valid (0-59)
   const minuteNum = parseInt(minute);
   if (isNaN(minuteNum) || minuteNum < 0 || minuteNum > 59) {
     console.warn('Invalid minute in formatTime:', timeString, 'minute:', minute);
     return 'N/A';
   }
-  
+
   // Convert to 12-hour format
   const ampm = hour >= 12 ? 'PM' : 'AM';
   const displayHour = hour % 12 || 12;
@@ -118,35 +118,35 @@ const formatDate = (dateString: string) => {
   const date = new Date(dateString);
   const today = new Date();
   const isToday = date.toDateString() === today.toDateString();
-  
+
   if (isToday) {
     return 'Today';
   }
-  
+
   return date.toLocaleDateString();
 };
 
 const formatTimestamp = (timestamp: unknown): string => {
   if (!timestamp) return '';
-  
+
   // Handle Firebase Timestamp objects
   if (typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && typeof (timestamp as { toDate(): Date }).toDate === 'function') {
     const date = (timestamp as { toDate(): Date }).toDate();
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true 
+      hour12: true
     });
   }
-  
+
   // Handle regular Date objects or date strings
   try {
     const date = new Date(timestamp as string | number | Date);
     if (isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true 
+      hour12: true
     });
   } catch {
     return '';
@@ -168,35 +168,34 @@ const QueueItem = ({ queueItem, index, isCurrentUser }: QueueItemProps) => {
   };
 
   return (
+
     <div
-      className={`flex items-center gap-4 p-4 rounded-lg border transition-all ${
-        isCurrentUser 
-          ? 'border-teal-500 bg-teal-50 shadow-md' 
-          : 'border-gray-200 bg-white hover:border-gray-300'
-      }`}
+      className={`flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 rounded-lg border transition-all ${isCurrentUser
+        ? 'border-teal-500 bg-teal-50 shadow-md'
+        : 'border-gray-200 bg-white hover:border-gray-300'
+        }`}
     >
       {/* Position Badge */}
-      <div className="flex-shrink-0">
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg ${
-          isCurrentUser ? 'bg-teal-600 text-white' : 'bg-blue-600 text-white'
-        }`}>
+      <div className="flex-shrink-0 self-start sm:self-center">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg ${isCurrentUser ? 'bg-teal-600 text-white' : 'bg-blue-600 text-white'
+          }`}>
           {index + 1}
         </div>
       </div>
-      
-      <div className="flex items-center justify-between flex-1">
-        <div className="flex items-center gap-4 flex-1">
-          <div className="text-center min-w-[60px]">
-            <p className="text-2xl font-bold text-gray-900">{queueItem.tokenNumber}</p>
+
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between flex-1 w-full gap-3 sm:gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 flex-1">
+          <div className="text-left sm:text-center min-w-[60px]">
+            <p className="text-xl sm:text-2xl font-bold text-gray-900">{queueItem.tokenNumber}</p>
             <p className="text-xs text-gray-500">Token</p>
           </div>
-          
+
           <div className="flex-1">
             <p className={`font-semibold ${isCurrentUser ? 'text-teal-900' : 'text-gray-900'}`}>
               {queueItem.name}
               {isCurrentUser && <span className="ml-2 text-sm text-teal-600">(You)</span>}
             </p>
-            <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <div className="flex items-center gap-y-1 gap-x-3 mt-1 flex-wrap">
               {queueItem.phone && (
                 <div className="flex items-center gap-1 text-xs text-gray-500">
                   <Phone className="w-3 h-3" />
@@ -211,7 +210,7 @@ const QueueItem = ({ queueItem, index, isCurrentUser }: QueueItemProps) => {
               )}
               <span className="text-xs text-gray-500">• Waiting: {queueItem.waitingTime} min</span>
               {queueItem.checkedInAt && (
-                <span className="text-xs text-teal-600">
+                <span className="text-xs text-teal-600 w-full sm:w-auto">
                   ✓ Checked in: {formatTimestamp(queueItem.checkedInAt)}
                 </span>
               )}
@@ -219,28 +218,27 @@ const QueueItem = ({ queueItem, index, isCurrentUser }: QueueItemProps) => {
             {queueItem.acceptanceStatus && (
               <div className="mt-1">
                 <span
-                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                    queueItem.acceptanceStatus === 'accepted' 
-                      ? 'bg-teal-100 text-teal-700' 
-                      : queueItem.acceptanceStatus === 'rejected'
+                  className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${queueItem.acceptanceStatus === 'accepted'
+                    ? 'bg-teal-100 text-teal-700'
+                    : queueItem.acceptanceStatus === 'rejected'
                       ? 'bg-red-100 text-red-700'
                       : 'bg-yellow-100 text-yellow-700'
-                  }`}
+                    }`}
                 >
-                  {queueItem.acceptanceStatus === 'accepted' ? '✓ Accepted' : 
-                   queueItem.acceptanceStatus === 'rejected' ? '✕ Rejected' : 
-                   '⏳ Pending'}
+                  {queueItem.acceptanceStatus === 'accepted' ? '✓ Accepted' :
+                    queueItem.acceptanceStatus === 'rejected' ? '✕ Rejected' :
+                      '⏳ Pending'}
                 </span>
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[queueItem.status]}`}>
-            {queueItem.status === 'checked_in' ? 'Checked In' : 
-             queueItem.status === 'waiting' ? 'Waiting' : 
-             'Scheduled'}
+        <div className="flex items-center gap-3 flex-shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
+          <span className={`px-3 py-1 rounded-full text-xs font-medium w-fit ${statusColors[queueItem.status]}`}>
+            {queueItem.status === 'checked_in' ? 'Checked In' :
+              queueItem.status === 'waiting' ? 'Waiting' :
+                'Scheduled'}
           </span>
         </div>
       </div>
@@ -332,19 +330,19 @@ export default function PatientQueuePage() {
   }, [doctors, selectedDoctorId]);
 
   // Filter appointments for selected doctor - ensure we're filtering correctly
-  const doctorAppointments = selectedDoctorId 
+  const doctorAppointments = selectedDoctorId
     ? appointments.filter(apt => {
-        // Check if doctorId matches
-        const matches = apt.doctorId === selectedDoctorId;
-        if (!matches) {
-          console.log('Appointment filtered out - doctorId mismatch:', {
-            appointmentId: apt.id,
-            appointmentDoctorId: apt.doctorId,
-            selectedDoctorId: selectedDoctorId
-          });
-        }
-        return matches;
-      })
+      // Check if doctorId matches
+      const matches = apt.doctorId === selectedDoctorId;
+      if (!matches) {
+        console.log('Appointment filtered out - doctorId mismatch:', {
+          appointmentId: apt.id,
+          appointmentDoctorId: apt.doctorId,
+          selectedDoctorId: selectedDoctorId
+        });
+      }
+      return matches;
+    })
     : [];
 
   // Get today's appointments for the selected doctor (EXACT same logic as admin queue)
@@ -354,7 +352,7 @@ export default function PatientQueuePage() {
   console.log('Selected Doctor ID:', selectedDoctorId);
   console.log('Total appointments:', appointments.length);
   console.log('Doctor appointments (filtered):', doctorAppointments.length);
-  
+
   // Debug: Show all doctor appointments with their dates
   if (doctorAppointments.length > 0) {
     console.log('All doctor appointments dates:', doctorAppointments.map(apt => ({
@@ -367,7 +365,7 @@ export default function PatientQueuePage() {
       patientName: apt.patientName
     })));
   }
-  
+
   const todayAppointments = doctorAppointments.filter(apt => {
     // Normalize date format for comparison (handle both YYYY-MM-DD and other formats)
     let normalizedAptDate = apt.appointmentDate;
@@ -381,11 +379,11 @@ export default function PatientQueuePage() {
         normalizedAptDate = normalizedAptDate.substring(0, 10);
       }
     }
-    
+
     const isToday = normalizedAptDate === today;
     const isValidStatus = apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'approved';
     const matches = isToday && isValidStatus;
-    
+
     if (!matches) {
       if (isToday && !isValidStatus) {
         console.log('⚠️ Appointment filtered out - invalid status:', {
@@ -405,10 +403,10 @@ export default function PatientQueuePage() {
         });
       }
     }
-    
+
     return matches;
   });
-  
+
   console.log('✅ Today appointments (after filtering):', todayAppointments.length);
   if (todayAppointments.length > 0) {
     console.log('📋 Today appointments data:', todayAppointments.map(apt => ({
@@ -433,11 +431,11 @@ export default function PatientQueuePage() {
   const appointmentQueueItems: AppointmentQueueItem[] = useMemo(() => {
     console.log('=== CREATING PATIENT QUEUE ITEMS ===');
     console.log('Today appointments count:', todayAppointments.length);
-    
+
     const items = todayAppointments.map((appointment, index) => {
       const patient = patients.find(p => p.id === appointment.patientId);
       let waitingTime = 0;
-      
+
       if (appointment.checkedInAt) {
         try {
           // Handle Firebase Timestamp objects
@@ -455,11 +453,11 @@ export default function PatientQueuePage() {
           waitingTime = 0;
         }
       }
-      
+
       // Extract appointmentTime dynamically - ensure it's always captured
       const rawAppointmentTime = appointment.appointmentTime || (appointment as any).time || null;
       const appointmentTime = rawAppointmentTime ? String(rawAppointmentTime).trim() : 'N/A';
-      
+
       const queueItem = {
         id: `apt-${appointment.id}`,
         appointmentId: appointment.id,
@@ -475,7 +473,7 @@ export default function PatientQueuePage() {
         checkedInAt: appointment.checkedInAt,
         queueOrder: (appointment as Appointment).queueOrder,
       };
-      
+
       console.log('Created patient queue item:', {
         id: queueItem.id,
         tokenNumber: queueItem.tokenNumber,
@@ -485,13 +483,13 @@ export default function PatientQueuePage() {
         formattedTime: formatTime(queueItem.appointmentTime),
         appointmentDate: queueItem.appointmentDate
       });
-      
+
       return queueItem;
     });
-    
+
     console.log('Total patient queue items created:', items.length);
     console.log('===================================');
-    
+
     return items;
   }, [todayAppointments, patients, currentTime]);
 
@@ -548,127 +546,18 @@ export default function PatientQueuePage() {
   if (!patient && firebaseUser) {
     return (
       <div className="max-w-4xl mx-auto">
-          <div className="mb-4 p-4 bg-orange-100 border border-orange-400 text-orange-700 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" />
-            <div>
-              <p className="font-semibold">Profile Incomplete</p>
-              <p className="text-sm mt-1">Please complete your patient profile for full functionality.</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Queue Status</h1>
-              <p className="text-sm text-gray-500 mt-1">View queue for selected doctor</p>
-              {lastRefreshTime && (
-                <p className="text-xs text-gray-400 mt-1">
-                  Last updated: {lastRefreshTime.toLocaleTimeString()}
-                </p>
-              )}
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={handleRefresh}
-                disabled={isRefreshing || loading}
-                className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-              >
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                {isRefreshing ? 'Refreshing...' : 'Refresh Queue'}
-              </button>
-              <select
-                value={selectedDoctorId || ''}
-                onChange={(e) => setSelectedDoctorId(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-              >
-                <option value="">Select Doctor</option>
-                {doctors.map((doctor) => (
-                  <option key={doctor.id} value={doctor.id}>
-                    {doctor.user?.name || 'Unknown'} - {doctor.specialty}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Today&apos;s Queue ({appointmentQueueItems.length})
-                </h2>
-                {isAutoRefreshing && (
-                  <div className="flex items-center gap-1 text-xs text-teal-600">
-                    <RefreshCw className="w-3 h-3 animate-spin" />
-                    <span>Syncing...</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              {appointmentQueueItems.length > 0 ? (
-                appointmentQueueItems.map((queueItem, index) => (
-                  <QueueItem
-                    key={queueItem.id}
-                    queueItem={queueItem}
-                    index={index}
-                    isCurrentUser={false}
-                  />
-                ))
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-lg font-medium">No appointments in queue today</p>
-                  <p className="text-sm mt-2">No appointments found for the selected doctor today.</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-blue-900 mb-1">Complete Your Profile</h3>
-                <p className="text-sm text-blue-800 mb-3">To see your personal queue status and position, please complete your patient profile.</p>
-                <button 
-                  onClick={() => window.location.href = '/Patient/register'}
-                  className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
-                >
-                  Complete Profile
-                </button>
-              </div>
-            </div>
+        <div className="mb-4 p-4 bg-orange-100 border border-orange-400 text-orange-700 rounded-lg flex items-center gap-2">
+          <AlertCircle className="w-5 h-5" />
+          <div>
+            <p className="font-semibold">Profile Incomplete</p>
+            <p className="text-sm mt-1">Please complete your patient profile for full functionality.</p>
           </div>
         </div>
-    );
-  }
 
-  return (
-    <div className="max-w-4xl mx-auto">
-        {/* Error Message */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-5 h-5" />
-            <div>
-              <p className="font-semibold">Unable to load queue data</p>
-              <p className="text-sm mt-1">
-                {error.includes('permission') || error.includes('Permission') 
-                  ? 'Please ensure you are logged in and have a complete patient profile.'
-                  : error
-                }
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Queue Status</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              View your position in the queue for {doctors.find(d => d.id === selectedDoctorId)?.user?.name || 'Selected Doctor'}
-            </p>
+            <p className="text-sm text-gray-500 mt-1">View queue for selected doctor</p>
             {lastRefreshTime && (
               <p className="text-xs text-gray-400 mt-1">
                 Last updated: {lastRefreshTime.toLocaleTimeString()}
@@ -699,33 +588,6 @@ export default function PatientQueuePage() {
           </div>
         </div>
 
-        {/* Current User Status */}
-        {currentUserInQueue && (
-          <div className="bg-teal-50 border border-teal-200 rounded-lg p-6 mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Users className="w-6 h-6 text-teal-600" />
-              <h2 className="text-lg font-semibold text-teal-900">Your Queue Status</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-teal-600">{currentUserPosition}</div>
-                <div className="text-sm text-teal-700">Position in Queue</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-teal-600">{currentUserInQueue.tokenNumber}</div>
-                <div className="text-sm text-teal-700">Your Token</div>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-teal-600">
-                  {currentUserInQueue.waitingTime} min
-                </div>
-                <div className="text-sm text-teal-700">Waiting Time</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Queue List */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -739,72 +601,208 @@ export default function PatientQueuePage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span className="font-medium">Queue Order:</span>
-              {appointmentQueueItems.length > 0 && (
-                <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-semibold">
-                  {appointmentQueueItems.map((item, idx) => (
-                    <span key={item.id}>
-                      {item.tokenNumber || idx + 1}
-                      {idx < appointmentQueueItems.length - 1 && ' → '}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </div>
           </div>
-          
+
           <div className="space-y-3">
             {appointmentQueueItems.length > 0 ? (
-              appointmentQueueItems.map((queueItem, index) => {
-                const isCurrentUser = !!(patient && queueItem.patientId === patient.id);
-                return (
-                  <QueueItem
-                    key={queueItem.id}
-                    queueItem={queueItem}
-                    index={index}
-                    isCurrentUser={isCurrentUser}
-                  />
-                );
-              })
+              appointmentQueueItems.map((queueItem, index) => (
+                <QueueItem
+                  key={queueItem.id}
+                  queueItem={queueItem}
+                  index={index}
+                  isCurrentUser={false}
+                />
+              ))
             ) : (
               <div className="text-center py-8 text-gray-500">
                 <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <p className="text-lg font-medium">No appointments in queue today</p>
-                <p className="text-sm mt-2">
-                  {appointments.length === 0 
-                    ? "No appointments found for the selected doctor today."
-                    : "Check back later or contact the clinic"
-                  }
-                </p>
-                {appointments.length === 0 && (
-                  <button 
-                    onClick={() => window.location.href = '/Patient/book-appointment'}
-                    className="mt-4 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
-                  >
-                    Book an Appointment
-                  </button>
-                )}
+                <p className="text-sm mt-2">No appointments found for the selected doctor today.</p>
               </div>
             )}
           </div>
         </div>
 
-        {/* Information Card */}
         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <Clock className="w-5 h-5 text-blue-600 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-blue-900 mb-1">Queue Information</h3>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>• Queue positions are updated in real-time</li>
-                <li>• Your position may change if other patients check in or are called</li>
-                <li>• Please wait for your turn and listen for announcements</li>
-                <li>• If you need to leave temporarily, inform the reception</li>
-              </ul>
+              <h3 className="font-semibold text-blue-900 mb-1">Complete Your Profile</h3>
+              <p className="text-sm text-blue-800 mb-3">To see your personal queue status and position, please complete your patient profile.</p>
+              <button
+                onClick={() => window.location.href = '/Patient/register'}
+                className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
+              >
+                Complete Profile
+              </button>
             </div>
           </div>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center gap-2">
+          <AlertCircle className="w-5 h-5" />
+          <div>
+            <p className="font-semibold">Unable to load queue data</p>
+            <p className="text-sm mt-1">
+              {error.includes('permission') || error.includes('Permission')
+                ? 'Please ensure you are logged in and have a complete patient profile.'
+                : error
+              }
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Queue Status</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            View your position in the queue for {doctors.find(d => d.id === selectedDoctorId)?.user?.name || 'Selected Doctor'}
+          </p>
+          {lastRefreshTime && (
+            <p className="text-xs text-gray-400 mt-1">
+              Last updated: {lastRefreshTime.toLocaleTimeString()}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing || loading}
+            className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 w-full md:w-auto"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh Queue'}
+          </button>
+          <select
+            value={selectedDoctorId || ''}
+            onChange={(e) => setSelectedDoctorId(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 w-full md:w-auto"
+          >
+            <option value="">Select Doctor</option>
+            {doctors.map((doctor) => (
+              <option key={doctor.id} value={doctor.id}>
+                {doctor.user?.name || 'Unknown'} - {doctor.specialty}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Current User Status */}
+      {currentUserInQueue && (
+        <div className="bg-teal-50 border border-teal-200 rounded-lg p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Users className="w-6 h-6 text-teal-600" />
+            <h2 className="text-lg font-semibold text-teal-900">Your Queue Status</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center">
+              <div className="text-3xl font-bold text-teal-600">{currentUserPosition}</div>
+              <div className="text-sm text-teal-700">Position in Queue</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-teal-600">{currentUserInQueue.tokenNumber}</div>
+              <div className="text-sm text-teal-700">Your Token</div>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-teal-600">
+                {currentUserInQueue.waitingTime} min
+              </div>
+              <div className="text-sm text-teal-700">Waiting Time</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Queue List */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Today&apos;s Queue ({appointmentQueueItems.length})
+            </h2>
+            {isAutoRefreshing && (
+              <div className="flex items-center gap-1 text-xs text-teal-600">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Syncing...</span>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-600 overflow-x-auto pb-2 sm:pb-0">
+            <span className="font-medium whitespace-nowrap">Queue Order:</span>
+            {appointmentQueueItems.length > 0 && (
+              <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-semibold whitespace-nowrap">
+                {appointmentQueueItems.map((item, idx) => (
+                  <span key={item.id}>
+                    {item.tokenNumber || idx + 1}
+                    {idx < appointmentQueueItems.length - 1 && ' → '}
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {appointmentQueueItems.length > 0 ? (
+            appointmentQueueItems.map((queueItem, index) => {
+              const isCurrentUser = !!(patient && queueItem.patientId === patient.id);
+              return (
+                <QueueItem
+                  key={queueItem.id}
+                  queueItem={queueItem}
+                  index={index}
+                  isCurrentUser={isCurrentUser}
+                />
+              );
+            })
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-lg font-medium">No appointments in queue today</p>
+              <p className="text-sm mt-2">
+                {appointments.length === 0
+                  ? "No appointments found for the selected doctor today."
+                  : "Check back later or contact the clinic"
+                }
+              </p>
+              {appointments.length === 0 && (
+                <button
+                  onClick={() => window.location.href = '/Patient/book-appointment'}
+                  className="mt-4 px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
+                >
+                  Book an Appointment
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Information Card */}
+      <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <Clock className="w-5 h-5 text-blue-600 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-blue-900 mb-1">Queue Information</h3>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Queue positions are updated in real-time</li>
+              <li>• Your position may change if other patients check in or are called</li>
+              <li>• Please wait for your turn and listen for announcements</li>
+              <li>• If you need to leave temporarily, inform the reception</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

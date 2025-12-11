@@ -45,12 +45,12 @@ export function getSessionSlots(
   sessionConfig: SessionConfig = DEFAULT_SESSION_CONFIG
 ): string[] {
   const sessionTimes = sessionConfig[session];
-  
+
   return allSlots.filter(slot => {
     const slotTime = convertTo24Hour(slot);
     const sessionStart = sessionTimes.startTime;
     const sessionEnd = sessionTimes.endTime;
-    
+
     return slotTime >= sessionStart && slotTime < sessionEnd;
   });
 }
@@ -63,17 +63,17 @@ export function convertTo24Hour(timeStr: string): string {
     // Handle formats like "9:00 AM", "9:00AM", "09:00", etc.
     const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
     if (!timeMatch) return timeStr;
-    
+
     let hours = parseInt(timeMatch[1]);
     const minutes = timeMatch[2];
     const meridiem = timeMatch[3]?.toUpperCase();
-    
+
     // Convert to 24-hour format if AM/PM is present
     if (meridiem) {
       if (meridiem === 'PM' && hours !== 12) hours += 12;
       if (meridiem === 'AM' && hours === 12) hours = 0;
     }
-    
+
     return `${hours.toString().padStart(2, '0')}:${minutes}`;
   } catch (error) {
     console.error('Error converting time:', timeStr, error);
@@ -81,13 +81,23 @@ export function convertTo24Hour(timeStr: string): string {
   }
 }
 
-/**
- * Parse last token number from appointments
- * Token format: #1, #2, #3, etc.
- */
-export function parseTokenNumber(token: string): number {
-  const match = token.match(/#(\d+)/);
-  return match ? parseInt(match[1]) : 0;
+export function parseTokenNumber(token: string | number): number {
+  if (!token) return 0;
+
+  // Ensure token is a string
+  const tokenStr = token.toString();
+
+  // Handle "#123" format
+  const hashMatch = tokenStr.match(/#(\d+)/);
+  if (hashMatch) return parseInt(hashMatch[1]);
+
+  // Handle "123" format (just digits)
+  const digitMatch = tokenStr.match(/^(\d+)$/);
+  if (digitMatch) return parseInt(digitMatch[1]);
+
+  // Handle "Token 123" or other variations by extracting first sequence of digits
+  const anyDigitMatch = tokenStr.match(/(\d+)/);
+  return anyDigitMatch ? parseInt(anyDigitMatch[0]) : 0;
 }
 
 /**
@@ -114,10 +124,10 @@ export function getNextTokenForSession(
     const aptDate = apt.appointmentDate;
     const aptTime = apt.appointmentTime;
     const aptSession = getSessionFromTime(aptTime);
-    
+
     return aptDate === appointmentDate && aptSession === session;
   });
-  
+
   // Find the highest token number
   let maxTokenNum = 0;
   sessionAppointments.forEach(apt => {
@@ -126,7 +136,7 @@ export function getNextTokenForSession(
       maxTokenNum = tokenNum;
     }
   });
-  
+
   return generateNextToken(maxTokenNum);
 }
 
@@ -142,21 +152,19 @@ export function getNextTokenForAllAppointments(
   const dateAppointments = existingAppointments.filter(apt => {
     return apt.appointmentDate === appointmentDate;
   });
-  
+
   // Find the highest token number
   let maxTokenNum = 0;
   dateAppointments.forEach(apt => {
     if (apt.tokenNumber) {
-      const tokenMatch = apt.tokenNumber.match(/#(\d+)/);
-      if (tokenMatch) {
-        const tokenNum = parseInt(tokenMatch[1]);
-        if (tokenNum > maxTokenNum) {
-          maxTokenNum = tokenNum;
-        }
+      // Use the robust parser
+      const tokenNum = parseTokenNumber(apt.tokenNumber);
+      if (tokenNum > maxTokenNum) {
+        maxTokenNum = tokenNum;
       }
     }
   });
-  
+
   return `#${maxTokenNum + 1}`;
 }
 
@@ -170,26 +178,26 @@ export function assignSlotByToken(
   bookedSlots: string[]
 ): string | null {
   const tokenNum = parseTokenNumber(tokenNumber);
-  
+
   if (tokenNum <= 0 || sessionSlots.length === 0) {
     return null;
   }
-  
+
   // Filter out already booked slots
   const availableSlots = sessionSlots.filter(slot => !bookedSlots.includes(slot));
-  
+
   if (availableSlots.length === 0) {
     return null; // No slots available
   }
-  
+
   // Token #1 gets first slot, #2 gets second slot, etc.
   const slotIndex = tokenNum - 1;
-  
+
   // If token number exceeds available slots, return first available
   if (slotIndex >= availableSlots.length) {
     return availableSlots[0];
   }
-  
+
   return availableSlots[slotIndex];
 }
 
@@ -208,15 +216,15 @@ export function getSessionCapacity(
   availableSlots: number;
 } {
   const sessionSlots = getSessionSlots(allSlots, session, config);
-  
+
   const bookedSlotsForSession = existingAppointments.filter(apt => {
     const aptDate = apt.appointmentDate;
     const aptTime = apt.appointmentTime;
     const aptSession = getSessionFromTime(aptTime);
-    
+
     return aptDate === appointmentDate && aptSession === session;
   });
-  
+
   return {
     totalSlots: sessionSlots.length,
     bookedSlots: bookedSlotsForSession.length,
@@ -266,8 +274,8 @@ export function canBookSession(
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const selectedDateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  
-  
+
+
   // Can't book past dates
   if (selectedDateStart < todayStart) {
     return {
@@ -275,14 +283,14 @@ export function canBookSession(
       reason: 'Cannot book appointments for past dates'
     };
   }
-  
+
   // If booking for today, check if session time has passed
   if (selectedDateStart.getTime() === todayStart.getTime()) {
     const sessionTimes = config[session];
     const now = new Date();
     const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    
-    
+
+
     // Check if session has already ended
     if (sessionTimes.endTime <= currentTime) {
       return {
@@ -290,11 +298,11 @@ export function canBookSession(
         reason: 'This session has already ended'
       };
     }
-    
+
     // Allow booking if session hasn't ended yet (even if it's in progress)
     // The system will assign available time slots within the session
   }
-  
+
   return { canBook: true };
 }
 
@@ -309,32 +317,32 @@ export function getAvailableSessionsForDate(
   const today = new Date();
   const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const selectedDateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  
-  
+
+
   // If booking for future dates, show both sessions
   if (selectedDateStart.getTime() > todayStart.getTime()) {
     return ['morning', 'evening'];
   }
-  
+
   // If booking for today, check which sessions can actually be booked
   if (selectedDateStart.getTime() === todayStart.getTime()) {
     const availableSessions: SessionType[] = [];
-    
+
     // Check morning session
     const morningCheck = canBookSession(date, 'morning', config);
     if (morningCheck.canBook) {
       availableSessions.push('morning');
     }
-    
+
     // Check evening session
     const eveningCheck = canBookSession(date, 'evening', config);
     if (eveningCheck.canBook) {
       availableSessions.push('evening');
     }
-    
+
     return availableSessions;
   }
-  
+
   // Past dates - no sessions available
   return [];
 }

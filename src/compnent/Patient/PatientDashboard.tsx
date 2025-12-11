@@ -12,8 +12,12 @@ import { useRouter } from 'next/navigation';
 
 interface PatientStats {
   nextAppointment?: {
-    date: string;
-    time: string;
+    id: string; // Added ID for navigation
+    doctorName: string;
+    doctorSpecialty: string;
+    appointmentDate: string;
+    appointmentTime: string;
+    token: string;
   };
   totalVisits?: {
     count: number;
@@ -40,9 +44,9 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   stats = {},
   appointments = [],
   recentVisits = [],
-  onBookNew = () => {},
-  onViewAppointmentDetails = () => {},
-  onViewReport = () => {}
+  onBookNew = () => { },
+  onViewAppointmentDetails = () => { },
+  onViewReport = () => { }
 }) => {
   const [dashboardStats, setDashboardStats] = useState<PatientDashboardStats | null>(null);
   const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
@@ -67,25 +71,25 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
 
         // Get all appointments for the patient
         const allAppointments = await getAppointments(patient.id) as any[];
-        
+
         if (!allAppointments) {
           throw new Error('Failed to load appointments');
         }
 
         const now = new Date();
         const today = now.toISOString().split('T')[0];
-        
+
         // Separate upcoming and completed appointments
         const upcoming = allAppointments
           .filter(apt => {
-            const aptDate = new Date(apt.appointmentDate);
-            return aptDate >= now && (apt.status === 'scheduled' || apt.status === 'confirmed');
+            return apt.appointmentDate >= today &&
+              ['scheduled', 'confirmed', 'approved'].includes(apt.status);
           })
           .sort((a, b) => new Date(a.appointmentDate).getTime() - new Date(b.appointmentDate).getTime())
           .slice(0, 5);
-        
+
         const completed = allAppointments
-          .filter(apt => apt.status === 'completed')
+          .filter(apt => ['completed', 'checked_in'].includes(apt.status)) // Also include checked_in as mostly past/active? No, purely completed for History. Maybe keep just 'completed'. User said "fetch correctly". Usually Recent Visits = Completed. I'll stick to 'completed'.
           .sort((a, b) => new Date(b.appointmentDate).getTime() - new Date(a.appointmentDate).getTime())
           .slice(0, 10);
 
@@ -94,8 +98,22 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         const doctors = doctorsResult.success ? doctorsResult.data : [];
         const doctorMap = new Map(doctors?.map(d => [d.id, d]) || []);
 
+        // Create Enriched Appointments with Doctor Details
+        const enrichedUpcoming = upcoming.map(apt => {
+          const doctor = doctorMap.get(apt.doctorId) as any;
+          return {
+            ...apt,
+            id: apt.id,
+            doctor: doctor?.user?.name || 'Unknown Doctor', // Map to 'doctor' prop
+            specialty: doctor?.specialty || 'General',      // Map to 'specialty' prop
+            date: apt.appointmentDate,                      // Map to 'date' prop
+            time: apt.appointmentTime,                      // Map to 'time' prop
+            token: apt.tokenNumber || 'Pending'             // Map to 'token' prop
+          };
+        });
+
         // Set upcoming appointments
-        setUpcomingAppointments(upcoming);
+        setUpcomingAppointments(enrichedUpcoming);
 
         // Convert completed appointments to recent visits format
         const visits: RecentVisit[] = completed.map(apt => {
@@ -103,8 +121,10 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
           return {
             id: apt.id,
             doctor: doctor?.user?.name || 'Unknown Doctor',
-            reason: apt.notes || 'Checkup completed',
-            date: apt.appointmentDate
+            specialty: doctor?.specialty || 'General',
+            reason: apt.notes || 'Routine Checkup',
+            date: apt.appointmentDate,
+            time: apt.appointmentTime
           };
         });
         setRecentVisitsData(visits);
@@ -128,7 +148,6 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
             doctorSpecialty: nextDoctor?.specialty || 'General',
             appointmentDate: nextApt.appointmentDate,
             appointmentTime: nextApt.appointmentTime,
-            room: '',
             token: nextApt.tokenNumber
           };
         }
@@ -147,11 +166,15 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
 
   const defaultStats: Required<PatientStats> = {
     nextAppointment: dashboardStats?.nextAppointment ? {
-      date: dashboardStats.nextAppointment.appointmentDate,
-      time: dashboardStats.nextAppointment.appointmentTime
+      ...dashboardStats.nextAppointment,
+      token: dashboardStats.nextAppointment.token || ''
     } : {
-      date: 'No upcoming',
-      time: 'appointments'
+      id: '',
+      doctorName: 'No upcoming',
+      doctorSpecialty: '',
+      appointmentDate: '',
+      appointmentTime: 'appointments',
+      token: ''
     },
     totalVisits: {
       count: dashboardStats?.completedAppointments || 0,
@@ -218,8 +241,12 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <PatientStatsCard
             title="Next Appointment"
-            value={defaultStats.nextAppointment.date}
-            subtitle={defaultStats.nextAppointment.time}
+            value={defaultStats.nextAppointment.doctorName !== 'No upcoming'
+              ? `${defaultStats.nextAppointment.appointmentDate} at ${defaultStats.nextAppointment.appointmentTime}`
+              : 'No upcoming appointments'}
+            subtitle={defaultStats.nextAppointment.doctorName !== 'No upcoming'
+              ? `Dr. ${defaultStats.nextAppointment.doctorName}`
+              : ''}
             icon={Calendar}
             variant="primary"
           />

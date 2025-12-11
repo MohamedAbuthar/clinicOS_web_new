@@ -15,9 +15,9 @@ interface AppointmentCardProps {
   onViewDetails: (appointment: Appointment) => void;
 }
 
-export const AppointmentCard: React.FC<AppointmentCardProps> = ({ 
-  appointment, 
-  onViewDetails 
+export const AppointmentCard: React.FC<AppointmentCardProps> = ({
+  appointment,
+  onViewDetails
 }) => {
   return (
     <div className="border border-gray-200 rounded-xl p-4 sm:p-6 hover:border-teal-200 transition-colors">
@@ -28,25 +28,27 @@ export const AppointmentCard: React.FC<AppointmentCardProps> = ({
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-semibold text-gray-900 mb-1">
-              {appointment.doctor}
+              {appointment.doctor?.startsWith('Dr.') ? appointment.doctor : `Dr. ${appointment.doctor}`}
             </h3>
-            <p className="text-gray-600 mb-3">{appointment.specialty}</p>
-            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
+            <p className="text-gray-600 mb-2 font-medium">{appointment.specialty}</p>
+
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
+              <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md">
+                <Calendar className="w-4 h-4 text-teal-600" />
                 <span>{appointment.date}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
+              <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-md">
+                <Clock className="w-4 h-4 text-teal-600" />
                 <span>{appointment.time}</span>
               </div>
             </div>
           </div>
         </div>
         <div className="flex sm:flex-col items-center sm:items-end gap-3 sm:gap-2">
-          <span className="bg-teal-500 text-white px-4 py-1 rounded-full text-sm font-medium whitespace-nowrap">
-            Token: {appointment.token}
-          </span>
+          <div className="bg-teal-50 border border-teal-100 px-3 py-1.5 rounded-lg flex flex-col items-end">
+            <span className="text-xs text-teal-600 font-semibold uppercase tracking-wider">Token</span>
+            <span className="text-xl font-bold text-teal-700 leading-none">#{appointment.token?.replace('#', '')}</span>
+          </div>
           <button
             onClick={() => onViewDetails(appointment)}
             className="text-gray-700 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
