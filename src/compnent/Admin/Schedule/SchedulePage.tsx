@@ -159,11 +159,18 @@ const SchedulePage: React.FC = () => {
       return 'Both Sessions';
     }
 
-    const [hours] = startTime.split(':').map(Number);
+    const [startH] = startTime.split(':').map(Number);
+    const [endH] = endTime.split(':').map(Number);
+
+    // Identifying Both Sessions (9 AM to 6 PM covers full day)
+    // Or just check if hours span across 13:00 barrier significantly
+    if (startH <= 12 && endH >= 14) {
+      return 'Both Sessions';
+    }
 
     // Morning session typically starts before 13:00 (1 PM)
     // Evening session typically starts at or after 13:00 (1 PM)
-    if (hours < 13) {
+    if (startH < 13) {
       return 'Morning Session';
     } else {
       return 'Evening Session';
@@ -186,7 +193,9 @@ const SchedulePage: React.FC = () => {
         day: 'numeric'
       }),
       timeRange: getSessionDisplayName(override.startTime, override.endTime),
-      type: override.type === 'holiday' ? 'holiday' : 'special-event',
+      type: (override as any).displayType === 'extended-hours' || override.type === 'extended_hours'
+        ? 'extended-hours'
+        : override.type === 'holiday' ? 'holiday' : 'special-event',
     }));
   };
 
@@ -206,11 +215,14 @@ const SchedulePage: React.FC = () => {
       return 'both';
     }
 
-    const [hours] = startTime.split(':').map(Number);
+    const [startH] = startTime.split(':').map(Number);
+    const [endH] = endTime.split(':').map(Number);
 
-    // Morning session typically starts before 13:00 (1 PM)
-    // Evening session typically starts at or after 13:00 (1 PM)
-    if (hours < 13) {
+    if (startH <= 12 && endH >= 14) {
+      return 'both';
+    }
+
+    if (startH < 13) {
       return 'morning';
     } else {
       return 'evening';
@@ -226,7 +238,8 @@ const SchedulePage: React.FC = () => {
         return { startTime: '14:00', endTime: '18:00' };
       case 'both':
       default:
-        return { startTime: undefined, endTime: undefined };
+        // Return explicit full day range for single-doc storage
+        return { startTime: '09:00', endTime: '18:00' };
     }
   };
 
@@ -305,7 +318,6 @@ const SchedulePage: React.FC = () => {
   };
 
   const handleSaveEditOverride = async (data: { id: string; title: string; date: string; session: 'morning' | 'evening' | 'both'; type: 'special-event' | 'holiday' | 'extended-hours'; description?: string; doctorId?: string }) => {
-    // Use doctorId from data if provided (admin), otherwise use selectedDoctor (doctor/assistant)
     const doctorIdToUse = data.doctorId || selectedDoctor;
 
     if (!doctorIdToUse) {
@@ -317,180 +329,60 @@ const SchedulePage: React.FC = () => {
     setOverridesError(null);
 
     try {
-      // Map UI types to backend types
       const overrideType = data.type === 'special-event' || data.type === 'extended-hours'
         ? 'extended_hours'
         : data.type === 'holiday'
           ? 'holiday'
-          : 'extended_hours'; // Default fallback
+          : 'extended_hours';
 
-      // If switching to "both" sessions during edit
+      const targetDate = data.date.trim();
+
+      // Get standardized time range (now handles 'both' as single doc)
+      const { startTime, endTime } = sessionToTimeRange(data.session);
+
+      if (!startTime || !endTime) {
+        toast.error('❌ Invalid session time range');
+        setActionLoading(false);
+        return;
+      }
+
+      // Special handling for 'Both': Cleanup any siblings to prevent duplicates
       if (data.session === 'both') {
-        const overridesOnDate = overrides.filter(o => o.doctorId === doctorIdToUse && o.date.split('T')[0] === data.date);
+        // Find any OTHER cards on this date (siblings) and DELETE them
+        // This merges previous split cards into one
+        const potentialSiblings = overrides.filter(o =>
+          o.doctorId === doctorIdToUse &&
+          (o.date || '').split('T')[0].trim() === targetDate &&
+          o.id !== data.id
+        );
 
-        let existingMorning: ScheduleOverride | undefined = overridesOnDate.find(o => {
-          if (!o.startTime) return false;
-          const [h] = o.startTime.split(':').map(Number);
-          return h < 13;
-        });
-
-        let existingEvening: ScheduleOverride | undefined = overridesOnDate.find(o => {
-          if (!o.startTime) return false;
-          const [h] = o.startTime.split(':').map(Number);
-          return h >= 13;
-        });
-
-        // Slot Assignment Logic:
-        // We want to ensure we have exactly one Morning and one Evening override with the new details.
-
-        // 1. Handle Morning Slot
-        let morningSuccess = false;
-        if (existingMorning) {
-          // Update existing Morning override
-          morningSuccess = await updateOverride(doctorIdToUse, existingMorning.id, {
-            date: data.date,
-            startTime: '09:00',
-            endTime: '12:00',
-            reason: data.title,
-            type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
-            description: data.description || '',
-            displayType: data.type,
-          });
-        } else {
-          // No morning exists. Can we use data.id?
-          // Only use data.id if it's NOT the evening override we found later (though evening check is independent)
-          // Strict check: if data.id is NOT existingEvening's ID, we can repurpose it for Morning.
-          // If data.id IS existingEvening's ID, we should let Evening keep it and create new Morning.
-
-          if (data.id !== existingEvening?.id) {
-            // Repurpose data.id for Morning
-            morningSuccess = await updateOverride(doctorIdToUse, data.id, {
-              date: data.date,
-              startTime: '09:00',
-              endTime: '12:00',
-              reason: data.title,
-              type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
-              description: data.description || '',
-              displayType: data.type,
-            });
-          } else {
-            // data.id is busy being Evening. Create new Morning.
-            morningSuccess = await createOverride(doctorIdToUse, {
-              date: data.date,
-              startTime: '09:00',
-              endTime: '12:00',
-              reason: data.title,
-              type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
-              description: data.description || '',
-              displayType: data.type,
-            });
-          }
-        }
-
-        // 2. Handle Evening Slot
-        let eveningSuccess = false;
-        if (existingEvening) {
-          // Update existing Evening override
-          eveningSuccess = await updateOverride(doctorIdToUse, existingEvening.id, {
-            date: data.date,
-            startTime: '14:00',
-            endTime: '18:00',
-            reason: data.title,
-            type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
-            description: data.description || '',
-            displayType: data.type,
-          });
-        } else {
-          // No evening exists. Can we use data.id?
-          // Use data.id if we didn't use it for Morning (check if existingMorning was found, meaning data.id wasn't consumed for M unless data.id == existingMorning.id)
-          // Basically: if data.id wasn't already updated as Morning in step 1.
-
-          // Simpler: If data.id !== existingMorning?.id AND we haven't just repurposed it above.
-          // If we repurposed data.id above (because existingMorning was null and data.id != existingEvening?.id), then we can't use it here.
-
-          let usedForMorning = false;
-          if (existingMorning) {
-            usedForMorning = (data.id === existingMorning.id);
-          } else {
-            // If no morning exists, we used data.id for morning IF we didn't save it for evening.
-            // But we are deciding that NOW.
-            // If data.id is NOT existingEvening's ID, we use it for Morning.
-            if (existingEvening) {
-              usedForMorning = data.id !== (existingEvening as any).id;
-            } else {
-              usedForMorning = true;
-            }
-          }
-
-          if (!usedForMorning) {
-            // Repurpose data.id for Evening
-            eveningSuccess = await updateOverride(doctorIdToUse, data.id, {
-              date: data.date,
-              startTime: '14:00',
-              endTime: '18:00',
-              reason: data.title,
-              type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
-              description: data.description || '',
-              displayType: data.type,
-            });
-          } else {
-            // Create new Evening
-            eveningSuccess = await createOverride(doctorIdToUse, {
-              date: data.date,
-              startTime: '14:00',
-              endTime: '18:00',
-              reason: data.title,
-              type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
-              description: data.description || '',
-              displayType: data.type,
-            });
-          }
-        }
-
-        if (morningSuccess && eveningSuccess) {
-          toast.success('✅ Schedule updated to cover both sessions');
-          setIsEditOverrideOpen(false);
-          setEditingOverride(null);
-          // Explicitly refresh to ensure UI sees the correct cards
-          if (doctorIdToUse === selectedDoctor) {
-            await fetchOverrides(selectedDoctor);
-          }
-        } else {
-          toast.error('❌ Failed to update schedule for both sessions');
-        }
-      } else {
-        // Normal update for single session
-        const { startTime, endTime } = sessionToTimeRange(data.session);
-
-        // Safety check
-        if (!startTime || !endTime) {
-          toast.error('❌ Invalid session time range');
-          setActionLoading(false);
-          return;
-        }
-
-        const success = await updateOverride(doctorIdToUse, data.id, {
-          date: data.date,
-          startTime,
-          endTime,
-          reason: data.title,
-          type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
-          description: data.description || '',
-          displayType: data.type, // Store the original UI type for correct mapping when editing
-        });
-
-        if (success) {
-          toast.success('✅ Schedule override updated successfully');
-          setIsEditOverrideOpen(false);
-          setEditingOverride(null);
-          // Refresh the selected doctor's overrides
-          if (doctorIdToUse === selectedDoctor) {
-            await fetchOverrides(selectedDoctor);
-          }
-        } else {
-          toast.error('❌ Failed to update schedule override');
+        for (const sibling of potentialSiblings) {
+          await deleteOverride(doctorIdToUse, sibling.id);
         }
       }
+
+      // Update the current card to the new state (whether single or both)
+      const success = await updateOverride(doctorIdToUse, data.id, {
+        date: targetDate,
+        startTime,
+        endTime,
+        reason: data.title,
+        type: overrideType as 'holiday' | 'extended_hours' | 'reduced_hours',
+        description: data.description || '',
+        displayType: data.type,
+      });
+
+      if (success) {
+        toast.success('✅ Schedule override updated successfully');
+        setIsEditOverrideOpen(false);
+        setEditingOverride(null);
+        if (doctorIdToUse === selectedDoctor) {
+          await fetchOverrides(selectedDoctor);
+        }
+      } else {
+        toast.error('❌ Failed to update schedule override');
+      }
+
     } catch (err) {
       const errorMessage = apiUtils.handleError(err);
       toast.error(`❌ ${errorMessage}`);
@@ -864,6 +756,7 @@ const SchedulePage: React.FC = () => {
         showDoctorSelection={currentUser?.role === 'admin'}
         doctors={currentUser?.role === 'admin' ? doctorNames : []}
         selectedDoctorId={selectedDoctor}
+        loading={actionLoading}
       />
 
       <EditOverrideDialog

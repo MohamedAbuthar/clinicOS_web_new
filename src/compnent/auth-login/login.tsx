@@ -24,21 +24,21 @@ const Auth = () => {
   // Handle phone number input with +91 validation
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    
+
     // Always ensure +91 prefix
     if (!value.startsWith('+91 ')) {
       value = '+91 ';
     }
-    
+
     // Extract only the number part after +91 
     const numberPart = value.slice(4).replace(/\D/g, '');
-    
+
     // Limit to 10 digits
     const limitedNumber = numberPart.slice(0, 10);
-    
+
     // Format as +91 XXXXXXXXXX
     const formattedValue = '+91 ' + limitedNumber;
-    
+
     // Update the input value
     e.target.value = formattedValue;
     setPhone(formattedValue);
@@ -52,7 +52,7 @@ const Auth = () => {
       if (activeTab === 'signup') {
         // Handle signup logic with Firebase
         const user = await signUpWithEmail(email, password);
-        
+
         if (user) {
           // Create user profile in Firestore
           await setDoc(doc(db, 'users', user.uid), {
@@ -87,7 +87,7 @@ const Auth = () => {
 
         if (result.success) {
           toast.success('Login successful! Redirecting...');
-          
+
           // Wait a bit for auth state to propagate, then redirect
           console.log('Redirecting to dashboard...');
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -123,17 +123,17 @@ const Auth = () => {
         {/* Logo and Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center space-x-2 mb-4">
-            <svg 
-              className="w-8 h-8" 
-              viewBox="0 0 24 24" 
-              fill="none" 
+            <svg
+              className="w-8 h-8"
+              viewBox="0 0 24 24"
+              fill="none"
               xmlns="http://www.w3.org/2000/svg"
             >
-              <path 
-                d="M3 12C3 12 5.5 6 12 6C18.5 6 21 12 21 12M12 12V20M12 12L8 8M12 12L16 8" 
-                stroke="#0D9488" 
-                strokeWidth="2.5" 
-                strokeLinecap="round" 
+              <path
+                d="M3 12C3 12 5.5 6 12 6C18.5 6 21 12 21 12M12 12V20M12 12L8 8M12 12L16 8"
+                stroke="#0D9488"
+                strokeWidth="2.5"
+                strokeLinecap="round"
                 strokeLinejoin="round"
               />
             </svg>
@@ -148,7 +148,7 @@ const Auth = () => {
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
+        {/* <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
           <button
             onClick={() => setActiveTab('login')}
             className={`flex-1 py-2.5 px-4 rounded-md font-medium transition-colors ${
@@ -169,15 +169,15 @@ const Auth = () => {
           >
             Sign Up
           </button>
-        </div>
+        </div> */}
 
         {/* Form */}
         <form onSubmit={handleSubmit}>
           {/* Full Name Field - Only for Sign Up */}
           {activeTab === 'signup' && (
             <div className="mb-4">
-              <label 
-                htmlFor="fullName" 
+              <label
+                htmlFor="fullName"
                 className="block text-sm font-semibold text-gray-900 mb-2"
               >
                 Full Name
@@ -196,8 +196,8 @@ const Auth = () => {
 
           {/* Email Field */}
           <div className="mb-4">
-            <label 
-              htmlFor="email" 
+            <label
+              htmlFor="email"
               className="block text-sm font-semibold text-gray-900 mb-2"
             >
               Email
@@ -216,8 +216,8 @@ const Auth = () => {
           {/* Phone Field - Only for Sign Up */}
           {activeTab === 'signup' && (
             <div className="mb-4">
-              <label 
-                htmlFor="phone" 
+              <label
+                htmlFor="phone"
                 className="block text-sm font-semibold text-gray-900 mb-2"
               >
                 Phone Number
@@ -237,8 +237,8 @@ const Auth = () => {
           {/* Role Field - Only for Sign Up */}
           {activeTab === 'signup' && (
             <div className="mb-4">
-              <label 
-                htmlFor="role" 
+              <label
+                htmlFor="role"
                 className="block text-sm font-semibold text-gray-900 mb-2"
               >
                 Role
@@ -259,8 +259,8 @@ const Auth = () => {
 
           {/* Password Field */}
           <div className="mb-6">
-            <label 
-              htmlFor="password" 
+            <label
+              htmlFor="password"
               className="block text-sm font-semibold text-gray-900 mb-2"
             >
               Password
