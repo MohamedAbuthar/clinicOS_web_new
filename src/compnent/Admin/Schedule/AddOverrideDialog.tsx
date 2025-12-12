@@ -13,6 +13,7 @@ interface AddOverrideDialogProps {
   showDoctorSelection?: boolean;
   doctors?: DoctorOption[];
   selectedDoctorId?: string;
+  loading?: boolean;
 }
 
 interface OverrideData {
@@ -31,6 +32,7 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
   showDoctorSelection = false,
   doctors = [],
   selectedDoctorId = '',
+  loading = false,
 }) => {
   const [formData, setFormData] = useState<OverrideData>({
     title: '',
@@ -48,18 +50,12 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
     }
   }, [selectedDoctorId, isOpen]);
 
+  // Submit handler
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
-    setFormData({
-      title: '',
-      date: '',
-      session: 'both',
-      type: 'special-event',
-      description: '',
-      doctorId: selectedDoctorId,
-    });
-    onClose();
+    // Don't close here, wait for parent to close on success
+    // onClose(); 
   };
 
   const handleClose = () => {
@@ -210,14 +206,23 @@ const AddOverrideDialog: React.FC<AddOverrideDialogProps> = ({
               type="button"
               onClick={handleClose}
               className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium"
+              disabled={loading}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors font-medium"
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Add Holidays
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                'Add Holidays'
+              )}
             </button>
           </div>
         </form>

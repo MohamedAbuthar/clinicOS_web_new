@@ -47,7 +47,7 @@ const EditOverrideDialog: React.FC<EditOverrideDialogProps> = ({
 
   // Helper function to convert timeRange to session
   const timeRangeToSession = (timeRange: string): 'morning' | 'evening' | 'both' => {
-    if (!timeRange || timeRange === 'Full Day') {
+    if (!timeRange || timeRange === 'Full Day' || timeRange === 'Both Sessions') {
       return 'both';
     }
 
