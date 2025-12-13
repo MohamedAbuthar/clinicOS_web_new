@@ -1,0 +1,1 @@
+src/compnent/auth-patientLogin/ForgotPasswordDialog.tsx(4,10): error TS2305: Module '"@/lib/firebase/auth"' has no exported member 'updateUserPassword'.

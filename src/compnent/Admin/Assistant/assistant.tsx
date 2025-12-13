@@ -607,6 +607,7 @@ const AssistantsPage = () => {
     return (
       assistant.user.name.toLowerCase().includes(query) ||
       assistant.user.email.toLowerCase().includes(query) ||
+      (assistant.user.phone && assistant.user.phone.includes(query)) ||
       assistant.assignedDoctorNames.some(doctor => doctor.toLowerCase().includes(query))
     );
   });
@@ -677,7 +678,7 @@ const AssistantsPage = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by name or role..."
+              placeholder="Search by name, phone or role..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"

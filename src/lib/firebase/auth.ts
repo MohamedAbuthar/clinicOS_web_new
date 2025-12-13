@@ -1,6 +1,6 @@
 // Firebase Authentication Service
 // Replaces backend authentication with Firebase Auth
-import { 
+import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
@@ -55,20 +55,20 @@ export const adminSignIn = async (email: string, password: string) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Get user profile from Firestore
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     if (!userDoc.exists()) {
       throw new Error('User profile not found');
     }
-    
+
     const userData = userDoc.data() as UserProfile;
-    
+
     // Check if user is admin, doctor, or assistant
     if (!['admin', 'doctor', 'assistant'].includes(userData.role)) {
       throw new Error('Unauthorized: This login is for staff only');
     }
-    
+
     return {
       success: true,
       user: userData,
@@ -112,15 +112,15 @@ export const sendOTPToPhone = async (phoneNumber: string, recaptchaContainer: st
     if (!patientDoc.exists()) {
       throw new Error('Patient not found. Please register first.');
     }
-    
+
     // Set up reCAPTCHA
     const recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainer, {
       size: 'invisible',
     });
-    
+
     // Send OTP
     confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
-    
+
     return {
       success: true,
       message: 'OTP sent successfully'
@@ -136,18 +136,18 @@ export const verifyOTP = async (otp: string) => {
     if (!confirmationResult) {
       throw new Error('Please request OTP first');
     }
-    
+
     const userCredential = await confirmationResult.confirm(otp);
     const user = userCredential.user;
-    
+
     // Get patient profile from Firestore
     const patientDoc = await getDoc(doc(db, 'patients', user.phoneNumber || ''));
     if (!patientDoc.exists()) {
       throw new Error('Patient profile not found');
     }
-    
+
     const patientData = patientDoc.data() as PatientProfile;
-    
+
     return {
       success: true,
       patient: patientData,
@@ -164,15 +164,15 @@ export const patientSignInWithEmail = async (email: string, password: string) =>
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Get patient profile from Firestore
     const patientDoc = await getDoc(doc(db, 'patients', user.uid));
     if (!patientDoc.exists()) {
       throw new Error('Patient profile not found');
     }
-    
+
     const patientData = patientDoc.data() as PatientProfile;
-    
+
     return {
       success: true,
       patient: patientData,
@@ -194,15 +194,15 @@ export const registerPatient = async (
     // Create Firebase Auth user
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    
+
     // Update display name
     await updateProfile(user, {
       displayName: patientData.name
     });
-    
+
     // Send email verification
     await sendEmailVerification(user);
-    
+
     // Create patient profile in Firestore
     const newPatient: PatientProfile = {
       ...patientData,
@@ -213,9 +213,9 @@ export const registerPatient = async (
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    
+
     await setDoc(doc(db, 'patients', user.uid), newPatient);
-    
+
     return {
       success: true,
       patient: newPatient,
@@ -263,12 +263,12 @@ export const updateUserProfile = async (updates: Partial<UserProfile>) => {
   try {
     const user = auth.currentUser;
     if (!user) throw new Error('Not authenticated');
-    
+
     await updateDoc(doc(db, 'users', user.uid), {
       ...updates,
       updatedAt: new Date().toISOString()
     });
-    
+
     return { success: true };
   } catch (error: any) {
     console.error('Update profile error:', error);
@@ -281,12 +281,12 @@ export const updatePatientProfile = async (updates: Partial<PatientProfile>) => 
   try {
     const user = auth.currentUser;
     if (!user) throw new Error('Not authenticated');
-    
+
     await updateDoc(doc(db, 'patients', user.uid), {
       ...updates,
       updatedAt: new Date().toISOString()
     });
-    
+
     return { success: true };
   } catch (error: any) {
     console.error('Update patient profile error:', error);
@@ -294,3 +294,27 @@ export const updatePatientProfile = async (updates: Partial<PatientProfile>) => 
   }
 };
 
+
+// Update user password (via admin API)
+export const updateUserPassword = async (newPassword: string, email: string) => {
+  try {
+    const response = await fetch('/api/patient/reset-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, newPassword }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to update password');
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Update password error:', error);
+    throw new Error(error.message || 'Failed to update password');
+  }
+};
